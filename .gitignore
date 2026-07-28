@@ -8,3 +8,4 @@ server/data/*.json
 !server/data/.gitkeep
 .DS_Store
 *.tsbuildinfo
+server/scripts/*.js
