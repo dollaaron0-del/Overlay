@@ -88,7 +88,29 @@ curl -b cookie.txt -X POST https://<tailscale-host>/api/projects \
   -d '{"id":"my-app","dirName":"my-app","pm2Name":"my-app","startScript":"npm start"}'
 ```
 
-## 6. Manuelle Verifikation nach dem Deployment
+## 6. Log-Rotation und Monitoring
+
+PM2s eigene Logs (`~/.pm2/logs/`, sowohl für die verwalteten Web-Apps als auch
+für den Overlay-Serverprozess selbst) wachsen sonst unbegrenzt. Einmalig
+einrichten:
+```
+pm2 install pm2-logrotate
+pm2 set pm2-logrotate:max_size 10M
+pm2 set pm2-logrotate:retain 14
+```
+
+Für ein einfaches Uptime-Monitoring gibt es `GET /api/health` — bewusst ohne
+Login (ein externer Pinger hat keine Session) und bewusst minimal (nur
+`{"status":"ok","uptimeSeconds":...}`, keine Projekt- oder Versionsdetails).
+Erreichbar ist er wie alles andere nur über Tailscale, ein externer Dienst
+wie [healthchecks.io](https://healthchecks.io) kann also nicht direkt von
+außen pingen — stattdessen entweder:
+- einen Cron-Job auf einem anderen Tailnet-Gerät, der den Endpunkt pingt und
+  bei Fehlschlag Alarm schlägt, oder
+- [Uptime Kuma](https://github.com/louislam/uptime-kuma) selbst im Tailnet
+  betreiben und von dort aus `https://<tailscale-host>/api/health` überwachen.
+
+## 7. Manuelle Verifikation nach dem Deployment
 
 Diese Punkte lassen sich nicht in der Entwicklungs-Sandbox testen und sollten
 nach dem echten Deployment einmal manuell geprüft werden:

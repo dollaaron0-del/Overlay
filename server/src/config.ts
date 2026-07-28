@@ -25,6 +25,12 @@ const schema = z.object({
   // Claude Code CLI; override to e.g. "bash" for local/sandbox testing of the
   // pty <-> WebSocket <-> xterm.js plumbing without a `claude` login available.
   CLAUDE_COMMAND: z.string().default("claude"),
+  // Only consulted outside production: the Vite dev server runs on its own
+  // port and proxies /api and /ws through to this backend, so the browser's
+  // Origin header for a WebSocket upgrade is the dev server's origin, not
+  // this backend's. In production the frontend is served by this same
+  // process, so Origin always equals the request Host and this is unused.
+  DEV_FRONTEND_ORIGIN: z.string().default("http://localhost:5173"),
   COOKIE_SECURE: z
     .string()
     .default("false")

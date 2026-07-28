@@ -4,24 +4,56 @@ import { config } from "../config.js";
 import type { Project } from "./projects.types.js";
 
 const REGISTRY_FILE = path.join(process.cwd(), "data", "projects.json");
+const BACKUP_FILE = `${REGISTRY_FILE}.bak`;
+const TMP_FILE = `${REGISTRY_FILE}.tmp`;
 
 let cache: Project[] | null = null;
 let writeQueue: Promise<unknown> = Promise.resolve();
 
-async function readFromDisk(): Promise<Project[]> {
+async function readJson(filePath: string): Promise<Project[] | null> {
   try {
-    const raw = await fs.readFile(REGISTRY_FILE, "utf8");
+    const raw = await fs.readFile(filePath, "utf8");
     return JSON.parse(raw) as Project[];
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw err;
+  }
+}
+
+async function readFromDisk(): Promise<Project[]> {
+  try {
+    const parsed = await readJson(REGISTRY_FILE);
+    return parsed ?? [];
+  } catch (err) {
+    // A corrupted primary file (e.g. from a crash mid-write, or manual editing
+    // gone wrong) shouldn't take down the whole registry — fall back to the
+    // last known-good backup instead of throwing.
+    console.error(`projects.json is corrupted (${(err as Error).message}); trying backup`, err);
+    const backup = await readJson(BACKUP_FILE).catch(() => null);
+    if (backup) {
+      console.error("Recovered project registry from projects.json.bak");
+      return backup;
+    }
+    console.error("No usable backup found either — starting with an empty project list");
+    return [];
   }
 }
 
 async function writeToDisk(projects: Project[]): Promise<void> {
   writeQueue = writeQueue.then(async () => {
     await fs.mkdir(path.dirname(REGISTRY_FILE), { recursive: true });
-    await fs.writeFile(REGISTRY_FILE, JSON.stringify(projects, null, 2), "utf8");
+
+    // Keep one rolling backup generation of the previous state before
+    // overwriting, so a bad write (or a mistake right after) is recoverable.
+    await fs.copyFile(REGISTRY_FILE, BACKUP_FILE).catch((err) => {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    });
+
+    // Write-then-rename instead of writing REGISTRY_FILE directly: rename is
+    // atomic on the same filesystem, so a crash mid-write can never leave
+    // projects.json half-written/corrupted.
+    await fs.writeFile(TMP_FILE, JSON.stringify(projects, null, 2), "utf8");
+    await fs.rename(TMP_FILE, REGISTRY_FILE);
   });
   await writeQueue;
 }

@@ -5,6 +5,8 @@ build/
 .env
 .env.local
 server/data/*.json
+server/data/*.json.bak
+server/data/*.json.tmp
 !server/data/.gitkeep
 .DS_Store
 *.tsbuildinfo

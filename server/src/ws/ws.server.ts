@@ -4,11 +4,18 @@ import { isAuthenticatedUpgradeRequest } from "../auth/auth.middleware.js";
 import { handlePtyConnection } from "../pty/pty.ws.js";
 import { handleLogsConnection } from "../pm2/pm2.ws.js";
 import { handleStatusConnection } from "./status.ws.js";
+import { isAllowedOrigin } from "./origin-check.js";
 
 export function attachWebSocketServer(server: HttpServer): void {
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (req, socket, head) => {
+    if (!isAllowedOrigin(req)) {
+      socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+
     if (!isAuthenticatedUpgradeRequest(req)) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();

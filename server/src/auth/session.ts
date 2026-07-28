@@ -89,3 +89,8 @@ export function destroySessionCookie(cookieValue: string | undefined): void {
 }
 
 export const SESSION_MAX_AGE_SECONDS = SESSION_TTL_MS / 1000;
+
+/** Test-only: lets tests await the fire-and-forget persistence write queue before cleanup. */
+export function _flushPendingWrites(): Promise<unknown> {
+  return writeQueue;
+}
