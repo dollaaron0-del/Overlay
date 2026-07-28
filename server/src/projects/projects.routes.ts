@@ -1,9 +1,17 @@
 import { Router } from "express";
 import { z } from "zod";
-import { addProject, InvalidDirNameError, listProjects, removeProject } from "./projects.registry.js";
+import { addProject, InvalidDirNameError, listAvailableDirs, listProjects, removeProject } from "./projects.registry.js";
 import { describeProcess, statusOf } from "../pm2/pm2.service.js";
 
 export const projectsRouter = Router();
+
+// Must come before "/:id"-shaped routes further down so it isn't swallowed
+// as an id param — there is no such route currently, but keep this first
+// for that reason if one gets added later.
+projectsRouter.get("/available-dirs", async (_req, res) => {
+  const dirs = await listAvailableDirs();
+  res.json(dirs);
+});
 
 projectsRouter.get("/", async (_req, res) => {
   const projects = await listProjects();

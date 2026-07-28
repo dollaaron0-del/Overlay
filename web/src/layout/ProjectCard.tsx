@@ -23,11 +23,22 @@ export function ProjectCard({
     await api.post(`/api/projects/${project.id}/${action}`);
   };
 
+  const removeProject = async (e: MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`"${project.dirName}" aus Overlay entfernen? Die Dateien und der Prozess bleiben erhalten.`)) {
+      return;
+    }
+    await api.delete(`/api/projects/${project.id}`);
+  };
+
   return (
     <div className={`project-card ${selected ? "selected" : ""}`} onClick={onSelect}>
       <div className="project-card-header">
         <span className={`status-dot status-${project.status}`} />
         <span className="project-name">{project.dirName}</span>
+        <button className="project-remove-button" title="Projekt entfernen" onClick={removeProject}>
+          ✕
+        </button>
       </div>
       <div className="project-status-label">{STATUS_LABEL[project.status]}</div>
       <div className="project-actions">

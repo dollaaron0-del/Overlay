@@ -1,23 +1,9 @@
 import { useEffect, useState } from "react";
-import type { LlmTriage, ScanReport, SeverityCounts, ToolResult } from "@overlay/shared";
+import type { LlmTriage, ScanReport, ToolResult } from "@overlay/shared";
 import { api, ApiError } from "../api/client";
-
-interface ScanSummary {
-  id: string;
-  startedAt: string;
-  finishedAt: string;
-  durationSeconds: number;
-  summary: SeverityCounts;
-}
-
-const SEVERITY_ORDER: (keyof SeverityCounts)[] = ["critical", "high", "medium", "low", "info"];
-const SEVERITY_LABEL: Record<keyof SeverityCounts, string> = {
-  critical: "Kritisch",
-  high: "Hoch",
-  medium: "Mittel",
-  low: "Niedrig",
-  info: "Info",
-};
+import { formatTimestamp } from "../format";
+import { SEVERITY_LABEL, SEVERITY_ORDER, isAllClear, type ScanSummary } from "./severity";
+import { SeverityBadge } from "./SeverityBadge";
 
 const TOOL_LABEL: Record<string, string> = {
   clamav: "ClamAV (Malware)",
@@ -36,15 +22,6 @@ const STATUS_LABEL: Record<ToolResult["status"], string> = {
   error: "Fehler beim Ausführen",
   skipped: "übersprungen (nicht installiert)",
 };
-
-function SeverityBadge({ severity, count }: { severity: keyof SeverityCounts; count: number }) {
-  if (count === 0) return null;
-  return (
-    <span className={`severity-badge severity-${severity}`}>
-      {count} {SEVERITY_LABEL[severity]}
-    </span>
-  );
-}
 
 function ToolResultCard({ tool }: { tool: ToolResult }) {
   const [expanded, setExpanded] = useState(false);
@@ -95,10 +72,6 @@ function LlmTriageCard({ triage }: { triage: LlmTriage }) {
   );
 }
 
-function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString("de-DE");
-}
-
 export function SecurityDashboard() {
   const [history, setHistory] = useState<ScanSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -147,7 +120,7 @@ export function SecurityDashboard() {
                 {SEVERITY_ORDER.map((sev) => (
                   <SeverityBadge key={sev} severity={sev} count={entry.summary[sev]} />
                 ))}
-                {SEVERITY_ORDER.every((sev) => entry.summary[sev] === 0) && (
+                {isAllClear(entry.summary) && (
                   <span className="severity-badge severity-ok">unauffällig</span>
                 )}
               </div>

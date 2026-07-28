@@ -47,6 +47,12 @@ const schema = z.object({
   OLLAMA_BASE_URL: z.string().default("http://127.0.0.1:11434"),
   OLLAMA_MODEL: z.string().default(""),
   OLLAMA_TIMEOUT_MS: z.coerce.number().int().positive().default(10 * 60_000),
+  // Optional push notification (ntfy.sh or self-hosted) when the nightly
+  // scan finds anything critical/high. Empty = disabled. NOTE: ntfy.sh is a
+  // public service — a finding summary sent to a public topic there is
+  // visible to anyone who knows/guesses the topic name unless you self-host
+  // ntfy or pick an unguessable topic (see docs/DEPLOYMENT.md).
+  NTFY_URL: z.string().default(""),
   COOKIE_SECURE: z
     .string()
     .default("false")

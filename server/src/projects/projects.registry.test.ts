@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 let tmpCwd: string;
+let appsRoot: string;
 let originalCwd: string;
 let registry: typeof import("./projects.registry.js");
 
@@ -13,13 +14,19 @@ before(async () => {
   tmpCwd = await fs.mkdtemp(path.join(os.tmpdir(), "overlay-registry-test-"));
   process.chdir(tmpCwd);
 
-  process.env.APPS_ROOT = tmpCwd;
+  // APPS_ROOT is deliberately a *subdirectory* of tmpCwd, not tmpCwd itself —
+  // mirroring real deployments where the app-directories root is separate
+  // from Overlay's own working directory (whose data/ subfolder holds
+  // projects.json). Otherwise listAvailableDirs would see Overlay's own
+  // "data" folder as if it were a candidate project directory.
+  appsRoot = path.join(tmpCwd, "apps-root");
+  process.env.APPS_ROOT = appsRoot;
   process.env.SESSION_SECRET = "test-session-secret-not-for-prod";
   process.env.ADMIN_USERNAME = "admin";
   process.env.ADMIN_PASSWORD_HASH = "$2b$04$0000000000000000000000000000000000000000000000000000";
 
-  await fs.mkdir(path.join(tmpCwd, "app-a"), { recursive: true });
-  await fs.mkdir(path.join(tmpCwd, "app-b"), { recursive: true });
+  await fs.mkdir(path.join(appsRoot, "app-a"), { recursive: true });
+  await fs.mkdir(path.join(appsRoot, "app-b"), { recursive: true });
 
   registry = await import("./projects.registry.js");
 });
@@ -101,4 +108,16 @@ test("a corrupted projects.json recovers from projects.json.bak on next load", a
   const fresh = (await import(`./projects.registry.js?fresh=${Date.now()}`)) as typeof import("./projects.registry.js");
   const recovered = await fresh.listProjects();
   assert.ok(Array.isArray(recovered));
+});
+
+test("listAvailableDirs excludes registered dirs, hidden dirs, and files", async () => {
+  // At this point app-a is registered, app-b's directory still exists on
+  // disk but was un-registered by an earlier test (removeProject only
+  // touches the registry, never the filesystem).
+  await fs.mkdir(path.join(appsRoot, "app-c"));
+  await fs.mkdir(path.join(appsRoot, ".hidden"));
+  await fs.writeFile(path.join(appsRoot, "not-a-dir.txt"), "hello");
+
+  const available = await registry.listAvailableDirs();
+  assert.deepEqual(available, ["app-b", "app-c"]);
 });

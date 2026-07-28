@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { generateOllamaCompletion, OllamaUnavailableError } from "./ollama-client.js";
+import {
+  generateOllamaCompletion,
+  listOllamaModels,
+  modelIsInstalled,
+  OllamaUnavailableError,
+} from "./ollama-client.js";
 
 async function withMockServer(
   handler: http.RequestListener,
@@ -87,4 +92,40 @@ test("times out if the server never responds", async () => {
       );
     },
   );
+});
+
+test("listOllamaModels parses installed model names from /api/tags", async () => {
+  await withMockServer(
+    (_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ models: [{ name: "llama3.1:latest" }, { name: "mistral:7b" }] }));
+    },
+    async (baseUrl) => {
+      const models = await listOllamaModels(baseUrl, 5000);
+      assert.deepEqual(models, ["llama3.1:latest", "mistral:7b"]);
+    },
+  );
+});
+
+test("listOllamaModels returns an empty array when models is missing", async () => {
+  await withMockServer(
+    (_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({}));
+    },
+    async (baseUrl) => {
+      assert.deepEqual(await listOllamaModels(baseUrl, 5000), []);
+    },
+  );
+});
+
+test("listOllamaModels throws OllamaUnavailableError when unreachable", async () => {
+  await assert.rejects(() => listOllamaModels("http://127.0.0.1:1", 5000), OllamaUnavailableError);
+});
+
+test("modelIsInstalled matches an exact name or a tagged variant", () => {
+  assert.equal(modelIsInstalled("llama3.1", ["llama3.1:latest", "mistral:7b"]), true);
+  assert.equal(modelIsInstalled("llama3.1", ["llama3.1"]), true);
+  assert.equal(modelIsInstalled("llama3", ["llama3.1:latest"]), false);
+  assert.equal(modelIsInstalled("mistral", []), false);
 });

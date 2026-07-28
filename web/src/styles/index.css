@@ -89,6 +89,7 @@ button.active {
 .app-shell {
   display: grid;
   grid-template-columns: 280px 1fr;
+  grid-template-rows: 100%;
   height: 100%;
 }
 
@@ -137,6 +138,95 @@ button.active {
   font-weight: 600;
 }
 
+.project-card-header .project-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-remove-button {
+  background: transparent;
+  border: none;
+  color: #6b7385;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.project-remove-button:hover {
+  color: #ef6f6f;
+  background: transparent;
+}
+
+.project-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: #9aa4b8;
+  margin-top: 0.2rem;
+}
+
+.add-project-button {
+  padding: 0.1rem 0.6rem;
+  line-height: 1.2;
+  font-size: 1rem;
+}
+
+.add-project-form {
+  background: #131722;
+  border: 1px solid #232a3b;
+  border-radius: 10px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.add-project-form-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.add-project-form-header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.add-project-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: #9aa4b8;
+}
+
+.add-project-form input,
+.add-project-form select {
+  background: #0b0e14;
+  border: 1px solid #232a3b;
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  color: #e6e9ef;
+  font-size: 0.85rem;
+}
+
+.close-button {
+  background: transparent;
+  border: none;
+  color: #9aa4b8;
+  font-size: 0.9rem;
+  padding: 0.1rem 0.3rem;
+}
+
+.close-button:hover {
+  background: transparent;
+  color: #e6e9ef;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
@@ -178,10 +268,78 @@ button.active {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
 
 .main-empty {
   height: 100%;
+}
+
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+
+.overview-section {
+  background: #131722;
+  border: 1px solid #232a3b;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+}
+
+.overview-section[role="button"] {
+  cursor: pointer;
+}
+
+.overview-section h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+}
+
+.overview-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.overview-project-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.overview-project-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0.2rem 0;
+}
+
+.overview-scan-timestamp {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: #9aa4b8;
+}
+
+.overview-ollama-ok {
+  margin: 0;
+  color: #5eff8f;
+  font-size: 0.85rem;
+}
+
+.overview-ollama-error {
+  margin: 0;
+  color: #ef6f6f;
+  font-size: 0.85rem;
 }
 
 .tab-bar {
@@ -197,10 +355,95 @@ button.active {
   display: flex;
 }
 
+.terminal-panel-wrapper {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.75rem;
+  color: #9aa4b8;
+  border-bottom: 1px solid #1c2333;
+}
+
+.connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.connection-dot.connection-connected {
+  background: #4caf50;
+}
+
+.connection-dot.connection-connecting {
+  background: #ffab5e;
+}
+
+.connection-dot.connection-reconnecting {
+  background: #ef6f6f;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
 .terminal-panel {
   flex: 1;
   padding: 0.5rem;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.log-panel-wrapper {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #1c2333;
+}
+
+.log-filter-bar input[type="text"] {
+  flex: 1;
+  background: #0b0e14;
+  border: 1px solid #232a3b;
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  color: #e6e9ef;
+  font-size: 0.8rem;
+}
+
+.log-filter-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #9aa4b8;
+  white-space: nowrap;
 }
 
 .log-panel {

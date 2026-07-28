@@ -251,6 +251,37 @@ auf dem echten Server einmal prüfen:
       Tool-Funden stammen, nie aus dem LLM-Text)
 - [ ] Die Report-Dateien unter `server/data/security-scans/` gehören nach
       dem Scan dem Overlay-Benutzer, nicht root (chown-Schritt greift)
+- [ ] Falls `NTFY_URL` gesetzt ist: bei kritischen/hohen Funden kommt eine
+      Push-Benachrichtigung an, bei einer sauberen Nacht (nur niedrig/mittel/
+      keine Funde) bewusst keine — kein unnötiges Benachrichtigungs-Rauschen
+
+### 7.4 Push-Benachrichtigungen (ntfy, optional)
+
+Bei kritischen oder hohen Funden schickt der Scan eine Push-Benachrichtigung
+über [ntfy](https://ntfy.sh) — auf's Handy/iPad installierbare App, kein
+eigener Server nötig, aber auch selbst hostbar. Als Nachrichtentext wird die
+LLM-Einschätzung verwendet, falls konfiguriert und verfügbar, sonst eine
+reine Zahlen-Zusammenfassung.
+
+**Wichtig zum Datenschutz:** `ntfy.sh` ist ein öffentlicher Dienst. Ein Topic
+ist im Grunde nur ein geheimer Name in einer URL — jeder, der den Topic-Namen
+kennt oder errät, kann mitlesen. Da die Benachrichtigung Fund-Details (z.B.
+Dateipfade, Paketnamen) enthalten kann, entweder:
+- einen langen, zufälligen Topic-Namen wählen (z.B.
+  `node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"`),
+  oder
+- ntfy [selbst hosten](https://docs.ntfy.sh/install/) im eigenen Tailnet.
+
+Einrichtung:
+1. [ntfy-App](https://ntfy.sh/#subscribe) auf dem iPad installieren, ein
+   Topic abonnieren (langer zufälliger Name, siehe oben).
+2. In `.env`:
+   ```
+   NTFY_URL=https://ntfy.sh/<dein-zufaelliges-topic>
+   ```
+   Bei selbst gehostetem ntfy entsprechend die eigene URL eintragen.
+3. Leer lassen (Standard), um Push-Benachrichtigungen komplett zu
+   deaktivieren — der Rest des Scans bleibt davon unberührt.
 
 ## 8. Optional (empfohlen): Echtes 2FA mit Authelia + Caddy
 

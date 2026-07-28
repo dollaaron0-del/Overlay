@@ -184,6 +184,17 @@ erreichbar, wird der Schritt übersprungen (Status `skipped`) — der Rest des
 Scans läuft davon komplett unbeeinflusst weiter, exakt wie bei jedem anderen
 optionalen Tool.
 
+## Push-Benachrichtigungen (ntfy)
+
+Optional, ausgelöst nur bei kritischen/hohen Funden (siehe
+`docs/DEPLOYMENT.md` Abschnitt 7.4). Da der öffentliche `ntfy.sh`-Dienst
+Topics nur über einen (potenziell erratbaren) Namen in der URL absichert,
+nicht über echte Zugriffskontrolle, könnten Fund-Details bei einem zu
+kurzen/generischen Topic-Namen von Dritten mitgelesen werden. Ein Fehlschlag
+beim Senden der Benachrichtigung lässt den restlichen Scan unberührt weiter
+laufen (der Report wird trotzdem gespeichert) — eine kaputte Benachrichtigung
+ist kein Grund, den ganzen Scan als fehlgeschlagen zu werten.
+
 ## Bekannte Grenzen (v1)
 
 - Ein Neustart des Overlay-Servers beendet alle laufenden `claude`-pty-

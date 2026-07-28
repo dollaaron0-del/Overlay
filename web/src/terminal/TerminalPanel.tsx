@@ -5,6 +5,12 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { useTerminalSocket } from "./useTerminalSocket";
 
+const STATUS_LABEL = {
+  connecting: "Verbinde…",
+  connected: "Verbunden",
+  reconnecting: "Verbindung wird wiederhergestellt…",
+};
+
 export function TerminalPanel({ projectId }: { projectId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -39,7 +45,15 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useTerminalSocket(projectId, terminal);
+  const status = useTerminalSocket(projectId, terminal);
 
-  return <div className="terminal-panel" ref={containerRef} />;
+  return (
+    <div className="terminal-panel-wrapper">
+      <div className="terminal-status-bar">
+        <span className={`connection-dot connection-${status}`} />
+        {STATUS_LABEL[status]}
+      </div>
+      <div className="terminal-panel" ref={containerRef} />
+    </div>
+  );
 }

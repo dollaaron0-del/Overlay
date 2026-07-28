@@ -116,6 +116,25 @@ export async function addProject(input: {
   return project;
 }
 
+/** Subdirectories of APPS_ROOT that aren't registered as a project yet. */
+export async function listAvailableDirs(): Promise<string[]> {
+  const projects = await ensureLoaded();
+  const registered = new Set(projects.map((p) => p.dirName));
+
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = await fs.readdir(config.APPS_ROOT, { withFileTypes: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
+  }
+
+  return entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith(".") && !registered.has(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+}
+
 export async function removeProject(id: string): Promise<boolean> {
   const projects = await ensureLoaded();
   const next = projects.filter((p) => p.id !== id);
