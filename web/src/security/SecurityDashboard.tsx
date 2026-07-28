@@ -24,6 +24,8 @@ const TOOL_LABEL: Record<string, string> = {
   rkhunter: "rkhunter (Rootkits)",
   chkrootkit: "chkrootkit (Rootkits)",
   lynis: "Lynis (System-Audit)",
+  aide: "AIDE (Datei-Integrität)",
+  trivy: "Trivy (OS-Paket-CVEs)",
   "npm-audit": "npm audit (App-Abhängigkeiten)",
   "listening-ports": "Offene Ports",
 };

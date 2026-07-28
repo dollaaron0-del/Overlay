@@ -1,0 +1,32 @@
+# Reverse proxy in front of Overlay + the Authelia 2FA portal.
+#
+# NOTE: verify the forward_auth endpoint path against your installed
+# Authelia version before relying on this — this uses the current
+# /api/authz/forward-auth endpoint (Authelia 4.38+); older Authelia
+# versions used /api/verify instead. Written without being able to fetch
+# Authelia's live docs from this dev sandbox, see the same caveat in
+# ../authelia/configuration.yml.
+#
+# Adjust CHANGE-ME.tailnet-name.ts.net and the cert paths (from
+# `tailscale cert`, see docs/DEPLOYMENT.md section 2.4) before use.
+
+CHANGE-ME.tailnet-name.ts.net {
+	tls /etc/tailscale-certs/CHANGE-ME.tailnet-name.ts.net.crt /etc/tailscale-certs/CHANGE-ME.tailnet-name.ts.net.key
+
+	forward_auth 127.0.0.1:9091 {
+		uri /api/authz/forward-auth
+		copy_headers Remote-User Remote-Groups Remote-Name Remote-Email
+	}
+
+	# Overlay's Node process now binds to loopback only (BIND_ADDRESS=127.0.0.1
+	# in .env) — Caddy is the sole thing listening on the Tailscale interface.
+	reverse_proxy 127.0.0.1:4317
+}
+
+# The Authelia login/2FA portal itself, on a different port of the SAME
+# hostname (not a subdomain) — see the topology note in configuration.yml
+# for why that's enough for the session cookie to work across both.
+CHANGE-ME.tailnet-name.ts.net:9091 {
+	tls /etc/tailscale-certs/CHANGE-ME.tailnet-name.ts.net.crt /etc/tailscale-certs/CHANGE-ME.tailnet-name.ts.net.key
+	reverse_proxy 127.0.0.1:9091
+}

@@ -1,0 +1,10 @@
+# Copy to /etc/authelia/users_database.yml and fill in.
+# Generate the password hash with (do NOT put a plaintext password here):
+#   authelia crypto hash generate argon2 --password 'your-password'
+users:
+  admin:
+    displayname: 'Admin'
+    password: 'CHANGE-ME-argon2-hash-from-authelia-crypto-hash-generate'
+    email: 'admin@example.invalid' # not actually used for sending mail (see notifier.filesystem in configuration.yml)
+    groups:
+      - admins

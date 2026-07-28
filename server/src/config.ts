@@ -34,7 +34,8 @@ const schema = z.object({
   // Nightly security scan (see security/orchestrator.ts). All optional with
   // sane defaults — only relevant on the real server where the scan actually
   // runs as its own root-privileged systemd timer, not in this Node process.
-  CLAMAV_SCAN_PATH: z.string().default("/"),
+  // Shared by both ClamAV and Trivy (both scan the same root filesystem target).
+  FULL_SYSTEM_SCAN_PATH: z.string().default("/"),
   LYNIS_REPORT_PATH: z.string().default("/var/log/lynis-report.dat"),
   // Comma-separated list of hosts allowed to have listening sockets, on top
   // of loopback (always allowed). Empty means "just BIND_ADDRESS".

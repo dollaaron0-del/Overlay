@@ -52,18 +52,20 @@ test("runScan produces a report with one entry per tool", async () => {
   const report = await orchestrator.runScan();
   const toolNames = report.tools.map((t) => t.tool).sort();
   assert.deepEqual(toolNames, [
+    "aide",
     "chkrootkit",
     "clamav",
     "listening-ports",
     "lynis",
     "npm-audit",
     "rkhunter",
+    "trivy",
   ]);
 });
 
 test("missing native tools are reported as 'skipped', not 'error'", { timeout: 20_000 }, async () => {
   const report = await orchestrator.runScan();
-  for (const toolName of ["clamav", "rkhunter", "chkrootkit", "listening-ports"]) {
+  for (const toolName of ["clamav", "rkhunter", "chkrootkit", "listening-ports", "aide", "trivy"]) {
     const result = report.tools.find((t) => t.tool === toolName);
     assert.ok(result, `expected a result for ${toolName}`);
     assert.equal(result.status, "skipped", `${toolName} should be skipped, not errored, when not installed`);

@@ -10,6 +10,8 @@ import { parseChkrootkitOutput } from "./parsers/chkrootkit.js";
 import { parseLynisReport } from "./parsers/lynis.js";
 import { parseNpmAuditOutput } from "./parsers/npm-audit.js";
 import { parseListeningPorts } from "./parsers/listening-ports.js";
+import { parseAideOutput } from "./parsers/aide.js";
+import { parseTrivyOutput } from "./parsers/trivy.js";
 import { makeReportId, saveReport } from "./report-store.js";
 
 const RAW_OUTPUT_TRUNCATE_BYTES = 20_000;
@@ -53,7 +55,7 @@ async function runClamAvStage(): Promise<ToolResult> {
       await runCommand("freshclam", [], { timeoutMs: 5 * 60_000 }).catch(() => undefined);
       return runCommand(
         "clamscan",
-        ["-r", "-i", "--stdout", "--exclude-dir=^/(proc|sys|dev|run)", config.CLAMAV_SCAN_PATH],
+        ["-r", "-i", "--stdout", "--exclude-dir=^/(proc|sys|dev|run)", config.FULL_SYSTEM_SCAN_PATH],
         { timeoutMs: 6 * 60 * 60_000 },
       );
     },
@@ -134,6 +136,21 @@ async function runNpmAuditStage(): Promise<ToolResult> {
   };
 }
 
+async function runAideStage(): Promise<ToolResult> {
+  return runStage("aide", () => runCommand("aide", ["--check"], { timeoutMs: 60 * 60_000 }), parseAideOutput);
+}
+
+async function runTrivyStage(): Promise<ToolResult> {
+  return runStage(
+    "trivy",
+    () =>
+      runCommand("trivy", ["rootfs", "--format", "json", "--quiet", config.FULL_SYSTEM_SCAN_PATH], {
+        timeoutMs: 60 * 60_000,
+      }),
+    parseTrivyOutput,
+  );
+}
+
 async function runListeningPortsStage(): Promise<ToolResult> {
   const configuredHosts = config.SECURITY_SCAN_ALLOWED_HOSTS
     ? config.SECURITY_SCAN_ALLOWED_HOSTS.split(",")
@@ -158,6 +175,8 @@ export async function runScan(): Promise<ScanReport> {
     await runRkhunterStage(),
     await runChkrootkitStage(),
     await runLynisStage(),
+    await runAideStage(),
+    await runTrivyStage(),
     await runNpmAuditStage(),
     await runListeningPortsStage(),
   ];

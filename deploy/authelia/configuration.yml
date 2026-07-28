@@ -1,0 +1,68 @@
+# Authelia configuration for putting real 2FA (TOTP) in front of Overlay.
+# This adds a THIRD protection layer on top of the two already documented in
+# docs/SECURITY.md (Tailscale network isolation + Overlay's own password
+# login): even a stolen/leaked Overlay password isn't enough on its own
+# anymore, an attacker would also need the TOTP device.
+#
+# NOTE: verify this against the current official docs before relying on it —
+# https://www.authelia.com/configuration/ — Authelia's config schema has
+# changed in the past (e.g. the `session.cookies` list replaced an older
+# flat `session.domain` key) and this was written without being able to
+# fetch the live docs from this dev sandbox. Treat it as a solid starting
+# point, not a copy-paste-and-forget file.
+#
+# Topology assumed here: ONE Tailscale hostname for the homeserver, with
+# Authelia's portal and Overlay served on different ports of that SAME
+# hostname (Caddy listens on :443 for Overlay and :9091 for the Authelia
+# portal). Session cookies are scoped by hostname, not port, so this avoids
+# needing a separate subdomain per app — Authelia's docs confirm an exact
+# hostname match (not just a parent-domain suffix) is a supported case.
+
+theme: 'dark'
+
+server:
+  address: 'tcp://127.0.0.1:9091'
+
+log:
+  level: 'info'
+
+totp:
+  issuer: 'overlay' # cosmetic label shown in the user's authenticator app
+
+authentication_backend:
+  file:
+    path: '/etc/authelia/users_database.yml'
+    password:
+      algorithm: 'argon2'
+
+access_control:
+  default_policy: 'deny'
+  rules:
+    - domain: 'CHANGE-ME.tailnet-name.ts.net' # your Tailscale MagicDNS hostname
+      policy: 'two_factor'
+
+session:
+  name: 'authelia_session'
+  # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  secret: 'CHANGE-ME-generate-a-long-random-string'
+  expiration: '1h'
+  inactivity: '15m'
+  cookies:
+    - domain: 'CHANGE-ME.tailnet-name.ts.net' # same hostname as above, no leading dot needed for an exact match
+      authelia_url: 'https://CHANGE-ME.tailnet-name.ts.net:9091'
+      default_redirection_url: 'https://CHANGE-ME.tailnet-name.ts.net'
+
+storage:
+  # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  encryption_key: 'CHANGE-ME-a-different-long-random-string'
+  local:
+    path: '/var/lib/authelia/db.sqlite3'
+
+# No SMTP configured (this is a single-user homelab setup, not worth the
+# extra moving part) — password-reset/notification emails just get written
+# to a local file instead. You won't use Authelia's email-based password
+# reset flow; manage the single user's password via `authelia crypto hash
+# generate` and editing users_database.yml directly instead.
+notifier:
+  filesystem:
+    filename: '/var/lib/authelia/notification.txt'

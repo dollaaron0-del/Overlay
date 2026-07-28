@@ -4,8 +4,9 @@ Selbst gehostetes Web-Dashboard für den eigenen Homeserver: verwaltet Web-Apps
 (Start/Stop/Restart/Logs über PM2), bettet die echte Claude Code CLI direkt
 im Browser ein (statt eines rohen SSH-Terminals), als installierbare PWA fürs
 iPad — und überwacht den Server selbst mit einem nächtlichen Security-Scan
-(ClamAV, rkhunter, chkrootkit, Lynis, npm audit, offene Ports), sichtbar im
-"Sicherheit"-Tab.
+(ClamAV, rkhunter, chkrootkit, Lynis, AIDE, Trivy, npm audit, offene Ports),
+sichtbar im "Sicherheit"-Tab. Optional lässt sich zusätzlich echtes 2FA
+(Authelia + Caddy) vorschalten.
 
 ## Struktur
 
@@ -14,8 +15,9 @@ iPad — und überwacht den Server selbst mit einem nächtlichen Security-Scan
 - `web/` — React-PWA-Frontend (Vite)
 - `shared/` — gemeinsame Typen (WebSocket-Nachrichten, Security-Scan-Reports)
 - `deploy/systemd/` — systemd-Units für den nächtlichen Security-Scan
+- `deploy/authelia/`, `deploy/caddy/` — optionale 2FA-Vorbau-Konfiguration
 - `docs/DEPLOYMENT.md` — Einrichtung auf dem echten Homeserver (Tailscale,
-  PM2, HTTPS, Security-Scan-Timer)
+  PM2, HTTPS, Security-Scan-Timer, optionales 2FA)
 - `docs/SECURITY.md` — Bedrohungsmodell
 
 ## Lokale Entwicklung

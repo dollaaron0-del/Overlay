@@ -128,14 +128,38 @@ erscheinen im "Sicherheit"-Tab des Dashboards.
 
 ```
 apt update
-apt install -y clamav clamav-daemon rkhunter chkrootkit lynis iproute2
+apt install -y clamav clamav-daemon rkhunter chkrootkit lynis aide iproute2
 # Erste Signatur-Aktualisierung und rkhunter-Baseline:
 freshclam
 rkhunter --propupd
+# AIDE-Baseline einmalig initialisieren (dauert je nach Festplattengröße):
+aide --init
+mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
 ```
 
 `iproute2` liefert `ss` (Listening-Ports-Check). Auf den meisten Debian/Ubuntu-
 Systemen ist es bereits vorinstalliert.
+
+**Wichtig zu AIDE:** Jede *beabsichtigte* Änderung am System (Paket-Updates,
+neue Apps unter `APPS_ROOT`, manuelle Konfigänderungen) lässt AIDE ab dann
+"Funde" melden, bis die Baseline neu initialisiert wird — das ist kein Fehler,
+sondern der Zweck von AIDE. Nach bewussten größeren Änderungen die Baseline
+auffrischen:
+```
+aide --init && mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+```
+
+Trivy ist nicht in den Standard-Debian/Ubuntu-Paketquellen enthalten,
+Installation über das offizielle Repository:
+```
+curl -fsSL https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" \
+  | tee /etc/apt/sources.list.d/trivy.list
+apt update
+apt install -y trivy
+```
+Trivys eigene Vulnerability-Datenbank aktualisiert sich beim ersten Lauf
+automatisch (braucht Internetzugang, wie `freshclam`).
 
 ### 7.2 systemd-Timer einrichten
 
@@ -189,18 +213,119 @@ auf dem echten Server einmal prüfen:
 
 - [ ] `systemctl start overlay-security-scan.service` läuft durch und erzeugt
       einen neuen Report im "Sicherheit"-Tab
-- [ ] Alle sechs Tools zeigen `ok` oder `findings`, keines mehr `skipped`
+- [ ] Alle acht Tools zeigen `ok` oder `findings`, keines mehr `skipped`
       (sonst: Tool-Installation aus 7.1 prüfen)
 - [ ] Die Lynis-Feldreihenfolge in `security/parsers/lynis.ts` gegen die
       echte `/var/log/lynis-report.dat` gegenprüfen (im Code als TODO
       markiert, da in der Sandbox nicht verifizierbar)
+- [ ] Das AIDE-Ausgabeformat in `security/parsers/aide.ts` gegen einen
+      echten `aide --check`-Lauf gegenprüfen (ebenfalls nicht in der Sandbox
+      verifizierbar) — insbesondere nach einem frischen `aide --init` einmal
+      absichtlich eine Datei unter `APPS_ROOT` ändern und prüfen, ob der Fund
+      korrekt im Dashboard auftaucht
+- [ ] Trivy zeigt nach der ersten DB-Aktualisierung plausible Funde (auf
+      einem frisch installierten Debian/Ubuntu sind ein paar niedrige/mittlere
+      Funde normal, nicht beunruhigend)
 - [ ] Der "Offene Ports"-Check zeigt keine unerwarteten Listener außer
       Tailscale/localhost — falls doch, `SECURITY_SCAN_ALLOWED_HOSTS` in
       `.env` entsprechend ergänzen oder den gemeldeten Dienst untersuchen
 - [ ] Die Report-Dateien unter `server/data/security-scans/` gehören nach
       dem Scan dem Overlay-Benutzer, nicht root (chown-Schritt greift)
 
-## 8. Manuelle Verifikation nach dem Deployment
+## 8. Optional (empfohlen): Echtes 2FA mit Authelia + Caddy
+
+Fügt eine **dritte** Schutzschicht vor Overlay ein: einen Login mit
+Zwei-Faktor-Authentifizierung (TOTP-App auf dem iPad), bevor überhaupt der
+eigene Overlay-Login erscheint. Sinnvoll, seit sensible Daten (Second Brain
+u.a.) gehostet werden — ein gestohlenes Overlay-Passwort allein reicht damit
+nicht mehr.
+
+**Netzwerkmodell-Änderung:** Bisher band Overlays Node-Prozess direkt an die
+Tailscale-Adresse. Mit Authelia übernimmt stattdessen **Caddy** (Reverse
+Proxy) die Tailscale-Adresse, prüft über Authelia die 2FA-Session und leitet
+erst danach an Overlay weiter, das jetzt nur noch auf `127.0.0.1` lauscht.
+
+### 8.1 Installation
+
+```
+apt install caddy
+```
+Für Authelia: offizielles APT-Repository gemäß
+https://www.authelia.com/integration/deployment/bare-metal/ einrichten (die
+genauen Repository-/Schlüssel-Befehle ändern sich gelegentlich, daher hier
+bewusst nicht fest verdrahtet — auf der verlinkten Seite nachsehen) und dann
+```
+apt install authelia
+```
+
+### 8.2 Konfigurieren
+
+Templates liegen unter `deploy/authelia/` und `deploy/caddy/` in diesem
+Repo — **beide Dateien haben ausführliche Kommentare, unter anderem einen
+Hinweis, dass das genaue Feldformat/der Endpunkt-Pfad nicht gegen die
+aktuelle Authelia-Dokumentation verifiziert werden konnte** (kein Zugriff
+auf die Live-Docs aus dieser Entwicklungssandbox) — vor dem produktiven
+Einsatz einmal gegen https://www.authelia.com/configuration/ gegenprüfen.
+
+```
+mkdir -p /etc/authelia /var/lib/authelia
+cp deploy/authelia/configuration.yml /etc/authelia/configuration.yml
+cp deploy/authelia/users_database.yml.example /etc/authelia/users_database.yml
+cp deploy/caddy/Caddyfile /etc/caddy/Caddyfile
+```
+
+In allen drei Dateien `CHANGE-ME.tailnet-name.ts.net` durch den echten
+Tailscale-MagicDNS-Hostnamen ersetzen (`tailscale status` zeigt ihn an).
+
+In `/etc/authelia/configuration.yml`:
+- `session.secret` und `storage.encryption_key` generieren:
+  `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+
+In `/etc/authelia/users_database.yml`:
+- Passwort-Hash generieren: `authelia crypto hash generate argon2 --password '<dein-passwort>'`
+  und in die Datei eintragen
+
+Zertifikate für Caddy (gleiche Tailscale-Zertifikate wie in Abschnitt 2.4):
+```
+mkdir -p /etc/tailscale-certs
+tailscale cert --cert-file /etc/tailscale-certs/CHANGE-ME.tailnet-name.ts.net.crt \
+                --key-file  /etc/tailscale-certs/CHANGE-ME.tailnet-name.ts.net.key \
+                CHANGE-ME.tailnet-name.ts.net
+```
+
+In Overlays `.env`:
+```
+BIND_ADDRESS=127.0.0.1
+```
+(Caddy übernimmt jetzt die Tailscale-Adresse, Overlay selbst muss nicht mehr
+direkt darauf binden.)
+
+### 8.3 Aktivieren
+
+```
+systemctl daemon-reload
+systemctl enable --now authelia
+systemctl enable --now caddy
+systemctl restart overlay   # bzw. `pm2 restart overlay`, je nachdem wie Overlay selbst läuft
+```
+
+### 8.4 Manuelle Verifikation
+
+- [ ] `https://<tailscale-host>` zeigt zuerst die Authelia-Login-Seite
+      (Passwort + TOTP-Code), erst danach den Overlay-Login
+- [ ] TOTP-Gerät (z.B. Authenticator-App auf dem iPad) beim ersten Login
+      erfolgreich registriert
+- [ ] `https://<tailscale-host>:9091` erreicht direkt das Authelia-Portal
+- [ ] Overlay selbst ist **nicht** mehr direkt über die Tailscale-Adresse auf
+      dem alten Port erreichbar, nur noch über Caddy — mit `curl` von einem
+      anderen Tailnet-Gerät auf `127.0.0.1:<PORT>` sollte das lokal auf dem
+      Server selbst funktionieren, von außen aber nicht
+- [ ] Der Caddy-`forward_auth`-Endpunkt-Pfad (`/api/authz/forward-auth`)
+      passt zur installierten Authelia-Version (siehe Hinweis in
+      `deploy/caddy/Caddyfile`) — bei Fehlern in den Caddy-Logs
+      (`journalctl -u caddy`) als Erstes hier nachsehen
+
+## 9. Manuelle Verifikation nach dem Deployment
 
 Diese Punkte lassen sich nicht in der Entwicklungs-Sandbox testen und sollten
 nach dem echten Deployment einmal manuell geprüft werden:

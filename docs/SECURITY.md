@@ -6,7 +6,7 @@ Overlay läuft auf einem Homeserver in einem WLAN, das mit anderen Wohnungen
 geteilt wird — das lokale Netzwerk gilt daher **nicht** als vertrauenswürdig.
 Gleichzeitig soll das Dashboard auch von unterwegs erreichbar sein.
 
-## Zwei Schutzschichten
+## Schutzschichten
 
 1. **Netzwerk-Layer (primär): Tailscale.** Der Server bindet ausschließlich an
    die Tailscale-Interface-Adresse (`BIND_ADDRESS`), nie an `0.0.0.0` oder die
@@ -19,10 +19,19 @@ Gleichzeitig soll das Dashboard auch von unterwegs erreichbar sein.
    Session-Cookie. Dient als zweite Verteidigungslinie, falls die
    Netzwerkschicht versagt (z.B. Fehlkonfiguration), nicht als alleiniger
    Schutz.
+3. **2FA-Layer (optional, empfohlen): Authelia + Caddy.** Siehe
+   `docs/DEPLOYMENT.md` Abschnitt 8. Schaltet einen TOTP-2FA-Login *vor*
+   Overlays eigenem Login, über einen Caddy-Reverse-Proxy, der als einziger
+   Dienst noch direkt an die Tailscale-Adresse bindet — Overlay selbst
+   wandert dann auf `127.0.0.1`. Nicht standardmäßig eingerichtet (größerer
+   Konfigurationsaufwand als die ersten beiden Schichten), aber die
+   naheliegende nächste Härtungsstufe, seit sensible Daten gehostet werden:
+   selbst ein geleaktes Overlay-Passwort reicht dann allein nicht mehr.
 
-Beide Schichten sind bewusst redundant: Tailscale schützt vor Netzwerk-
+Alle Schichten sind bewusst redundant: Tailscale schützt vor Netzwerk-
 Exposure, der App-Login vor unbefugtem Zugriff durch andere Tailnet-Mitglieder
-oder falls der Bind-Adresse-Schutz versehentlich umgangen wird.
+oder falls der Bind-Adresse-Schutz versehentlich umgangen wird, Authelia
+zusätzlich vor einem kompromittierten/erratenen Overlay-Passwort allein.
 
 ## Angriffsflächen im Detail
 
@@ -79,8 +88,12 @@ Da der Homeserver dauerhaft läuft und Apps mit sensiblen Daten (z.B. ein
 allein nicht — er verhindert unbefugten *Zugriff auf Overlay selbst*, sagt
 aber nichts darüber aus, ob eine der gehosteten Apps oder der Server
 insgesamt bereits kompromittiert ist. Dafür gibt es einen separaten,
-nächtlichen Scan (ClamAV, rkhunter, chkrootkit, Lynis, npm audit, Listening-
-Ports-Check — siehe `docs/DEPLOYMENT.md` Abschnitt 7).
+nächtlichen Scan (ClamAV, rkhunter, chkrootkit, Lynis, AIDE, Trivy, npm audit,
+Listening-Ports-Check — siehe `docs/DEPLOYMENT.md` Abschnitt 7). AIDE und
+Trivy schließen dabei zwei Lücken, die die ursprüngliche Tool-Auswahl noch
+offen ließ: AIDE erkennt *jede* unautorisierte Dateiänderung (nicht nur
+bekannte Rootkit-Signaturen wie rkhunter/chkrootkit), Trivy prüft
+OS-Paket-CVEs (nicht nur Node-Abhängigkeiten wie npm audit).
 
 **Bewusste Privilegientrennung:** Der Scan braucht root-Rechte für vollen
 Lesezugriff aufs Dateisystem (Malware kann sich überall verstecken). Er läuft
@@ -104,10 +117,25 @@ Schritt hat einen expliziten `skipped`-Status mit Begründung (z.B. "nicht
 installiert"), sichtbar im Dashboard — ein leerer/unauffälliger Report kann
 so nicht mit "alles installiert und geprüft" verwechselt werden.
 
-**Bekannte Unsicherheit:** Das Feldformat von Lynis' maschinenlesbarem
-Report (`lynis-report.dat`) wurde mangels installierter Lynis-Instanz in der
-Entwicklungssandbox nicht gegen echte Ausgabe verifiziert (siehe Kommentar in
-`security/parsers/lynis.ts` und Checkliste in `DEPLOYMENT.md` Abschnitt 7.3).
+**Bekannte Unsicherheit:** Die Feldformate von Lynis' (`lynis-report.dat`)
+und AIDEs maschinenlesbaren Ausgaben wurden mangels installierter
+Tool-Instanzen in der Entwicklungssandbox nicht gegen echte Ausgabe
+verifiziert (siehe Kommentare in `security/parsers/lynis.ts` und
+`security/parsers/aide.ts` sowie Checkliste in `DEPLOYMENT.md` Abschnitt 7.3).
+
+**Bewusst nicht hinzugefügt: Wazuh und CrowdSec.** Beide sind gute,
+etablierte Open-Source-Tools, passen aber nicht gut zu diesem konkreten
+Aufbau:
+- **Wazuh** (volles SIEM/XDR mit Echtzeit-Monitoring statt nur nächtlichem
+  Scan) würde einen Großteil dessen duplizieren, was der eigene
+  Scan-Mechanismus plus Dashboard bereits leisten — nur als separater,
+  deutlich schwergewichtigerer Dienst (eigener Manager, Indexer, eigenes
+  Web-UI). Bleibt eine Option für später, falls Echtzeit- statt
+  Nächtlich-Monitoring gewünscht ist.
+- **CrowdSec** wehrt primär internetweite Scan-/Brute-Force-Angriffe ab, die
+  hier durch das Tailscale-only-Netzwerkmodell bereits weitgehend ausgeschlossen
+  sind (siehe oben) — der Grenznutzen ist in diesem speziellen Setup gering,
+  verglichen mit einem klassischen öffentlich exponierten Server.
 
 ## Bekannte Grenzen (v1)
 
