@@ -28,6 +28,24 @@ export interface SeverityCounts {
   info: number;
 }
 
+export type LlmTriageStatus = "ok" | "skipped" | "error";
+
+/**
+ * A supplementary, advisory-only narrative summary from a local LLM (see
+ * security/ollama-client.ts) — deliberately NOT a Finding[] and deliberately
+ * NOT consulted by summarize() below. It never changes severities or counts,
+ * only adds a plain-language triage note on top of what the deterministic
+ * tools already found. The dashboard must render it as clearly distinct from
+ * (and secondary to) the real findings.
+ */
+export interface LlmTriage {
+  status: LlmTriageStatus;
+  model?: string;
+  text?: string;
+  note?: string;
+  durationMs: number;
+}
+
 export interface ScanReport {
   id: string; // e.g. "2026-07-29T02-00-00"
   startedAt: string; // ISO timestamp
@@ -35,6 +53,7 @@ export interface ScanReport {
   durationSeconds: number;
   tools: ToolResult[];
   summary: SeverityCounts;
+  llmTriage?: LlmTriage;
 }
 
 export function emptySeverityCounts(): SeverityCounts {

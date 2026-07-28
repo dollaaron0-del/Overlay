@@ -103,3 +103,16 @@ test("summary counts are consistent with the individual tool findings", async ()
   const summedCounts = Object.values(report.summary).reduce((a, b) => a + b, 0);
   assert.equal(summedCounts, expectedTotal);
 });
+
+test("llmTriage is skipped when OLLAMA_MODEL isn't configured, and never affects the summary", async () => {
+  const report = await orchestrator.runScan();
+  assert.ok(report.llmTriage);
+  assert.equal(report.llmTriage.status, "skipped");
+  assert.match(report.llmTriage.note ?? "", /nicht konfiguriert/);
+  // The severity summary must be computed purely from tools[], regardless
+  // of whether/how the LLM stage ran — this is the safety boundary that
+  // keeps the LLM advisory-only.
+  const expectedTotal = report.tools.reduce((sum, t) => sum + t.findings.length, 0);
+  const summedCounts = Object.values(report.summary).reduce((a, b) => a + b, 0);
+  assert.equal(summedCounts, expectedTotal);
+});

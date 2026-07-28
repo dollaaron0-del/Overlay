@@ -40,6 +40,13 @@ const schema = z.object({
   // Comma-separated list of hosts allowed to have listening sockets, on top
   // of loopback (always allowed). Empty means "just BIND_ADDRESS".
   SECURITY_SCAN_ALLOWED_HOSTS: z.string().default(""),
+  // Advisory-only LLM triage over the already-computed findings, via a local
+  // Ollama instance (see security/ollama-client.ts). Empty OLLAMA_MODEL means
+  // "not configured" — the triage stage is then skipped, same as any other
+  // scan tool that isn't installed. Never influences severities/counts.
+  OLLAMA_BASE_URL: z.string().default("http://127.0.0.1:11434"),
+  OLLAMA_MODEL: z.string().default(""),
+  OLLAMA_TIMEOUT_MS: z.coerce.number().int().positive().default(10 * 60_000),
   COOKIE_SECURE: z
     .string()
     .default("false")

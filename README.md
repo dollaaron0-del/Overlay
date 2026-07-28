@@ -5,8 +5,9 @@ Selbst gehostetes Web-Dashboard für den eigenen Homeserver: verwaltet Web-Apps
 im Browser ein (statt eines rohen SSH-Terminals), als installierbare PWA fürs
 iPad — und überwacht den Server selbst mit einem nächtlichen Security-Scan
 (ClamAV, rkhunter, chkrootkit, Lynis, AIDE, Trivy, npm audit, offene Ports),
-sichtbar im "Sicherheit"-Tab. Optional lässt sich zusätzlich echtes 2FA
-(Authelia + Caddy) vorschalten.
+optional ergänzt um eine rein beratende LLM-Triage über ein lokal laufendes
+Ollama-Modell, sichtbar im "Sicherheit"-Tab. Optional lässt sich zusätzlich
+echtes 2FA (Authelia + Caddy) vorschalten.
 
 ## Struktur
 

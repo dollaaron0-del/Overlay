@@ -377,6 +377,42 @@ button.active {
   color: #5eff8f;
 }
 
+.llm-triage-card {
+  background: #17203a;
+  border: 1px dashed #3a4a7a;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.llm-triage-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.llm-triage-disclaimer {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: #9aa4b8;
+  font-style: italic;
+}
+
+.llm-triage-text {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.llm-triage-error {
+  margin: 0;
+  color: #ef6f6f;
+  font-size: 0.85rem;
+}
+
 .tool-result-list {
   display: flex;
   flex-direction: column;

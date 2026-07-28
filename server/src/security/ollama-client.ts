@@ -1,0 +1,44 @@
+export class OllamaUnavailableError extends Error {}
+
+/**
+ * Minimal client for Ollama's /api/generate endpoint. No extra npm
+ * dependency needed — Node's built-in fetch is enough for this one call.
+ */
+export async function generateOllamaCompletion(
+  baseUrl: string,
+  model: string,
+  prompt: string,
+  timeoutMs: number,
+): Promise<string> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(new URL("/api/generate", baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, prompt, stream: false }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      throw new Error(`Ollama request timed out after ${timeoutMs}ms`);
+    }
+    // Connection refused, DNS failure, etc. — Ollama isn't reachable at all.
+    throw new OllamaUnavailableError(`Could not reach Ollama at ${baseUrl}: ${(err as Error).message}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Ollama returned ${response.status}: ${body.slice(0, 500)}`);
+  }
+
+  const json = (await response.json()) as { response?: string };
+  if (typeof json.response !== "string") {
+    throw new Error("Ollama response missing expected 'response' field");
+  }
+  return json.response;
+}

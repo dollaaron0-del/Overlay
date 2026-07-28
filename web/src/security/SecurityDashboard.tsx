@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { ScanReport, SeverityCounts, ToolResult } from "@overlay/shared";
+import type { LlmTriage, ScanReport, SeverityCounts, ToolResult } from "@overlay/shared";
 import { api, ApiError } from "../api/client";
 
 interface ScanSummary {
@@ -74,6 +74,23 @@ function ToolResultCard({ tool }: { tool: ToolResult }) {
           <pre>{tool.raw}</pre>
         </details>
       )}
+    </div>
+  );
+}
+
+function LlmTriageCard({ triage }: { triage: LlmTriage }) {
+  if (triage.status === "skipped") {
+    // Not configured / Ollama unreachable — quiet, not an error state worth alarming over.
+    return null;
+  }
+  return (
+    <div className="llm-triage-card">
+      <div className="llm-triage-header">
+        <span>🤖 Automatische Einschätzung {triage.model ? `(${triage.model})` : ""}</span>
+        <span className="llm-triage-disclaimer">Von einer KI erzeugt — kann Fehler enthalten, ersetzt keine der Funde unten</span>
+      </div>
+      {triage.status === "ok" && <p className="llm-triage-text">{triage.text}</p>}
+      {triage.status === "error" && <p className="llm-triage-error">Einschätzung fehlgeschlagen: {triage.note}</p>}
     </div>
   );
 }
@@ -159,6 +176,7 @@ export function SecurityDashboard() {
                 ))}
               </div>
             </div>
+            {report.llmTriage && <LlmTriageCard triage={report.llmTriage} />}
             <div className="tool-result-list">
               {report.tools.map((tool) => (
                 <ToolResultCard key={tool.tool} tool={tool} />

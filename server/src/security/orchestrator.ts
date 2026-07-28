@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import type { Finding, ScanReport, ToolResult } from "@overlay/shared";
+import type { Finding, LlmTriage, ScanReport, ToolResult } from "@overlay/shared";
 import { summarize } from "@overlay/shared";
 import { config } from "../config.js";
 import { listProjects, resolveProjectDir } from "../projects/projects.registry.js";
@@ -12,6 +12,8 @@ import { parseNpmAuditOutput } from "./parsers/npm-audit.js";
 import { parseListeningPorts } from "./parsers/listening-ports.js";
 import { parseAideOutput } from "./parsers/aide.js";
 import { parseTrivyOutput } from "./parsers/trivy.js";
+import { generateOllamaCompletion, OllamaUnavailableError } from "./ollama-client.js";
+import { buildTriagePrompt } from "./triage-prompt.js";
 import { makeReportId, saveReport } from "./report-store.js";
 
 const RAW_OUTPUT_TRUNCATE_BYTES = 20_000;
@@ -165,6 +167,49 @@ async function runListeningPortsStage(): Promise<ToolResult> {
   );
 }
 
+/**
+ * Advisory-only LLM triage over the findings the deterministic tools above
+ * already produced. Deliberately runs LAST and deliberately never feeds back
+ * into `tools` or the severity summary — see the LlmTriage doc comment in
+ * shared/src/security-types.ts for why.
+ */
+export async function runLlmTriageStage(tools: ToolResult[]): Promise<LlmTriage> {
+  const start = Date.now();
+
+  if (!config.OLLAMA_MODEL) {
+    return { status: "skipped", note: "OLLAMA_MODEL nicht konfiguriert", durationMs: Date.now() - start };
+  }
+
+  const totalFindings = tools.reduce((sum, t) => sum + t.findings.length, 0);
+  if (totalFindings === 0) {
+    return {
+      status: "ok",
+      model: config.OLLAMA_MODEL,
+      text: "Keine Funde in dieser Nacht — keine Einschätzung nötig.",
+      durationMs: Date.now() - start,
+    };
+  }
+
+  try {
+    const prompt = buildTriagePrompt(tools);
+    const text = await generateOllamaCompletion(
+      config.OLLAMA_BASE_URL,
+      config.OLLAMA_MODEL,
+      prompt,
+      config.OLLAMA_TIMEOUT_MS,
+    );
+    return { status: "ok", model: config.OLLAMA_MODEL, text, durationMs: Date.now() - start };
+  } catch (err) {
+    const isUnavailable = err instanceof OllamaUnavailableError;
+    return {
+      status: isUnavailable ? "skipped" : "error",
+      model: config.OLLAMA_MODEL,
+      note: isUnavailable ? `Ollama nicht erreichbar: ${(err as Error).message}` : (err as Error).message,
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
 export async function runScan(): Promise<ScanReport> {
   const id = makeReportId();
   const startedAt = new Date().toISOString();
@@ -181,6 +226,8 @@ export async function runScan(): Promise<ScanReport> {
     await runListeningPortsStage(),
   ];
 
+  const llmTriage = await runLlmTriageStage(tools);
+
   const finishedAt = new Date().toISOString();
   const report: ScanReport = {
     id,
@@ -189,6 +236,7 @@ export async function runScan(): Promise<ScanReport> {
     durationSeconds: Math.round((Date.now() - start) / 1000),
     tools,
     summary: summarize(tools),
+    llmTriage,
   };
 
   await saveReport(report);

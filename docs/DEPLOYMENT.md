@@ -161,6 +161,21 @@ apt install -y trivy
 Trivys eigene Vulnerability-Datenbank aktualisiert sich beim ersten Lauf
 automatisch (braucht Internetzugang, wie `freshclam`).
 
+**Optional: LLM-Triage über das vorhandene Ollama-Modell.** Da auf dem
+Server ohnehin ein größeres Ollama-Modell für andere Zwecke läuft, kann der
+Scan es nachts zusätzlich nutzen, um alle Funde der obigen Tools in
+Klartext zusammenzufassen und zu priorisieren — rein beratend, siehe
+`docs/SECURITY.md` Abschnitt "LLM-Triage" für das genaue Sicherheitsmodell
+(insbesondere: das LLM ändert nie Schweregrade oder Zählungen, nur eine
+zusätzliche Text-Einschätzung obendrauf). In `.env`:
+```
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=<name des laufenden Modells, z.B. llama3.1>
+```
+Leer lassen (Standard), um diesen Schritt komplett zu überspringen. Läuft
+nachts nach den anderen Scan-Schritten, keine Ressourcenkonkurrenz mit
+Tagbetrieb.
+
 ### 7.2 systemd-Timer einrichten
 
 Die Unit-Dateien liegen unter `deploy/systemd/` in diesem Repo:
@@ -229,6 +244,11 @@ auf dem echten Server einmal prüfen:
 - [ ] Der "Offene Ports"-Check zeigt keine unerwarteten Listener außer
       Tailscale/localhost — falls doch, `SECURITY_SCAN_ALLOWED_HOSTS` in
       `.env` entsprechend ergänzen oder den gemeldeten Dienst untersuchen
+- [ ] Falls `OLLAMA_MODEL` gesetzt ist: die automatische Einschätzung
+      erscheint im Dashboard oberhalb der Tool-Karten, klar als KI-generiert
+      gekennzeichnet — und die Schweregrad-Zusammenfassung ganz oben ändert
+      sich dadurch **nicht** (sie darf ausschließlich aus den echten
+      Tool-Funden stammen, nie aus dem LLM-Text)
 - [ ] Die Report-Dateien unter `server/data/security-scans/` gehören nach
       dem Scan dem Overlay-Benutzer, nicht root (chown-Schritt greift)
 
