@@ -1,0 +1,177 @@
+import fs from "node:fs/promises";
+import type { Finding, ScanReport, ToolResult } from "@overlay/shared";
+import { summarize } from "@overlay/shared";
+import { config } from "../config.js";
+import { listProjects, resolveProjectDir } from "../projects/projects.registry.js";
+import { runCommand } from "./run-tool.js";
+import { parseClamAvOutput } from "./parsers/clamav.js";
+import { parseRkhunterOutput } from "./parsers/rkhunter.js";
+import { parseChkrootkitOutput } from "./parsers/chkrootkit.js";
+import { parseLynisReport } from "./parsers/lynis.js";
+import { parseNpmAuditOutput } from "./parsers/npm-audit.js";
+import { parseListeningPorts } from "./parsers/listening-ports.js";
+import { makeReportId, saveReport } from "./report-store.js";
+
+const RAW_OUTPUT_TRUNCATE_BYTES = 20_000;
+
+async function runStage(
+  tool: string,
+  run: () => Promise<{ stdout: string }>,
+  parse: (stdout: string) => Finding[],
+): Promise<ToolResult> {
+  const start = Date.now();
+  try {
+    const { stdout } = await run();
+    const findings = parse(stdout);
+    return {
+      tool,
+      status: findings.length > 0 ? "findings" : "ok",
+      findings,
+      raw: stdout.slice(0, RAW_OUTPUT_TRUNCATE_BYTES),
+      durationMs: Date.now() - start,
+    };
+  } catch (err) {
+    const isMissingTool = (err as NodeJS.ErrnoException).code === "ENOENT";
+    return {
+      tool,
+      status: isMissingTool ? "skipped" : "error",
+      findings: [],
+      note: isMissingTool
+        ? `Tool nicht installiert oder nicht im PATH (${(err as Error).message})`
+        : (err as Error).message,
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+async function runClamAvStage(): Promise<ToolResult> {
+  return runStage(
+    "clamav",
+    async () => {
+      // Best-effort signature update; freshclam can legitimately fail (rate
+      // limits, no network yet) without that invalidating the scan itself.
+      await runCommand("freshclam", [], { timeoutMs: 5 * 60_000 }).catch(() => undefined);
+      return runCommand(
+        "clamscan",
+        ["-r", "-i", "--stdout", "--exclude-dir=^/(proc|sys|dev|run)", config.CLAMAV_SCAN_PATH],
+        { timeoutMs: 6 * 60 * 60_000 },
+      );
+    },
+    parseClamAvOutput,
+  );
+}
+
+async function runRkhunterStage(): Promise<ToolResult> {
+  return runStage(
+    "rkhunter",
+    () => runCommand("rkhunter", ["--check", "--skip-keypress", "--report-warnings-only"], { timeoutMs: 30 * 60_000 }),
+    parseRkhunterOutput,
+  );
+}
+
+async function runChkrootkitStage(): Promise<ToolResult> {
+  return runStage("chkrootkit", () => runCommand("chkrootkit", [], { timeoutMs: 15 * 60_000 }), parseChkrootkitOutput);
+}
+
+async function runLynisStage(): Promise<ToolResult> {
+  const start = Date.now();
+  try {
+    await runCommand("lynis", ["audit", "system", "--quiet", "--no-colors"], { timeoutMs: 30 * 60_000 });
+    const reportDat = await fs.readFile(config.LYNIS_REPORT_PATH, "utf8");
+    const findings = parseLynisReport(reportDat);
+    return {
+      tool: "lynis",
+      status: findings.length > 0 ? "findings" : "ok",
+      findings,
+      raw: reportDat.slice(0, RAW_OUTPUT_TRUNCATE_BYTES),
+      durationMs: Date.now() - start,
+    };
+  } catch (err) {
+    const isMissingTool = (err as NodeJS.ErrnoException).code === "ENOENT";
+    return {
+      tool: "lynis",
+      status: isMissingTool ? "skipped" : "error",
+      findings: [],
+      note: isMissingTool
+        ? `Tool nicht installiert oder nicht im PATH (${(err as Error).message})`
+        : (err as Error).message,
+      durationMs: Date.now() - start,
+    };
+  }
+}
+
+async function runNpmAuditStage(): Promise<ToolResult> {
+  const start = Date.now();
+  const findings: Finding[] = [];
+  const notes: string[] = [];
+
+  const projects = await listProjects();
+  for (const project of projects) {
+    const projectDir = resolveProjectDir(project);
+    const hasPackageJson = await fs
+      .stat(`${projectDir}/package.json`)
+      .then((s) => s.isFile())
+      .catch(() => false);
+    if (!hasPackageJson) continue;
+
+    try {
+      const { stdout } = await runCommand("npm", ["audit", "--json"], {
+        cwd: projectDir,
+        timeoutMs: 2 * 60_000,
+      });
+      findings.push(...parseNpmAuditOutput(stdout, project.dirName));
+    } catch (err) {
+      notes.push(`${project.dirName}: ${(err as Error).message}`);
+    }
+  }
+
+  return {
+    tool: "npm-audit",
+    status: findings.length > 0 ? "findings" : "ok",
+    findings,
+    note: notes.length > 0 ? notes.join("; ") : undefined,
+    durationMs: Date.now() - start,
+  };
+}
+
+async function runListeningPortsStage(): Promise<ToolResult> {
+  const configuredHosts = config.SECURITY_SCAN_ALLOWED_HOSTS
+    ? config.SECURITY_SCAN_ALLOWED_HOSTS.split(",")
+        .map((h) => h.trim())
+        .filter(Boolean)
+    : [config.BIND_ADDRESS];
+
+  return runStage(
+    "listening-ports",
+    () => runCommand("ss", ["-tulpn"], { timeoutMs: 30_000 }),
+    (stdout) => parseListeningPorts(stdout, configuredHosts),
+  );
+}
+
+export async function runScan(): Promise<ScanReport> {
+  const id = makeReportId();
+  const startedAt = new Date().toISOString();
+  const start = Date.now();
+
+  const tools: ToolResult[] = [
+    await runClamAvStage(),
+    await runRkhunterStage(),
+    await runChkrootkitStage(),
+    await runLynisStage(),
+    await runNpmAuditStage(),
+    await runListeningPortsStage(),
+  ];
+
+  const finishedAt = new Date().toISOString();
+  const report: ScanReport = {
+    id,
+    startedAt,
+    finishedAt,
+    durationSeconds: Math.round((Date.now() - start) / 1000),
+    tools,
+    summary: summarize(tools),
+  };
+
+  await saveReport(report);
+  return report;
+}

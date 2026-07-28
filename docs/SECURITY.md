@@ -72,6 +72,43 @@ oder falls der Bind-Adresse-Schutz versehentlich umgangen wird.
   fällt der Server beim nächsten Start automatisch auf das Backup zurück,
   statt mit einer leeren/kaputten Registry weiterzulaufen.
 
+## Nächtlicher Security-Scan
+
+Da der Homeserver dauerhaft läuft und Apps mit sensiblen Daten (z.B. ein
+"Second Brain") hostet, reicht der oben beschriebene Netzwerk-/App-Schutz
+allein nicht — er verhindert unbefugten *Zugriff auf Overlay selbst*, sagt
+aber nichts darüber aus, ob eine der gehosteten Apps oder der Server
+insgesamt bereits kompromittiert ist. Dafür gibt es einen separaten,
+nächtlichen Scan (ClamAV, rkhunter, chkrootkit, Lynis, npm audit, Listening-
+Ports-Check — siehe `docs/DEPLOYMENT.md` Abschnitt 7).
+
+**Bewusste Privilegientrennung:** Der Scan braucht root-Rechte für vollen
+Lesezugriff aufs Dateisystem (Malware kann sich überall verstecken). Er läuft
+deshalb **nicht** im Overlay-Webserver-Prozess, sondern als eigener,
+root-privilegierter systemd-Oneshot-Dienst (`overlay-security-scan.service`).
+Der Webserver selbst bleibt unprivilegiert und bekommt nie root — er liest
+nur die fertigen JSON-Reports, die der Scan-Dienst nach dem Schreiben per
+`chown` auf den unprivilegierten Overlay-Benutzer überträgt. Ein kompromittierter
+Webserver-Prozess (z.B. über eine noch unbekannte Lücke in einer der
+gehosteten Apps) hätte damit keinen direkten Root-Zugriff über den
+Scan-Mechanismus.
+
+**Warum "voller Scan" statt "nur App-Verzeichnisse":** Auf Wunsch des
+Betreibers bewusst so gewählt — der Server ist ein umfunktionierter
+Gaming-PC mit Leistungsreserven, nachts läuft sonst nichts Rechenintensives,
+und die gehosteten Apps (Second Brain u.a.) verarbeiten sensible Daten und
+haben Internetzugriff. Gründlichkeit hat hier explizit Vorrang vor Laufzeit.
+
+**Fehlende Tools werden nicht stillschweigend übersprungen:** Jeder Tool-
+Schritt hat einen expliziten `skipped`-Status mit Begründung (z.B. "nicht
+installiert"), sichtbar im Dashboard — ein leerer/unauffälliger Report kann
+so nicht mit "alles installiert und geprüft" verwechselt werden.
+
+**Bekannte Unsicherheit:** Das Feldformat von Lynis' maschinenlesbarem
+Report (`lynis-report.dat`) wurde mangels installierter Lynis-Instanz in der
+Entwicklungssandbox nicht gegen echte Ausgabe verifiziert (siehe Kommentar in
+`security/parsers/lynis.ts` und Checkliste in `DEPLOYMENT.md` Abschnitt 7.3).
+
 ## Bekannte Grenzen (v1)
 
 - Ein Neustart des Overlay-Servers beendet alle laufenden `claude`-pty-

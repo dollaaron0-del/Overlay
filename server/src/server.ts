@@ -8,6 +8,7 @@ import { requireAuth } from "./auth/auth.middleware.js";
 import { projectsRouter } from "./projects/projects.routes.js";
 import { pm2Router } from "./pm2/pm2.routes.js";
 import { filesRouter } from "./files/files.routes.js";
+import { securityRouter } from "./security/security.routes.js";
 import { apiRateLimiter } from "./rate-limit.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -59,6 +60,7 @@ export function createApp() {
   protectedApi.use("/projects", projectsRouter);
   protectedApi.use("/projects", pm2Router);
   protectedApi.use("/projects", filesRouter);
+  protectedApi.use("/security", securityRouter);
   app.use("/api", protectedApi);
 
   if (config.isProduction) {

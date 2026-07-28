@@ -16,6 +16,13 @@ dieser Sandbox) und über Tailscale erreichbar gemacht wird.
 - [Tailscale](https://tailscale.com/) installiert und dem eigenen Tailnet
   beigetreten (`tailscale up`)
 
+**Wichtig zur Privilegientrennung:** Overlay selbst (der Webserver, PM2, die
+`claude`-Sessions) läuft unter einem **normalen, unprivilegierten Benutzer**
+(z.B. `overlay`), niemals als root. Nur der nächtliche Security-Scan
+(Abschnitt 7) braucht root-Rechte für vollen Dateisystemzugriff — und läuft
+deshalb als eigener, getrennter systemd-Dienst, nicht als Teil des
+Webserver-Prozesses.
+
 ## 2. Tailscale-Zugriffsmodell
 
 Das Grundprinzip: Overlay bindet **nur** an die Tailscale-Interface-Adresse,
@@ -110,7 +117,90 @@ außen pingen — stattdessen entweder:
 - [Uptime Kuma](https://github.com/louislam/uptime-kuma) selbst im Tailnet
   betreiben und von dort aus `https://<tailscale-host>/api/health` überwachen.
 
-## 7. Manuelle Verifikation nach dem Deployment
+## 7. Nächtlicher Security-Scan
+
+Läuft als eigener, root-privilegierter systemd-Timer (nicht als Teil des
+Overlay-Webservers) und prüft einmal pro Nacht das ganze System auf Malware,
+Rootkits, Fehlkonfigurationen und verwundbare App-Abhängigkeiten. Ergebnisse
+erscheinen im "Sicherheit"-Tab des Dashboards.
+
+### 7.1 Tools installieren (Debian/Ubuntu)
+
+```
+apt update
+apt install -y clamav clamav-daemon rkhunter chkrootkit lynis iproute2
+# Erste Signatur-Aktualisierung und rkhunter-Baseline:
+freshclam
+rkhunter --propupd
+```
+
+`iproute2` liefert `ss` (Listening-Ports-Check). Auf den meisten Debian/Ubuntu-
+Systemen ist es bereits vorinstalliert.
+
+### 7.2 systemd-Timer einrichten
+
+Die Unit-Dateien liegen unter `deploy/systemd/` in diesem Repo:
+
+```
+cp deploy/systemd/overlay-security-scan.service /etc/systemd/system/
+cp deploy/systemd/overlay-security-scan.timer /etc/systemd/system/
+```
+
+In `overlay-security-scan.service` anpassen:
+- `WorkingDirectory` auf den echten Pfad zu `server/` setzen
+- `EnvironmentFile` auf den Pfad zur echten `.env` setzen
+- `SECURITY_SCAN_CHOWN_USER`/`SECURITY_SCAN_CHOWN_GROUP` auf den Benutzer
+  setzen, unter dem Overlay selbst läuft (siehe Abschnitt 1) — der Scan läuft
+  als root und schreibt die Reports zunächst als root, danach werden sie auf
+  diesen Benutzer umgechownt, damit der unprivilegierte Overlay-Webserver sie
+  lesen kann, ohne selbst Root-Rechte zu brauchen
+
+Dann aktivieren:
+```
+systemctl daemon-reload
+systemctl enable --now overlay-security-scan.timer
+```
+
+Standard-Zeitpunkt ist 02:00 Uhr nachts (mit bis zu 5 Minuten zufälliger
+Verzögerung, falls andere nächtliche Jobs auch auf 02:00 gelegt sind). Da der
+Server (ein umfunktionierter Gaming-PC) nachts sonst nichts zu tun hat und
+Gründlichkeit hier bewusst wichtiger als Laufzeit ist, scannt der Job das
+**gesamte Dateisystem** (`clamscan -r` über `/`, ausgenommen virtuelle
+Verzeichnisse wie `/proc`) — das kann je nach Festplattengröße durchaus eine
+bis mehrere Stunden dauern; der Timeout ist entsprechend großzügig (6h)
+gesetzt.
+
+Manuell testen, ohne auf 02:00 zu warten:
+```
+systemctl start overlay-security-scan.service
+journalctl -u overlay-security-scan.service -f
+```
+
+Ein kritischer Fund lässt den systemd-Dienst als "failed" erscheinen
+(`systemctl status`/`journalctl` zeigen das sofort an) — das ist absichtlich
+der einfachste Alarm-Mechanismus ohne zusätzliche Benachrichtigungs-Kanäle.
+
+### 7.3 Manuelle Verifikation
+
+Auch hier gilt: in der Entwicklungs-Sandbox waren alle Scan-Tools nicht
+installiert, daher lief nur die Parser-/Orchestrator-Logik (inkl. echtem
+`npm audit`) gegen Fixtures bzw. eine echte Test-App. Nach der Einrichtung
+auf dem echten Server einmal prüfen:
+
+- [ ] `systemctl start overlay-security-scan.service` läuft durch und erzeugt
+      einen neuen Report im "Sicherheit"-Tab
+- [ ] Alle sechs Tools zeigen `ok` oder `findings`, keines mehr `skipped`
+      (sonst: Tool-Installation aus 7.1 prüfen)
+- [ ] Die Lynis-Feldreihenfolge in `security/parsers/lynis.ts` gegen die
+      echte `/var/log/lynis-report.dat` gegenprüfen (im Code als TODO
+      markiert, da in der Sandbox nicht verifizierbar)
+- [ ] Der "Offene Ports"-Check zeigt keine unerwarteten Listener außer
+      Tailscale/localhost — falls doch, `SECURITY_SCAN_ALLOWED_HOSTS` in
+      `.env` entsprechend ergänzen oder den gemeldeten Dienst untersuchen
+- [ ] Die Report-Dateien unter `server/data/security-scans/` gehören nach
+      dem Scan dem Overlay-Benutzer, nicht root (chown-Schritt greift)
+
+## 8. Manuelle Verifikation nach dem Deployment
 
 Diese Punkte lassen sich nicht in der Entwicklungs-Sandbox testen und sollten
 nach dem echten Deployment einmal manuell geprüft werden:

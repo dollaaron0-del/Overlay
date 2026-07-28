@@ -1,0 +1,32 @@
+[Unit]
+Description=Overlay nightly security scan (ClamAV, rkhunter, chkrootkit, Lynis, npm audit, listening ports)
+# Not part of the overlay.service (the web dashboard) — this is a separate,
+# root-privileged oneshot unit. Full-filesystem malware/rootkit scanning
+# needs root; the web server itself never runs as root (see SECURITY.md).
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+
+# Adjust this to wherever the repo actually lives on the server.
+WorkingDirectory=/opt/overlay/server
+EnvironmentFile=/opt/overlay/.env
+Environment=NODE_ENV=production
+
+# After writing reports as root, chown them to the unprivileged user/group
+# that runs overlay.service, so the web dashboard can read them without
+# itself needing any elevated privilege. Set these to match that user.
+Environment=SECURITY_SCAN_CHOWN_USER=overlay
+Environment=SECURITY_SCAN_CHOWN_GROUP=overlay
+
+ExecStart=/usr/bin/node /opt/overlay/server/dist/security/cli.js
+
+# Deliberately NOT niced/ionice'd down: this is meant to run at night when
+# nothing else on the box is doing real work, and thoroughness was chosen
+# over gentleness (see docs/SECURITY.md). Add Nice=/IOSchedulingClass= here
+# if that ever changes (e.g. other nightly jobs get added later).
+
+[Install]
+WantedBy=multi-user.target

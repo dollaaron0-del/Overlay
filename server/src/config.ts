@@ -31,6 +31,14 @@ const schema = z.object({
   // this backend's. In production the frontend is served by this same
   // process, so Origin always equals the request Host and this is unused.
   DEV_FRONTEND_ORIGIN: z.string().default("http://localhost:5173"),
+  // Nightly security scan (see security/orchestrator.ts). All optional with
+  // sane defaults — only relevant on the real server where the scan actually
+  // runs as its own root-privileged systemd timer, not in this Node process.
+  CLAMAV_SCAN_PATH: z.string().default("/"),
+  LYNIS_REPORT_PATH: z.string().default("/var/log/lynis-report.dat"),
+  // Comma-separated list of hosts allowed to have listening sockets, on top
+  // of loopback (always allowed). Empty means "just BIND_ADDRESS".
+  SECURITY_SCAN_ALLOWED_HOSTS: z.string().default(""),
   COOKIE_SECURE: z
     .string()
     .default("false")

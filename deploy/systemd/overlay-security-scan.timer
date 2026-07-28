@@ -1,0 +1,14 @@
+[Unit]
+Description=Run the Overlay nightly security scan at 02:00
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+# Spread the actual start over a few minutes in case other nightly jobs
+# (backups, apt unattended-upgrades, etc.) are also anchored to 02:00.
+RandomizedDelaySec=300
+# If the machine was off/asleep at 02:00, run the scan as soon as it's back
+# instead of silently skipping a night.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

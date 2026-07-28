@@ -5,9 +5,11 @@ import { useAuth } from "../auth/AuthProvider";
 export function Sidebar({
   selectedId,
   onSelect,
+  onShowSecurity,
 }: {
   selectedId: string | null;
   onSelect: (id: string) => void;
+  onShowSecurity: () => void;
 }) {
   const projects = useProjectsStatus();
   const { logout } = useAuth();
@@ -20,6 +22,9 @@ export function Sidebar({
           Abmelden
         </button>
       </div>
+      <button className="security-nav-button" onClick={onShowSecurity}>
+        🛡 Sicherheit
+      </button>
       <div className="project-list">
         {projects.length === 0 && <p className="empty-hint">Noch keine Projekte registriert.</p>}
         {projects.map((project) => (

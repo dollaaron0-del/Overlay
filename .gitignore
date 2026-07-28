@@ -7,6 +7,7 @@ build/
 server/data/*.json
 server/data/*.json.bak
 server/data/*.json.tmp
+server/data/security-scans/
 !server/data/.gitkeep
 .DS_Store
 *.tsbuildinfo
