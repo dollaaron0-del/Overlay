@@ -1,0 +1,58 @@
+import { Router } from "express";
+import { getProject, resolveProjectDir } from "../projects/projects.registry.js";
+import { describeProcess, restartProcess, startProcess, statusOf, stopProcess } from "./pm2.service.js";
+
+export const pm2Router = Router();
+
+pm2Router.get("/:id/status", async (req, res) => {
+  const project = await getProject(req.params.id);
+  if (!project) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const desc = await describeProcess(project.pm2Name);
+  const env = desc?.pm2_env as { pm_uptime?: number; restart_time?: number } | undefined;
+  const monit = desc?.monit as { memory?: number } | undefined;
+  res.json({
+    status: statusOf(desc),
+    uptimeMs: env?.pm_uptime ? Date.now() - env.pm_uptime : null,
+    restarts: env?.restart_time ?? null,
+    memoryBytes: monit?.memory ?? null,
+  });
+});
+
+pm2Router.post("/:id/start", async (req, res) => {
+  const project = await getProject(req.params.id);
+  if (!project) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const [script, ...args] = project.startScript.split(" ");
+  await startProcess({
+    name: project.pm2Name,
+    script,
+    args,
+    cwd: resolveProjectDir(project),
+  });
+  res.json({ ok: true });
+});
+
+pm2Router.post("/:id/stop", async (req, res) => {
+  const project = await getProject(req.params.id);
+  if (!project) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  await stopProcess(project.pm2Name);
+  res.json({ ok: true });
+});
+
+pm2Router.post("/:id/restart", async (req, res) => {
+  const project = await getProject(req.params.id);
+  if (!project) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  await restartProcess(project.pm2Name);
+  res.json({ ok: true });
+});
