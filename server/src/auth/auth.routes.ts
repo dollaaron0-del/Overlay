@@ -2,6 +2,7 @@ import { Router } from "express";
 import * as cookie from "cookie";
 import { z } from "zod";
 import { config } from "../config.js";
+import { appendAuditEntry } from "../audit/audit-log.js";
 import { verifyPassword } from "./password.js";
 import {
   createSession,
@@ -46,11 +47,13 @@ authRouter.post("/login", async (req, res) => {
   if (!validUsername || !validPassword) {
     const count = (attempt?.count ?? 0) + 1;
     failedAttempts.set(ip, { count, nextAllowedAt: Date.now() + backoffMs(count) });
+    await appendAuditEntry({ type: "login_failed", actor: ip, detail: username });
     res.status(401).json({ error: "invalid_credentials" });
     return;
   }
 
   failedAttempts.delete(ip);
+  await appendAuditEntry({ type: "login", actor: username });
   const signedSessionId = createSession();
   res.setHeader(
     "Set-Cookie",
@@ -65,9 +68,10 @@ authRouter.post("/login", async (req, res) => {
   res.json({ ok: true });
 });
 
-authRouter.post("/logout", (req, res) => {
+authRouter.post("/logout", async (req, res) => {
   const raw = req.headers.cookie ? cookie.parse(req.headers.cookie)[SESSION_COOKIE_NAME] : undefined;
   destroySessionCookie(raw);
+  await appendAuditEntry({ type: "logout" });
   res.setHeader(
     "Set-Cookie",
     cookie.serialize(SESSION_COOKIE_NAME, "", {

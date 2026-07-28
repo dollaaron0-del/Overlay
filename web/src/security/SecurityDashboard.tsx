@@ -13,6 +13,7 @@ const TOOL_LABEL: Record<string, string> = {
   aide: "AIDE (Datei-Integrität)",
   trivy: "Trivy (OS-Paket-CVEs)",
   "npm-audit": "npm audit (App-Abhängigkeiten)",
+  "apt-updates": "Verfügbare Updates (apt)",
   "listening-ports": "Offene Ports",
 };
 

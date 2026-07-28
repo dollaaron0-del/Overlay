@@ -20,7 +20,7 @@ Gleichzeitig soll das Dashboard auch von unterwegs erreichbar sein.
    Netzwerkschicht versagt (z.B. Fehlkonfiguration), nicht als alleiniger
    Schutz.
 3. **2FA-Layer (optional, empfohlen): Authelia + Caddy.** Siehe
-   `docs/DEPLOYMENT.md` Abschnitt 8. Schaltet einen TOTP-2FA-Login *vor*
+   `docs/DEPLOYMENT.md` Abschnitt 9. Schaltet einen TOTP-2FA-Login *vor*
    Overlays eigenem Login, über einen Caddy-Reverse-Proxy, der als einziger
    Dienst noch direkt an die Tailscale-Adresse bindet — Overlay selbst
    wandert dann auf `127.0.0.1`. Nicht standardmäßig eingerichtet (größerer
@@ -89,11 +89,16 @@ allein nicht — er verhindert unbefugten *Zugriff auf Overlay selbst*, sagt
 aber nichts darüber aus, ob eine der gehosteten Apps oder der Server
 insgesamt bereits kompromittiert ist. Dafür gibt es einen separaten,
 nächtlichen Scan (ClamAV, rkhunter, chkrootkit, Lynis, AIDE, Trivy, npm audit,
-Listening-Ports-Check — siehe `docs/DEPLOYMENT.md` Abschnitt 7). AIDE und
-Trivy schließen dabei zwei Lücken, die die ursprüngliche Tool-Auswahl noch
-offen ließ: AIDE erkennt *jede* unautorisierte Dateiänderung (nicht nur
-bekannte Rootkit-Signaturen wie rkhunter/chkrootkit), Trivy prüft
-OS-Paket-CVEs (nicht nur Node-Abhängigkeiten wie npm audit).
+verfügbare apt-Updates, Listening-Ports-Check — siehe `docs/DEPLOYMENT.md`
+Abschnitt 7). AIDE und Trivy schließen dabei zwei Lücken, die die
+ursprüngliche Tool-Auswahl noch offen ließ: AIDE erkennt *jede*
+unautorisierte Dateiänderung (nicht nur bekannte Rootkit-Signaturen wie
+rkhunter/chkrootkit), Trivy prüft OS-Paket-CVEs (nicht nur
+Node-Abhängigkeiten wie npm audit). Der apt-Updates-Check ist rein
+informativ — er listet verfügbare Updates auf (Sicherheitsupdates aus einer
+`-security`-Quelle mit höherem Schweregrad), installiert aber nichts: ein
+Tap im Dashboard ist kein sicherer Weg, ein System-Update auszulösen, dafür
+gibt es `unattended-upgrades`.
 
 **Bewusste Privilegientrennung:** Der Scan braucht root-Rechte für vollen
 Lesezugriff aufs Dateisystem (Malware kann sich überall verstecken). Er läuft
@@ -194,6 +199,39 @@ kurzen/generischen Topic-Namen von Dritten mitgelesen werden. Ein Fehlschlag
 beim Senden der Benachrichtigung lässt den restlichen Scan unberührt weiter
 laufen (der Report wird trotzdem gespeichert) — eine kaputte Benachrichtigung
 ist kein Grund, den ganzen Scan als fehlgeschlagen zu werten.
+
+## Nächtliche Backups (restic)
+
+Wichtige Ergänzung zum Security-Scan, kein Ersatz dafür: die Scan-Tools
+(ClamAV, rkhunter usw.) *erkennen* Probleme, sichern aber nichts. Ein
+versehentliches `rm -rf`, ein fehlgeschlagenes Update oder ein
+Festplattenausfall wird von keinem der Scan-Tools rückgängig gemacht — nur
+ein echtes Backup kann das. Details zur Einrichtung in
+`docs/DEPLOYMENT.md` Abschnitt 8.
+
+Läuft als eigener, **unprivilegierter** systemd-Timer (anders als der
+Security-Scan, der root braucht) eine Stunde vor dem nächtlichen Scan und
+sichert `APPS_ROOT` sowie Overlays eigenes `server/data/`-Verzeichnis über
+[restic](https://restic.net/) — verschlüsselt (Passwort in `.env`,
+`RESTIC_PASSWORD`) und deduplizierend. Ein leeres `RESTIC_REPOSITORY`
+deaktiviert Backups vollständig, ohne den Rest von Overlay zu beeinflussen.
+
+**Wichtig:** das Repository-Passwort ist der einzige Schlüssel zu allen
+Snapshots. Es muss zusätzlich an einem zweiten Ort aufbewahrt werden
+(getrennt vom Server) — sonst sind bei einem Totalausfall des Servers auch
+alle Backups unbrauchbar, selbst wenn das Repository selbst (z.B. auf einer
+externen Platte) überlebt.
+
+## Aktivitätsprotokoll (Audit-Log)
+
+Jeder Login/fehlgeschlagene Login/Logout sowie jede Projekt-Aktion
+(hinzufügen, entfernen, starten, stoppen, neu starten) wird append-only in
+`server/data/audit.jsonl` protokolliert und ist im "Aktivität"-Tab des
+Dashboards einsehbar — vorher gab es dafür keinerlei Nachvollziehbarkeit.
+Kein separater Dienst, keine zusätzliche Konfiguration: läuft im
+Overlay-Webserver-Prozess selbst mit, genau wie die restige API. Die letzten
+2000 Einträge werden aufbewahrt (mehr als genug für ein persönliches
+Homelab-Dashboard), ältere werden automatisch verworfen.
 
 ## Bekannte Grenzen (v1)
 

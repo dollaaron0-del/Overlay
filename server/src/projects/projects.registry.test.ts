@@ -121,3 +121,30 @@ test("listAvailableDirs excludes registered dirs, hidden dirs, and files", async
   const available = await registry.listAvailableDirs();
   assert.deepEqual(available, ["app-b", "app-c"]);
 });
+
+test("addProject persists an optional deployScript, retrievable via getProject", async () => {
+  await fs.mkdir(path.join(appsRoot, "app-deploy-test"), { recursive: true });
+  await registry.addProject({
+    id: "app-deploy-test",
+    dirName: "app-deploy-test",
+    pm2Name: "app-deploy-test",
+    startScript: "npm start",
+    deployScript: "git pull && npm install && npm run build",
+  });
+
+  const project = await registry.getProject("app-deploy-test");
+  assert.equal(project?.deployScript, "git pull && npm install && npm run build");
+});
+
+test("addProject without a deployScript leaves it undefined", async () => {
+  await fs.mkdir(path.join(appsRoot, "app-no-deploy"), { recursive: true });
+  await registry.addProject({
+    id: "app-no-deploy",
+    dirName: "app-no-deploy",
+    pm2Name: "app-no-deploy",
+    startScript: "npm start",
+  });
+
+  const project = await registry.getProject("app-no-deploy");
+  assert.equal(project?.deployScript, undefined);
+});

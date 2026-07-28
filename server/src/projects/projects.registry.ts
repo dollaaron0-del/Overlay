@@ -97,6 +97,7 @@ export async function addProject(input: {
   dirName: string;
   pm2Name: string;
   startScript: string;
+  deployScript?: string;
 }): Promise<Project> {
   assertValidDirName(input.dirName);
   const dir = path.join(config.APPS_ROOT, input.dirName);

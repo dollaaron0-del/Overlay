@@ -10,12 +10,14 @@ export function Sidebar({
   onSelect,
   onShowSecurity,
   onShowOverview,
+  onShowActivity,
 }: {
   projects: ProjectSummary[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onShowSecurity: () => void;
   onShowOverview: () => void;
+  onShowActivity: () => void;
 }) {
   const { logout } = useAuth();
   const [showAddForm, setShowAddForm] = useState(false);
@@ -33,6 +35,9 @@ export function Sidebar({
       </button>
       <button className="security-nav-button" onClick={onShowSecurity}>
         🛡 Sicherheit
+      </button>
+      <button className="security-nav-button" onClick={onShowActivity}>
+        📋 Aktivität
       </button>
 
       <div className="project-list-header">

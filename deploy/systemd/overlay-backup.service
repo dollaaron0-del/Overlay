@@ -1,0 +1,23 @@
+[Unit]
+Description=Overlay nightly backup (restic)
+# Not part of the overlay.service (the web dashboard) — a separate oneshot
+# unit, but unlike overlay-security-scan.service this does NOT need root:
+# it only reads APPS_ROOT and this app's own data/ directory, both already
+# owned by the same unprivileged user that runs overlay.service.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=overlay
+Group=overlay
+
+# Adjust this to wherever the repo actually lives on the server.
+WorkingDirectory=/opt/overlay/server
+EnvironmentFile=/opt/overlay/.env
+Environment=NODE_ENV=production
+
+ExecStart=/usr/bin/node /opt/overlay/server/dist/backup/cli.js
+
+[Install]
+WantedBy=multi-user.target

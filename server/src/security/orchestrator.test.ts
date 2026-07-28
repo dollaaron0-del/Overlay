@@ -53,6 +53,7 @@ test("runScan produces a report with one entry per tool", async () => {
   const toolNames = report.tools.map((t) => t.tool).sort();
   assert.deepEqual(toolNames, [
     "aide",
+    "apt-updates",
     "chkrootkit",
     "clamav",
     "listening-ports",
@@ -87,6 +88,15 @@ test("npm-audit actually runs against a real registered project", { timeout: 30_
   // A trivial package.json with zero dependencies has zero vulnerabilities.
   assert.equal(npmAudit.status, "ok");
   assert.equal(npmAudit.findings.length, 0);
+});
+
+test("apt-updates actually runs against the real system (apt is installed in this sandbox)", { timeout: 60_000 }, async () => {
+  const report = await orchestrator.runScan();
+  const aptUpdates = report.tools.find((t) => t.tool === "apt-updates");
+  assert.ok(aptUpdates);
+  // Unlike clamscan/rkhunter/etc, apt genuinely exists here, so this should
+  // never be "skipped" — either "ok" (nothing upgradable) or "findings".
+  assert.ok(["ok", "findings"].includes(aptUpdates.status));
 });
 
 test("the report is persisted and retrievable via the report store", async () => {

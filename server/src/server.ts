@@ -9,6 +9,9 @@ import { projectsRouter } from "./projects/projects.routes.js";
 import { pm2Router } from "./pm2/pm2.routes.js";
 import { filesRouter } from "./files/files.routes.js";
 import { securityRouter } from "./security/security.routes.js";
+import { backupRouter } from "./backup/backup.routes.js";
+import { systemRouter } from "./system.routes.js";
+import { auditRouter } from "./audit/audit.routes.js";
 import { apiRateLimiter } from "./rate-limit.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -61,6 +64,9 @@ export function createApp() {
   protectedApi.use("/projects", pm2Router);
   protectedApi.use("/projects", filesRouter);
   protectedApi.use("/security", securityRouter);
+  protectedApi.use("/backup", backupRouter);
+  protectedApi.use("/system", systemRouter);
+  protectedApi.use("/audit", auditRouter);
   app.use("/api", protectedApi);
 
   if (config.isProduction) {

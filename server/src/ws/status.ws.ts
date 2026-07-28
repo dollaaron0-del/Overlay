@@ -11,7 +11,7 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
     projects.map(async (p) => {
       const desc = await describeProcess(p.pm2Name).catch(() => undefined);
       const env = desc?.pm2_env as { pm_uptime?: number; restart_time?: number } | undefined;
-      const monit = desc?.monit as { memory?: number } | undefined;
+      const monit = desc?.monit as { memory?: number; cpu?: number } | undefined;
       return {
         id: p.id,
         dirName: p.dirName,
@@ -20,6 +20,8 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
         uptimeMs: env?.pm_uptime ? Date.now() - env.pm_uptime : null,
         restarts: env?.restart_time ?? null,
         memoryBytes: monit?.memory ?? null,
+        cpuPercent: monit?.cpu ?? null,
+        hasDeployScript: Boolean(p.deployScript),
       } satisfies ProjectSummary;
     }),
   );

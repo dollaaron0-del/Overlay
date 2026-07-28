@@ -11,6 +11,8 @@ export interface RunCommandOptions {
   cwd?: string;
   timeoutMs: number;
   maxBufferBytes?: number;
+  /** Extra environment variables merged on top of process.env (e.g. restic's RESTIC_PASSWORD). */
+  env?: Record<string, string>;
 }
 
 /**
@@ -26,7 +28,12 @@ export function runCommand(command: string, args: string[], options: RunCommandO
     execFile(
       command,
       args,
-      { cwd: options.cwd, timeout: options.timeoutMs, maxBuffer: options.maxBufferBytes ?? 50 * 1024 * 1024 },
+      {
+        cwd: options.cwd,
+        timeout: options.timeoutMs,
+        maxBuffer: options.maxBufferBytes ?? 50 * 1024 * 1024,
+        env: options.env ? { ...process.env, ...options.env } : process.env,
+      },
       (error, stdout, stderr) => {
         if (!error) {
           resolve({ stdout: stdout.toString(), stderr: stderr.toString(), exitCode: 0 });

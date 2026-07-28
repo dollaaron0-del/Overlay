@@ -7,6 +7,7 @@ export function AddProjectForm({ onClose, onAdded }: { onClose: () => void; onAd
   const [id, setId] = useState("");
   const [pm2Name, setPm2Name] = useState("");
   const [startScript, setStartScript] = useState("npm start");
+  const [deployScript, setDeployScript] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -35,7 +36,7 @@ export function AddProjectForm({ onClose, onAdded }: { onClose: () => void; onAd
     setError(null);
     setSubmitting(true);
     try {
-      await api.post("/api/projects", { id, dirName, pm2Name, startScript });
+      await api.post("/api/projects", { id, dirName, pm2Name, startScript, deployScript: deployScript || undefined });
       onAdded();
       onClose();
     } catch (err) {
@@ -82,6 +83,14 @@ export function AddProjectForm({ onClose, onAdded }: { onClose: () => void; onAd
           <label>
             Start-Befehl
             <input value={startScript} onChange={(e) => setStartScript(e.target.value)} required />
+          </label>
+          <label>
+            Deploy-Befehl (optional)
+            <input
+              value={deployScript}
+              onChange={(e) => setDeployScript(e.target.value)}
+              placeholder="git pull && npm install && npm run build"
+            />
           </label>
           {error && <p className="login-error">{error}</p>}
           <button type="submit" disabled={submitting}>

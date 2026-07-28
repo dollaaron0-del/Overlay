@@ -10,6 +10,8 @@ export interface ProjectSummary {
   uptimeMs: number | null;
   restarts: number | null;
   memoryBytes: number | null;
+  cpuPercent: number | null;
+  hasDeployScript: boolean;
 }
 
 export type StatusServerMessage = {

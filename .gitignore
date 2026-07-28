@@ -8,6 +8,9 @@ server/data/*.json
 server/data/*.json.bak
 server/data/*.json.tmp
 server/data/security-scans/
+server/data/backups/
+server/data/audit.jsonl
+server/data/audit.jsonl.tmp
 !server/data/.gitkeep
 .DS_Store
 *.tsbuildinfo

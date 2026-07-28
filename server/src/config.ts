@@ -53,6 +53,20 @@ const schema = z.object({
   // visible to anyone who knows/guesses the topic name unless you self-host
   // ntfy or pick an unguessable topic (see docs/DEPLOYMENT.md).
   NTFY_URL: z.string().default(""),
+  // Nightly backups via restic (server/src/backup/). Empty RESTIC_REPOSITORY
+  // disables backups entirely — unlike the security scan, this runs as the
+  // SAME unprivileged user as the main Overlay process (it only needs read
+  // access to APPS_ROOT and its own data/, which that user already owns).
+  RESTIC_REPOSITORY: z.string().default(""),
+  RESTIC_PASSWORD: z.string().default(""),
+  BACKUP_TIMEOUT_MS: z.coerce.number().int().positive().default(60 * 60_000),
+  BACKUP_KEEP_DAILY: z.coerce.number().int().positive().default(7),
+  BACKUP_KEEP_WEEKLY: z.coerce.number().int().positive().default(4),
+  BACKUP_KEEP_MONTHLY: z.coerce.number().int().positive().default(6),
+  // Per-project deploy button (projects/projects.routes.ts POST /:id/deploy).
+  // Deploy scripts (git pull + install + build) can legitimately take a
+  // while, hence the generous default.
+  DEPLOY_TIMEOUT_MS: z.coerce.number().int().positive().default(10 * 60_000),
   COOKIE_SECURE: z
     .string()
     .default("false")

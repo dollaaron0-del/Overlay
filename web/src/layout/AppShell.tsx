@@ -7,9 +7,10 @@ import { LogPanel } from "../logs/LogPanel";
 import { FileTree } from "../files/FileTree";
 import { FileViewer } from "../files/FileViewer";
 import { SecurityDashboard } from "../security/SecurityDashboard";
+import { ActivityLog } from "../activity/ActivityLog";
 
 type Tab = "terminal" | "logs" | "files";
-type View = "overview" | "project" | "security";
+type View = "overview" | "project" | "security" | "activity";
 
 export function AppShell() {
   const projects = useProjectsStatus();
@@ -32,12 +33,14 @@ export function AppShell() {
         onSelect={selectProject}
         onShowSecurity={() => setView("security")}
         onShowOverview={() => setView("overview")}
+        onShowActivity={() => setView("activity")}
       />
       <main className="main-panel">
         {view === "overview" && (
           <Overview projects={projects} onSelectProject={selectProject} onShowSecurity={() => setView("security")} />
         )}
         {view === "security" && <SecurityDashboard />}
+        {view === "activity" && <ActivityLog />}
         {view === "project" &&
           (!selectedId ? (
             <div className="empty-hint main-empty">Projekt links auswählen</div>

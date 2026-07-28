@@ -43,3 +43,19 @@ test("passes cwd through to the spawned process", async () => {
   });
   assert.equal(result.stdout.trim(), "/tmp");
 });
+
+test("merges extra env vars on top of the existing environment", async () => {
+  const result = await runCommand("node", ["-e", "console.log(process.env.OVERLAY_TEST_VAR)"], {
+    timeoutMs: 5000,
+    env: { OVERLAY_TEST_VAR: "hello-env" },
+  });
+  assert.equal(result.stdout.trim(), "hello-env");
+});
+
+test("still inherits the parent process environment when passing extra env vars", async () => {
+  const result = await runCommand("node", ["-e", "console.log(typeof process.env.PATH)"], {
+    timeoutMs: 5000,
+    env: { OVERLAY_TEST_VAR: "hello-env" },
+  });
+  assert.equal(result.stdout.trim(), "string");
+});

@@ -12,6 +12,7 @@ import { parseNpmAuditOutput } from "./parsers/npm-audit.js";
 import { parseListeningPorts } from "./parsers/listening-ports.js";
 import { parseAideOutput } from "./parsers/aide.js";
 import { parseTrivyOutput } from "./parsers/trivy.js";
+import { parseAptUpgradable } from "./parsers/apt-updates.js";
 import { generateOllamaCompletion, OllamaUnavailableError } from "./ollama-client.js";
 import { buildTriagePrompt } from "./triage-prompt.js";
 import { makeReportId, saveReport } from "./report-store.js";
@@ -153,6 +154,15 @@ async function runTrivyStage(): Promise<ToolResult> {
   );
 }
 
+async function runAptUpdatesStage(): Promise<ToolResult> {
+  // Deliberately does NOT run `apt-get update` first: that hits the network
+  // and can take a while, and standard Debian/Ubuntu installs already
+  // refresh the package index daily via apt-daily.timer — this just reads
+  // whatever index is already on disk, same information a `cron`-triggered
+  // `apt-get update` would have prepared hours earlier.
+  return runStage("apt-updates", () => runCommand("apt", ["list", "--upgradable"], { timeoutMs: 60_000 }), parseAptUpgradable);
+}
+
 async function runListeningPortsStage(): Promise<ToolResult> {
   const configuredHosts = config.SECURITY_SCAN_ALLOWED_HOSTS
     ? config.SECURITY_SCAN_ALLOWED_HOSTS.split(",")
@@ -223,6 +233,7 @@ export async function runScan(): Promise<ScanReport> {
     await runAideStage(),
     await runTrivyStage(),
     await runNpmAuditStage(),
+    await runAptUpdatesStage(),
     await runListeningPortsStage(),
   ];
 

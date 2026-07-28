@@ -1,0 +1,16 @@
+[Unit]
+Description=Run the Overlay nightly backup at 01:00
+
+[Timer]
+# Runs an hour before overlay-security-scan.timer (02:00): backups happen
+# before the intensive scan, not after, so a backup is never skipped or
+# delayed by a long-running scan (Lynis/ClamAV can take a while on a full
+# filesystem pass).
+OnCalendar=*-*-* 01:00:00
+RandomizedDelaySec=300
+# If the machine was off/asleep at 01:00, run the backup as soon as it's
+# back instead of silently skipping a night.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

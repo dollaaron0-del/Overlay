@@ -1,7 +1,18 @@
 import { Router } from "express";
 import { z } from "zod";
-import { addProject, InvalidDirNameError, listAvailableDirs, listProjects, removeProject } from "./projects.registry.js";
-import { describeProcess, statusOf } from "../pm2/pm2.service.js";
+import {
+  addProject,
+  getProject,
+  InvalidDirNameError,
+  listAvailableDirs,
+  listProjects,
+  removeProject,
+  resolveProjectDir,
+} from "./projects.registry.js";
+import { describeProcess, restartProcess, statusOf } from "../pm2/pm2.service.js";
+import { appendAuditEntry } from "../audit/audit-log.js";
+import { runCommand } from "../security/run-tool.js";
+import { config } from "../config.js";
 
 export const projectsRouter = Router();
 
@@ -29,6 +40,7 @@ const addProjectSchema = z.object({
   dirName: z.string().min(1),
   pm2Name: z.string().min(1),
   startScript: z.string().min(1),
+  deployScript: z.string().optional(),
 });
 
 projectsRouter.post("/", async (req, res) => {
@@ -38,7 +50,11 @@ projectsRouter.post("/", async (req, res) => {
     return;
   }
   try {
-    const project = await addProject(parsed.data);
+    const project = await addProject({
+      ...parsed.data,
+      deployScript: parsed.data.deployScript?.trim() || undefined,
+    });
+    await appendAuditEntry({ type: "project_added", detail: project.id });
     res.status(201).json(project);
   } catch (err) {
     if (err instanceof InvalidDirNameError) {
@@ -55,5 +71,37 @@ projectsRouter.delete("/:id", async (req, res) => {
     res.status(404).json({ error: "not_found" });
     return;
   }
+  await appendAuditEntry({ type: "project_removed", detail: req.params.id });
   res.json({ ok: true });
+});
+
+projectsRouter.post("/:id/deploy", async (req, res) => {
+  const project = await getProject(req.params.id);
+  if (!project) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  if (!project.deployScript) {
+    res.status(400).json({ error: "no_deploy_script" });
+    return;
+  }
+
+  // Run as a shell command (not execFile-style args) so a deploy script can
+  // chain steps ("git pull && npm install && npm run build") — this is the
+  // project owner's own trusted command, equivalent in trust level to what
+  // they could already run themselves in the Claude terminal panel.
+  const result = await runCommand("sh", ["-c", project.deployScript], {
+    cwd: resolveProjectDir(project),
+    timeoutMs: config.DEPLOY_TIMEOUT_MS,
+  }).catch((err) => ({ stdout: "", stderr: (err as Error).message, exitCode: null }));
+
+  const success = result.exitCode === 0;
+  if (success) {
+    // Best-effort: pick up the newly deployed build. Not fatal if the
+    // process isn't running yet — the deploy itself already succeeded.
+    await restartProcess(project.pm2Name).catch(() => undefined);
+  }
+
+  await appendAuditEntry({ type: "project_deployed", detail: `${project.id} (${success ? "ok" : "failed"})` });
+  res.json({ ok: success, stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode });
 });

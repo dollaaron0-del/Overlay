@@ -253,6 +253,14 @@ button.active {
   margin: 0.2rem 0 0.5rem;
 }
 
+.project-resource-usage {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.7rem;
+  color: #7d8aa3;
+  margin: 0 0 0.5rem;
+}
+
 .project-actions {
   display: flex;
   gap: 0.4rem;
@@ -262,6 +270,48 @@ button.active {
   flex: 1;
   padding: 0.3rem 0.4rem;
   font-size: 0.75rem;
+}
+
+.project-deploy {
+  margin-top: 0.4rem;
+}
+
+.project-deploy-button {
+  width: 100%;
+  padding: 0.3rem 0.4rem;
+  font-size: 0.75rem;
+}
+
+.project-deploy-result {
+  margin-top: 0.4rem;
+  font-size: 0.7rem;
+}
+
+.project-deploy-result summary {
+  cursor: pointer;
+}
+
+.deploy-result-ok {
+  color: #7fd08a;
+}
+
+.deploy-result-error {
+  color: #ef6f6f;
+}
+
+.project-deploy-result pre {
+  margin-top: 0.3rem;
+  max-height: 160px;
+  overflow: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre-wrap;
+  background: #0b0e14;
+  border-radius: 6px;
+  padding: 0.4rem;
+}
+
+.deploy-result-stderr {
+  color: #ef6f6f;
 }
 
 .main-panel {
@@ -304,6 +354,17 @@ button.active {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+.overview-system-stats {
+  font-size: 0.85rem;
+  color: #c1c9db;
+}
+
+.overview-system-stats span {
+  background: #1b2130;
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
 }
 
 .overview-project-list {
@@ -745,4 +806,76 @@ button.active {
   overflow: auto;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   white-space: pre-wrap;
+}
+
+.activity-log {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+}
+
+.activity-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.activity-log-header h2 {
+  margin: 0;
+}
+
+.activity-filter-input {
+  background: #0b0e14;
+  border: 1px solid #232a3b;
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  color: #e6e9ef;
+  font-size: 0.8rem;
+  min-width: 200px;
+}
+
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.activity-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #131722;
+  border: 1px solid #232a3b;
+  font-size: 0.85rem;
+}
+
+.activity-list li.activity-event-warn {
+  border-color: #7a3b3b;
+}
+
+.activity-timestamp {
+  color: #6b7385;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.activity-event-label {
+  font-weight: 600;
+}
+
+.activity-event-warn .activity-event-label {
+  color: #ef6f6f;
+}
+
+.activity-detail {
+  color: #9aa4b8;
 }

@@ -87,13 +87,23 @@ pm2 startup   # richtet Autostart beim Boot ein
 ## 5. Projekte registrieren
 
 Jede verwaltete Web-App muss als direktes Unterverzeichnis von `APPS_ROOT`
-liegen. Registrierung aktuell per API (UI-Formular ist ein mögliches
-Folge-Feature):
+liegen. Registrierung über das "+"-Formular in der Sidebar des Dashboards
+(Verzeichnis auswählen, Projekt-ID/PM2-Name/Start-Befehl eintragen), oder
+per API:
 ```
 curl -b cookie.txt -X POST https://<tailscale-host>/api/projects \
   -H "Content-Type: application/json" \
   -d '{"id":"my-app","dirName":"my-app","pm2Name":"my-app","startScript":"npm start"}'
 ```
+
+**Optionales `deployScript`:** Zusätzlich zum Start-Befehl kann ein
+Deploy-Befehl hinterlegt werden (z.B. `git pull && npm install && npm run
+build`), der über den "🚀 Deploy"-Button auf der Projekt-Karte ausgeführt
+wird — läuft als Shell-Befehl im Projektverzeichnis, danach automatisch ein
+PM2-Restart, damit der neue Build sofort aktiv wird. Ohne gesetztes
+`deployScript` erscheint kein Deploy-Button. Bewusst **kein** automatischer
+Trigger (z.B. per Webhook) — der Button verlangt einen expliziten Klick im
+Dashboard, jede Ausführung landet im "Aktivität"-Tab.
 
 ## 6. Log-Rotation und Monitoring
 
@@ -139,6 +149,20 @@ mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
 
 `iproute2` liefert `ss` (Listening-Ports-Check). Auf den meisten Debian/Ubuntu-
 Systemen ist es bereits vorinstalliert.
+
+Der "Verfügbare Updates"-Check (`apt-updates`) braucht keine zusätzliche
+Installation — `apt` ist auf jedem Debian/Ubuntu-System bereits vorhanden. Er
+liest den bereits vorhandenen Paketindex (`apt list --upgradable`, ohne
+selbst ein `apt-get update` auszulösen — das erledigt auf Standard-Ubuntu
+bereits `apt-daily.timer` einmal täglich im Hintergrund) und markiert
+Updates aus einer `-security`-Paketquelle mit erhöhtem Schweregrad. Er
+**installiert nichts automatisch** — ein Tap im Dashboard ist bewusst kein
+sicherer Weg, ein echtes System-Update auszulösen. Für automatische
+Sicherheitsupdates stattdessen den Standard-Mechanismus einrichten:
+```
+apt install -y unattended-upgrades
+dpkg-reconfigure -plow unattended-upgrades
+```
 
 **Wichtig zu AIDE:** Jede *beabsichtigte* Änderung am System (Paket-Updates,
 neue Apps unter `APPS_ROOT`, manuelle Konfigänderungen) lässt AIDE ab dann
@@ -228,7 +252,7 @@ auf dem echten Server einmal prüfen:
 
 - [ ] `systemctl start overlay-security-scan.service` läuft durch und erzeugt
       einen neuen Report im "Sicherheit"-Tab
-- [ ] Alle acht Tools zeigen `ok` oder `findings`, keines mehr `skipped`
+- [ ] Alle neun Tools zeigen `ok` oder `findings`, keines mehr `skipped`
       (sonst: Tool-Installation aus 7.1 prüfen)
 - [ ] Die Lynis-Feldreihenfolge in `security/parsers/lynis.ts` gegen die
       echte `/var/log/lynis-report.dat` gegenprüfen (im Code als TODO
@@ -283,7 +307,112 @@ Einrichtung:
 3. Leer lassen (Standard), um Push-Benachrichtigungen komplett zu
    deaktivieren — der Rest des Scans bleibt davon unberührt.
 
-## 8. Optional (empfohlen): Echtes 2FA mit Authelia + Caddy
+## 8. Nächtliche Backups (restic)
+
+Läuft als eigener systemd-Timer, unabhängig vom Security-Scan (Abschnitt 7).
+Sichert `APPS_ROOT` (alle verwalteten Projekte) sowie Overlays eigenes
+`server/data/`-Verzeichnis (Projekt-Registry, Scan-Reports, Backup-Historie)
+über [restic](https://restic.net/) in ein deduplizierendes, verschlüsseltes
+Repository. Das ist der einzige der nächtlichen Mechanismen, der einen
+**echten Datenverlust** (versehentliches Löschen, Festplattenausfall,
+fehlgeschlagenes Update) tatsächlich rückgängig machen kann — die
+Scan-Tools aus Abschnitt 7 erkennen nur Probleme, sichern aber nichts.
+
+**Anders als der Security-Scan braucht dieser Job kein root:** er liest nur
+Verzeichnisse, die dem Overlay-Benutzer ohnehin bereits gehören, und läuft
+deshalb als **derselbe unprivilegierte Benutzer**, der auch den
+Overlay-Webserver betreibt.
+
+### 8.1 restic installieren (Debian/Ubuntu)
+
+```
+apt update
+apt install -y restic
+```
+
+### 8.2 Repository und Passwort einrichten
+
+Ein lokales Repository reicht als Ausgangspunkt (idealerweise auf einer
+zweiten Festplatte im selben Rechner); restic unterstützt daneben auch
+SFTP, S3, Backblaze B2 und weitere Backends — siehe
+https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html.
+
+In `.env`:
+```
+RESTIC_REPOSITORY=/pfad/zu/einer/zweiten/platte/restic-repo
+RESTIC_PASSWORD=<langes-zufaelliges-passwort>
+```
+Passwort generieren: `node -e "console.log(require('crypto').randomBytes(24).toString('base64'))"`
+
+**Das Passwort unbedingt zusätzlich an einem zweiten Ort aufbewahren** (z.B.
+Passwort-Manager), getrennt vom Server selbst. Ohne dieses Passwort ist das
+Repository nicht mehr entschlüsselbar, selbst wenn es körperlich noch
+existiert — restic initialisiert das Repository beim allerersten Lauf
+automatisch, ein manueller `restic init` ist nicht nötig.
+
+Retention (wie viele Snapshots aufgehoben werden, Standardwerte meist
+ausreichend):
+```
+BACKUP_KEEP_DAILY=7
+BACKUP_KEEP_WEEKLY=4
+BACKUP_KEEP_MONTHLY=6
+```
+
+### 8.3 systemd-Timer einrichten
+
+```
+cp deploy/systemd/overlay-backup.service /etc/systemd/system/
+cp deploy/systemd/overlay-backup.timer /etc/systemd/system/
+```
+
+In `overlay-backup.service` anpassen:
+- `WorkingDirectory` auf den echten Pfad zu `server/` setzen
+- `EnvironmentFile` auf den Pfad zur echten `.env` setzen
+- `User`/`Group` auf den Benutzer setzen, unter dem Overlay selbst läuft
+  (siehe Abschnitt 1) — standardmäßig `overlay`
+
+Dann aktivieren:
+```
+systemctl daemon-reload
+systemctl enable --now overlay-backup.timer
+```
+
+Standard-Zeitpunkt ist 01:00 Uhr nachts — eine Stunde **vor** dem
+Security-Scan (02:00), damit ein langer Scan-Lauf nie ein Backup verzögert
+oder verdrängt.
+
+Manuell testen, ohne auf 01:00 zu warten:
+```
+systemctl start overlay-backup.service
+journalctl -u overlay-backup.service -f
+```
+
+Das Ergebnis (Erfolg/Fehler, Anzahl neuer/geänderter Dateien, hinzugefügte
+Datenmenge) erscheint danach auch in der "Backups"-Karte auf dem
+Übersichts-Bildschirm des Dashboards.
+
+### 8.4 Manuelle Verifikation
+
+`restic` wurde in der Entwicklungs-Sandbox tatsächlich installiert und die
+gesamte Backup-Logik (Init, Backup, Forget/Prune, JSON-Parsing) gegen ein
+echtes, wenn auch temporäres Repository getestet — hier gibt es also, anders
+als bei Lynis/AIDE/Authelia, keine offenen Verifikationslücken im Code
+selbst. Nach der Einrichtung auf dem echten Server dennoch prüfen:
+
+- [ ] `systemctl start overlay-backup.service` läuft durch und die
+      "Backups"-Karte im Dashboard zeigt einen erfolgreichen Lauf
+- [ ] `restic snapshots --repo <RESTIC_REPOSITORY>` (Passwort wird
+      interaktiv abgefragt) zeigt den neuen Snapshot
+- [ ] Ein zweiter Lauf meldet die unveränderten Dateien als "unverändert",
+      nicht als "neu" (Duplizierung würde auf ein Konfigurationsproblem mit
+      dem Repository-Pfad hindeuten)
+- [ ] Stichprobenartige Wiederherstellung einmal durchspielen:
+      `restic restore latest --repo <RESTIC_REPOSITORY> --target /tmp/restore-test`
+      und prüfen, ob die erwarteten Dateien vorhanden sind
+- [ ] Das `RESTIC_PASSWORD` ist an einem zweiten Ort gesichert, getrennt vom
+      Server
+
+## 9. Optional (empfohlen): Echtes 2FA mit Authelia + Caddy
 
 Fügt eine **dritte** Schutzschicht vor Overlay ein: einen Login mit
 Zwei-Faktor-Authentifizierung (TOTP-App auf dem iPad), bevor überhaupt der
@@ -296,7 +425,7 @@ Tailscale-Adresse. Mit Authelia übernimmt stattdessen **Caddy** (Reverse
 Proxy) die Tailscale-Adresse, prüft über Authelia die 2FA-Session und leitet
 erst danach an Overlay weiter, das jetzt nur noch auf `127.0.0.1` lauscht.
 
-### 8.1 Installation
+### 9.1 Installation
 
 ```
 apt install caddy
@@ -309,7 +438,7 @@ bewusst nicht fest verdrahtet — auf der verlinkten Seite nachsehen) und dann
 apt install authelia
 ```
 
-### 8.2 Konfigurieren
+### 9.2 Konfigurieren
 
 Templates liegen unter `deploy/authelia/` und `deploy/caddy/` in diesem
 Repo — **beide Dateien haben ausführliche Kommentare, unter anderem einen
@@ -351,7 +480,7 @@ BIND_ADDRESS=127.0.0.1
 (Caddy übernimmt jetzt die Tailscale-Adresse, Overlay selbst muss nicht mehr
 direkt darauf binden.)
 
-### 8.3 Aktivieren
+### 9.3 Aktivieren
 
 ```
 systemctl daemon-reload
@@ -360,7 +489,7 @@ systemctl enable --now caddy
 systemctl restart overlay   # bzw. `pm2 restart overlay`, je nachdem wie Overlay selbst läuft
 ```
 
-### 8.4 Manuelle Verifikation
+### 9.4 Manuelle Verifikation
 
 - [ ] `https://<tailscale-host>` zeigt zuerst die Authelia-Login-Seite
       (Passwort + TOTP-Code), erst danach den Overlay-Login
@@ -376,7 +505,7 @@ systemctl restart overlay   # bzw. `pm2 restart overlay`, je nachdem wie Overlay
       `deploy/caddy/Caddyfile`) — bei Fehlern in den Caddy-Logs
       (`journalctl -u caddy`) als Erstes hier nachsehen
 
-## 9. Manuelle Verifikation nach dem Deployment
+## 10. Manuelle Verifikation nach dem Deployment
 
 Diese Punkte lassen sich nicht in der Entwicklungs-Sandbox testen und sollten
 nach dem echten Deployment einmal manuell geprüft werden:
