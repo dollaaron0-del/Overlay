@@ -524,3 +524,85 @@ nach dem echten Deployment einmal manuell geprüft werden:
 - [ ] Bekannte Grenze: Ein Neustart des Overlay-Servers beendet laufende
       `claude`-Sessions und deren In-Memory-Scrollback — das ist erwartetes
       v1-Verhalten
+
+## 11. Troubleshooting: Overlay reagiert nicht
+
+**Grundprinzip: Overlay ist die komfortable Oberfläche, nicht der einzige
+Zugang zum Server.** Der SSH-Zugriff, der schon vor Overlay genutzt wurde
+(SSH-App auf dem iPad, dasselbe Tailnet), muss unabhängig davon weiter
+funktionieren — er läuft als eigener Dienst (`sshd`) auf einem anderen Port
+und hängt an nichts, was Overlay betrifft. Fällt Overlay komplett aus
+(Absturz, volle Festplatte, kaputtes Deployment), kommt man darüber trotzdem
+auf den Server: einfach mit der SSH-App wie gewohnt verbinden, unabhängig
+davon ob Node/PM2/Overlay laufen. Alternative dazu, ganz ohne separate
+SSH-App/Schlüsselverwaltung: [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)
+aktivieren (`tailscale up --ssh` auf dem Server, passende ACL im
+Tailscale-Adminportal) — dann reicht die Tailscale-App allein für den
+Notfallzugriff.
+
+**Wichtig:** Diese SSH-Erreichbarkeit einmal *bevor* man sich auf Overlay als
+Hauptzugang verlässt, aktiv ausprobieren (nicht erst im Ernstfall zum ersten
+Mal testen).
+
+### 11.1 Erste Diagnose (per SSH)
+
+1. **Läuft der Prozess überhaupt?**
+   ```
+   pm2 status
+   pm2 logs overlay --lines 100
+   ```
+   Zeigt sofort, ob der Overlay-Prozess abgestürzt ist und warum (Stacktrace
+   in den Logs).
+
+2. **Neu starten:**
+   ```
+   pm2 restart overlay
+   ```
+   Löst die meisten transienten Probleme (z.B. nach einem OOM-Kill oder
+   einem unbehandelten Fehler).
+
+3. **Healthcheck isoliert prüfen** — funktioniert der Server technisch, auch
+   wenn im Browser nichts lädt?
+   ```
+   curl http://127.0.0.1:4317/api/health
+   ```
+   Antwortet das mit `{"status":"ok",...}`, liegt das Problem eher im
+   Frontend/Browser (z.B. ein hängender Service-Worker-Cache der PWA — dann
+   hilft, die installierte App vom Home-Bildschirm zu entfernen und über
+   Safari neu zu installieren).
+
+4. **Festplatte voll?** Sicherheits-Scans, Backups und Logs wachsen mit der
+   Zeit:
+   ```
+   df -h
+   ```
+   Ein volles Dateisystem ist eine der häufigsten Ursachen dafür, dass ein
+   Server gar nicht mehr reagiert.
+
+5. **Falls Authelia/Caddy als 2FA-Schicht läuft** (Abschnitt 9): zusätzlich
+   prüfen, da Caddy in diesem Setup direkt an der Tailscale-Adresse hängt —
+   stürzt Caddy ab, kommt man an Overlay gar nicht erst vorbei:
+   ```
+   systemctl status caddy authelia
+   journalctl -u caddy -n 50
+   ```
+
+6. **Letzter Ausweg:** Die verwalteten Apps laufen unabhängig von Overlay
+   unter PM2. Sie lassen sich jederzeit direkt per SSH verwalten
+   (`pm2 start/stop/restart <name>`), auch wenn Overlay selbst kaputt ist —
+   Overlay ist nur eine Oberfläche über PM2, nicht die einzige Quelle der
+   Wahrheit über den Zustand der Apps.
+
+### 11.2 Overlay danach reparieren
+
+Sobald man per SSH auf dem Server ist, das eigentliche Problem beheben, z.B.:
+```
+cd /opt/overlay   # oder wo auch immer das Repo liegt
+git pull
+npm install
+npm run build
+pm2 restart overlay
+```
+Ein `.env`-Tippfehler oder eine ungültige Konfiguration lässt Overlay beim
+Start sofort mit einer Fehlermeldung abbrechen (siehe `config.ts`) — die
+steht dann in `pm2 logs overlay`.
