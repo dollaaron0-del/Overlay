@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { runCommand } from "../security/run-tool.js";
 
 export interface ResticEnv {
@@ -12,6 +13,12 @@ export interface BackupResult {
   totalBytesProcessed: number;
   dataAdded: number;
   snapshotId: string | undefined;
+}
+
+export interface BackupProgress {
+  percentDone: number;
+  filesDone: number;
+  totalFiles: number;
 }
 
 function resticEnv(env: ResticEnv): Record<string, string> {
@@ -62,16 +69,90 @@ export function parseBackupSummary(jsonLinesOutput: string): BackupResult | null
   return null;
 }
 
-export async function runBackup(paths: string[], env: ResticEnv, timeoutMs: number): Promise<BackupResult> {
-  const result = await runCommand("restic", ["backup", ...paths, "--json"], {
-    timeoutMs,
-    env: resticEnv(env),
-  });
-  const summary = parseBackupSummary(result.stdout);
-  if (!summary) {
-    throw new Error(`restic backup produced no summary line (exit ${result.exitCode}): ${result.stderr.slice(0, 500)}`);
+/** Parses one line of restic's `--json` output; returns null for anything that isn't a "status" progress line. */
+export function parseStatusLine(line: string): BackupProgress | null {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
   }
-  return summary;
+  if (parsed.message_type !== "status") return null;
+  return {
+    percentDone: Number(parsed.percent_done ?? 0),
+    filesDone: Number(parsed.files_done ?? 0),
+    totalFiles: Number(parsed.total_files ?? 0),
+  };
+}
+
+/**
+ * Runs `restic backup --json` via spawn (not the execFile-based runCommand)
+ * so `onProgress` can be called live from restic's own periodic "status"
+ * lines as they arrive, instead of only seeing the final result once the
+ * whole backup has finished. The final result is still parsed from the
+ * complete accumulated output via parseBackupSummary, same as before.
+ */
+export function runBackup(
+  paths: string[],
+  env: ResticEnv,
+  timeoutMs: number,
+  onProgress?: (progress: BackupProgress) => void,
+): Promise<BackupResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("restic", ["backup", ...paths, "--json"], {
+      env: { ...process.env, ...resticEnv(env) },
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let lineBuffer = "";
+    let timedOut = false;
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      stdout += text;
+      lineBuffer += text;
+      const lines = lineBuffer.split("\n");
+      lineBuffer = lines.pop() ?? ""; // keep a not-yet-newline-terminated tail for the next chunk
+
+      if (!onProgress) return;
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        // parseStatusLine already swallows partial lines straddling two
+        // chunks / non-JSON lines, same tolerance parseBackupSummary has.
+        const progress = parseStatusLine(line);
+        if (progress) onProgress(progress);
+      }
+    });
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    child.on("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      if (timedOut) {
+        reject(new Error(`restic backup timed out after ${timeoutMs}ms`));
+        return;
+      }
+      const summary = parseBackupSummary(stdout);
+      if (!summary) {
+        reject(new Error(`restic backup produced no summary line (exit ${code}): ${stderr.slice(0, 500)}`));
+        return;
+      }
+      resolve(summary);
+    });
+  });
 }
 
 export interface RetentionPolicy {

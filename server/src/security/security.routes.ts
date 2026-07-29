@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { config } from "../config.js";
 import { getLatestReport, getReport, listReports } from "./report-store.js";
+import { getScanProgress } from "./scan-progress-store.js";
 import { listOllamaModels, modelIsInstalled, OllamaUnavailableError } from "./ollama-client.js";
 import { runCommand } from "./run-tool.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
@@ -58,6 +59,12 @@ securityRouter.post("/scans/run", async (_req, res) => {
   } catch (err) {
     res.status(500).json({ error: "trigger_failed", message: (err as Error).message });
   }
+});
+
+// A file the running scan process writes to (see cli.ts / scan-progress-store.ts)
+// — reading it needs no root, unlike the scan itself.
+securityRouter.get("/scan-progress", async (_req, res) => {
+  res.json(await getScanProgress());
 });
 
 securityRouter.get("/scans", async (_req, res) => {

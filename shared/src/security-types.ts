@@ -56,6 +56,19 @@ export interface ScanReport {
   llmTriage?: LlmTriage;
 }
 
+/**
+ * Step-based progress for a scan in progress, written to a small file by the
+ * separate root-privileged scan process (see security/cli.ts) and read by
+ * the unprivileged web server — the scan runs as its own OS process, so
+ * there's no in-process pub/sub to push this over, unlike backup progress.
+ */
+export interface ScanProgress {
+  step: number; // 1-based
+  totalSteps: number;
+  tool: string;
+  startedAt: string;
+}
+
 export function emptySeverityCounts(): SeverityCounts {
   return { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
 }

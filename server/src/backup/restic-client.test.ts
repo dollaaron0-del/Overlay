@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   parseBackupSummary,
+  parseStatusLine,
   repositoryExists,
   initRepository,
   runBackup,
@@ -34,6 +35,15 @@ test("parseBackupSummary returns null when there's no summary line", () => {
   assert.equal(parseBackupSummary("not json at all"), null);
 });
 
+test("parseStatusLine extracts progress from a real status line, and ignores everything else", () => {
+  const progress = parseStatusLine('{"message_type":"status","percent_done":0.5,"total_files":10,"files_done":5}');
+  assert.deepEqual(progress, { percentDone: 0.5, filesDone: 5, totalFiles: 10 });
+
+  assert.equal(parseStatusLine('{"message_type":"summary","files_new":1}'), null);
+  assert.equal(parseStatusLine("not json at all"), null);
+  assert.equal(parseStatusLine(""), null);
+});
+
 test("real restic: full init -> backup -> forget lifecycle against a throwaway repo", { timeout: 30_000 }, async () => {
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "overlay-restic-test-"));
   const repoDir = path.join(tmpRoot, "repo");
@@ -42,6 +52,7 @@ test("real restic: full init -> backup -> forget lifecycle against a throwaway r
   await fs.writeFile(path.join(sourceDir, "file1.txt"), "hello world");
 
   const env = { repository: repoDir, password: "test-password-not-for-prod" };
+  const progressCalls: Array<{ percentDone: number; filesDone: number; totalFiles: number }> = [];
 
   try {
     assert.equal(await repositoryExists(env, 10_000), false);
@@ -49,9 +60,17 @@ test("real restic: full init -> backup -> forget lifecycle against a throwaway r
     await initRepository(env, 10_000);
     assert.equal(await repositoryExists(env, 10_000), true);
 
-    const firstBackup = await runBackup([sourceDir], env, 20_000);
+    const firstBackup = await runBackup([sourceDir], env, 20_000, (p) => progressCalls.push(p));
     assert.equal(firstBackup.filesNew, 1);
     assert.ok(firstBackup.snapshotId);
+
+    // A near-instant one-file backup may finish before restic ever emits a
+    // "status" line — onProgress firing isn't guaranteed, but if it did,
+    // the values it saw must be sane.
+    for (const p of progressCalls) {
+      assert.ok(p.percentDone >= 0 && p.percentDone <= 1);
+      assert.ok(p.filesDone <= p.totalFiles);
+    }
 
     // A second backup with no changes should report the file as unmodified, not new.
     const secondBackup = await runBackup([sourceDir], env, 20_000);
@@ -62,6 +81,16 @@ test("real restic: full init -> backup -> forget lifecycle against a throwaway r
     await forgetAndPrune(env, { keepDaily: 7, keepWeekly: 4, keepMonthly: 6 }, 20_000);
   } finally {
     await fs.rm(tmpRoot, { recursive: true, force: true });
+  }
+});
+
+test("runBackup rejects when the restic binary doesn't exist", async () => {
+  const originalPath = process.env.PATH;
+  try {
+    process.env.PATH = "/nonexistent";
+    await assert.rejects(() => runBackup(["/tmp"], { repository: "/tmp/nope", password: "x" }, 5000));
+  } finally {
+    process.env.PATH = originalPath;
   }
 });
 

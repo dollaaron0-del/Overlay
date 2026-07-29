@@ -10,11 +10,25 @@
 // so importing it anywhere (e.g. a test) doesn't trigger a real scan run.
 import { runScan } from "./orchestrator.js";
 import { chownReportsDirIfConfigured, formatSummaryLine, notifyIfConfigured } from "./cli-helpers.js";
+import { writeScanProgress, clearScanProgress } from "./scan-progress-store.js";
 
 const startedAt = Date.now();
 console.log(`[overlay-security-scan] starting scan at ${new Date(startedAt).toISOString()}`);
 
-const report = await runScan();
+let report;
+try {
+  report = await runScan((info) => {
+    // Best-effort: a failure to write progress must never fail the scan itself.
+    void writeScanProgress({ ...info, startedAt: new Date().toISOString() }).catch((err) =>
+      console.error(`[overlay-security-scan] failed to write scan progress: ${(err as Error).message}`),
+    );
+  });
+} finally {
+  // Guaranteed even if runScan itself throws unexpectedly, so a crashed run
+  // never leaves the dashboard showing a scan as permanently "in progress".
+  await clearScanProgress().catch(() => undefined);
+}
+
 await chownReportsDirIfConfigured();
 await notifyIfConfigured(report);
 

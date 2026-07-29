@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { BackupSummary } from "@overlay/shared";
 import { api } from "../../api/client";
 import { formatBytes, formatTimestamp } from "../../format";
+import { useBackupProgress } from "./useBackupProgress";
 
 interface BackupStatus {
   configured: boolean;
@@ -11,12 +12,19 @@ interface BackupStatus {
 export function BackupWidget() {
   const [backup, setBackup] = useState<BackupStatus | null>(null);
 
-  useEffect(() => {
+  const loadStatus = () => {
     api
       .get<BackupStatus>("/api/backup/status")
       .then(setBackup)
       .catch(() => undefined);
-  }, []);
+  };
+
+  useEffect(loadStatus, []);
+
+  // Real percentage from restic's own --json status lines, live over WS —
+  // not an estimate. Fires for any running backup (manual or nightly), and
+  // triggers a status refetch once it reports "done".
+  const progress = useBackupProgress(loadStatus);
 
   return (
     <div className="os-widget">
@@ -25,10 +33,20 @@ export function BackupWidget() {
       {backup && !backup.configured && (
         <p className="empty-hint">Nicht konfiguriert (RESTIC_REPOSITORY leer) — es laufen keine Backups.</p>
       )}
-      {backup?.configured && !backup.latest && (
+      {progress && (
+        <div className="backup-progress">
+          <div className="progress-bar">
+            <div className="progress-bar-fill" style={{ width: `${Math.round(progress.percentDone * 100)}%` }} />
+          </div>
+          <p className="backup-progress-label">
+            Läuft… {Math.round(progress.percentDone * 100)}% ({progress.filesDone}/{progress.totalFiles} Dateien)
+          </p>
+        </div>
+      )}
+      {!progress && backup?.configured && !backup.latest && (
         <p className="empty-hint">Noch kein Backup gelaufen. Läuft automatisch nachts (docs/DEPLOYMENT.md).</p>
       )}
-      {backup?.configured && backup.latest && (
+      {!progress && backup?.configured && backup.latest && (
         <>
           <p className="overview-scan-timestamp">{formatTimestamp(backup.latest.startedAt)}</p>
           {backup.latest.success ? (

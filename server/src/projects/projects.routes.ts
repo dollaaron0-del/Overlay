@@ -12,7 +12,8 @@ import {
 } from "./projects.registry.js";
 import { describeProcess, restartProcess, statusOf } from "../pm2/pm2.service.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
-import { runCommand } from "../security/run-tool.js";
+import { runDeployScript } from "./deploy-runner.js";
+import { startDeployRun, recordDeployLine, endDeployRun } from "./deploy-log-bus.js";
 import { config } from "../config.js";
 
 export const projectsRouter = Router();
@@ -112,13 +113,18 @@ projectsRouter.post("/:id/deploy", async (req, res) => {
   // Run as a shell command (not execFile-style args) so a deploy script can
   // chain steps ("git pull && npm install && npm run build") — this is the
   // project owner's own trusted command, equivalent in trust level to what
-  // they could already run themselves in the Claude terminal panel.
-  const result = await runCommand("sh", ["-c", project.deployScript], {
-    cwd: resolveProjectDir(project),
-    timeoutMs: config.DEPLOY_TIMEOUT_MS,
+  // they could already run themselves in the Claude terminal panel. Streamed
+  // live (see deploy-runner.ts) to /ws/deploy/:id as it runs — there's no
+  // known step count for an arbitrary script, so live output is the honest
+  // stand-in for a progress bar here.
+  startDeployRun(project.id);
+  const result = await runDeployScript(project.deployScript, resolveProjectDir(project), config.DEPLOY_TIMEOUT_MS, (line) => {
+    recordDeployLine(project.id, { type: "line", stream: line.stream, text: line.text });
   }).catch((err) => ({ stdout: "", stderr: (err as Error).message, exitCode: null }));
 
   const success = result.exitCode === 0;
+  endDeployRun(project.id, { type: "exit", success, exitCode: result.exitCode });
+
   if (success) {
     // Best-effort: pick up the newly deployed build. Not fatal if the
     // process isn't running yet — the deploy itself already succeeded.

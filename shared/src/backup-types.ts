@@ -12,3 +12,9 @@ export interface BackupSummary {
   snapshotId?: string;
   error?: string;
 }
+
+// Message envelope for /ws/backup-progress — real progress parsed live from
+// restic's own `--json` status lines, not a fabricated estimate.
+export type BackupProgressMessage =
+  | { type: "progress"; percentDone: number; filesDone: number; totalFiles: number }
+  | { type: "done" };

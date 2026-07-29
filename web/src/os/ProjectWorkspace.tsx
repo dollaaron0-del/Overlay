@@ -1,7 +1,8 @@
-import { useState } from "react";
-import type { ProjectSummary } from "@overlay/shared";
+import { useEffect, useState } from "react";
+import type { DeployServerMessage, ProjectSummary } from "@overlay/shared";
 import { api } from "../api/client";
 import { formatBytes } from "../format";
+import { wsUrl } from "../api/ws";
 import { TerminalPanel } from "../terminal/TerminalPanel";
 import { LogPanel } from "../logs/LogPanel";
 import { FileTree } from "../files/FileTree";
@@ -31,7 +32,17 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
+  const [deployLines, setDeployLines] = useState<Array<{ stream: "out" | "err"; text: string }>>([]);
+  const [deployStartedAt, setDeployStartedAt] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (deployStartedAt === null) return;
+    setElapsedSeconds(0);
+    const interval = setInterval(() => setElapsedSeconds(Math.floor((Date.now() - deployStartedAt) / 1000)), 1000);
+    return () => clearInterval(interval);
+  }, [deployStartedAt]);
 
   const runAction = (action: "start" | "stop" | "restart") => api.post(`/api/projects/${project.id}/${action}`);
 
@@ -51,11 +62,32 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
   const deploy = async () => {
     setDeploying(true);
     setDeployResult(null);
+    setDeployLines([]);
+    setDeployStartedAt(Date.now());
+
+    // Live output (see server/src/projects/deploy-runner.ts) — an arbitrary
+    // deploy script has no known step count, so this real-time log + a
+    // running timer is the honest stand-in for a progress bar here. Any
+    // lines emitted before this connection finishes subscribing are still
+    // delivered via the server-side backlog, so opening it doesn't need to
+    // be awaited before triggering the deploy below.
+    const ws = new WebSocket(wsUrl(`/ws/deploy/${project.id}`));
+    ws.addEventListener("message", (event) => {
+      try {
+        const msg = JSON.parse(event.data) as DeployServerMessage;
+        if (msg.type === "line") setDeployLines((prev) => [...prev, { stream: msg.stream, text: msg.text }]);
+      } catch {
+        // ignore malformed frames
+      }
+    });
+
     try {
       const result = await api.post<DeployResult>(`/api/projects/${project.id}/deploy`);
       setDeployResult(result);
     } finally {
       setDeploying(false);
+      setDeployStartedAt(null);
+      ws.close();
     }
   };
 
@@ -106,7 +138,22 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
             Entfernen
           </button>
         </div>
-        {deployResult && (
+        {deploying && (
+          <div className="project-deploy-live">
+            <p className="project-deploy-live-timer">Deployt seit {elapsedSeconds}s…</p>
+            <pre className="project-deploy-live-log">
+              {deployLines.length === 0
+                ? "Wartet auf Ausgabe…"
+                : deployLines.map((l, i) => (
+                    <span key={i} className={l.stream === "err" ? "deploy-result-stderr" : undefined}>
+                      {l.text}
+                      {"\n"}
+                    </span>
+                  ))}
+            </pre>
+          </div>
+        )}
+        {!deploying && deployResult && (
           <details className="project-deploy-result" open>
             <summary className={deployResult.ok ? "deploy-result-ok" : "deploy-result-error"}>
               {deployResult.ok ? "Deploy erfolgreich" : `Deploy fehlgeschlagen (exit ${deployResult.exitCode})`}

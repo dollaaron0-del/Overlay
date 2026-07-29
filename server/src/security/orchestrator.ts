@@ -220,23 +220,45 @@ export async function runLlmTriageStage(tools: ToolResult[]): Promise<LlmTriage>
   }
 }
 
-export async function runScan(): Promise<ScanReport> {
+export interface ScanStepInfo {
+  step: number; // 1-based
+  totalSteps: number;
+  tool: string;
+}
+
+const SCAN_STAGES: Array<{ tool: string; run: () => Promise<ToolResult> }> = [
+  { tool: "clamav", run: runClamAvStage },
+  { tool: "rkhunter", run: runRkhunterStage },
+  { tool: "chkrootkit", run: runChkrootkitStage },
+  { tool: "lynis", run: runLynisStage },
+  { tool: "aide", run: runAideStage },
+  { tool: "trivy", run: runTrivyStage },
+  { tool: "npm-audit", run: runNpmAuditStage },
+  { tool: "apt-updates", run: runAptUpdatesStage },
+  { tool: "listening-ports", run: runListeningPortsStage },
+];
+
+/**
+ * `onProgress`, if given, is called right before each stage (including the
+ * final LLM triage stage) starts — used by cli.ts to write a step-progress
+ * file for the dashboard, since the scan runs as its own separate process
+ * with no other way to report live status. Firing it is best-effort from
+ * the caller's side; a failure to record progress must never affect the
+ * scan itself.
+ */
+export async function runScan(onProgress?: (info: ScanStepInfo) => void): Promise<ScanReport> {
   const id = makeReportId();
   const startedAt = new Date().toISOString();
   const start = Date.now();
+  const totalSteps = SCAN_STAGES.length + 1; // + the LLM triage stage
 
-  const tools: ToolResult[] = [
-    await runClamAvStage(),
-    await runRkhunterStage(),
-    await runChkrootkitStage(),
-    await runLynisStage(),
-    await runAideStage(),
-    await runTrivyStage(),
-    await runNpmAuditStage(),
-    await runAptUpdatesStage(),
-    await runListeningPortsStage(),
-  ];
+  const tools: ToolResult[] = [];
+  for (let i = 0; i < SCAN_STAGES.length; i++) {
+    onProgress?.({ step: i + 1, totalSteps, tool: SCAN_STAGES[i].tool });
+    tools.push(await SCAN_STAGES[i].run());
+  }
 
+  onProgress?.({ step: totalSteps, totalSteps, tool: "llm-triage" });
   const llmTriage = await runLlmTriageStage(tools);
 
   const finishedAt = new Date().toISOString();

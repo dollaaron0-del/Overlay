@@ -4,6 +4,7 @@ import { api, ApiError } from "../api/client";
 import { formatTimestamp } from "../format";
 import { SEVERITY_LABEL, SEVERITY_ORDER, isAllClear, type ScanSummary } from "./severity";
 import { SeverityBadge } from "./SeverityBadge";
+import { useScanProgress } from "./useScanProgress";
 
 const TOOL_LABEL: Record<string, string> = {
   clamav: "ClamAV (Malware)",
@@ -73,6 +74,8 @@ function LlmTriageCard({ triage }: { triage: LlmTriage }) {
   );
 }
 
+const SCAN_STEP_LABEL: Record<string, string> = { ...TOOL_LABEL, "llm-triage": "KI-Einschätzung" };
+
 export function SecurityDashboard() {
   const [history, setHistory] = useState<ScanSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -80,12 +83,14 @@ export function SecurityDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadHistory = () => {
     api
       .get<ScanSummary[]>("/api/security/scans")
       .then(setHistory)
       .catch(() => undefined);
-  }, []);
+  };
+
+  useEffect(loadHistory, []);
 
   useEffect(() => {
     setLoading(true);
@@ -103,6 +108,19 @@ export function SecurityDashboard() {
       })
       .finally(() => setLoading(false));
   }, [selectedId]);
+
+  // A scan just finished (see useScanProgress) — refresh the history list,
+  // and if we're viewing "latest" (no explicit selection), the fresh report too.
+  const onScanDone = () => {
+    loadHistory();
+    if (selectedId === null) {
+      api
+        .get<ScanReport>("/api/security/scans/latest")
+        .then(setReport)
+        .catch(() => undefined);
+    }
+  };
+  const progress = useScanProgress(onScanDone);
 
   return (
     <div className="security-dashboard">
@@ -131,6 +149,16 @@ export function SecurityDashboard() {
       </div>
 
       <div className="security-detail">
+        {progress && (
+          <div className="scan-progress">
+            <div className="progress-bar">
+              <div className="progress-bar-fill" style={{ width: `${Math.round((progress.step / progress.totalSteps) * 100)}%` }} />
+            </div>
+            <p className="scan-progress-label">
+              Scan läuft — Schritt {progress.step} von {progress.totalSteps}: {SCAN_STEP_LABEL[progress.tool] ?? progress.tool}
+            </p>
+          </div>
+        )}
         {loading && <p className="empty-hint">Lädt…</p>}
         {error && <p className="file-viewer-error">{error}</p>}
         {!loading && !error && !report && (

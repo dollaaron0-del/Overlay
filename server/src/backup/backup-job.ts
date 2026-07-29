@@ -4,6 +4,7 @@ import type { BackupSummary } from "@overlay/shared";
 import { config } from "../config.js";
 import { repositoryExists, initRepository, runBackup, forgetAndPrune } from "./restic-client.js";
 import { makeBackupId, saveBackupSummary } from "./backup-status-store.js";
+import { emitBackupProgress } from "./backup-progress-bus.js";
 
 /**
  * Runs one full backup cycle (init-if-needed, backup, forget/prune) and
@@ -40,7 +41,9 @@ export async function runBackupJob(): Promise<BackupSummary | null> {
     // incremental change detection — stays stable across every run.
     await fs.mkdir(dataDir, { recursive: true });
 
-    const result = await runBackup(paths, env, config.BACKUP_TIMEOUT_MS);
+    const result = await runBackup(paths, env, config.BACKUP_TIMEOUT_MS, (progress) => {
+      emitBackupProgress({ type: "progress", ...progress });
+    });
     await forgetAndPrune(
       env,
       {
@@ -76,5 +79,6 @@ export async function runBackupJob(): Promise<BackupSummary | null> {
   }
 
   await saveBackupSummary(summary);
+  emitBackupProgress({ type: "done" });
   return summary;
 }

@@ -350,6 +350,48 @@ Anfrage weiter.
   Claude-Aufruf. Der Endpunkt liegt hinter derselben `requireAuth`-Middleware
   wie der Rest von `/api/idea-chats`, ist also nicht öffentlich einsehbar.
 
+## Echter Fortschritt statt nur "Lädt…"
+
+Drei länger laufende Aktionen zeigen ihren tatsächlichen Fortschritt statt
+eines reinen Ladeindikators — jede über einen anderen, zur jeweiligen
+Architektur passenden Mechanismus:
+
+- **Backup**: `restic backup --json` läuft jetzt über `spawn` statt der
+  bisherigen `execFile`-basierten `runCommand`, damit periodische
+  "status"-Zeilen (`percent_done`, `files_done`, `total_files`) live
+  ausgewertet werden können, statt nur die finale Zusammenfassung zu sehen.
+  Läuft im selben (unprivilegierten) Prozess wie der Webserver, daher genügt
+  ein simples In-Process-Pub/Sub (`backup-progress-bus.ts`) plus eine neue
+  WebSocket-Route `/ws/backup-progress` — dieselbe Auth-/Origin-Prüfung wie
+  alle anderen WebSocket-Routen (siehe oben "WebSocket-Origin-Prüfung").
+  Broadcasted an jeden verbundenen Client, egal ob der Lauf manuell oder
+  nachts automatisch gestartet wurde.
+- **Security-Scan**: läuft als separater, root-privilegierter Prozess (siehe
+  oben) — dafür gibt es keine In-Process-Verbindung zum Webserver. Der Scan
+  schreibt stattdessen nach jedem Werkzeug eine kleine Fortschrittsdatei
+  (`server/data/scan-progress.json`, Modus `0o644`, damit der unprivilegierte
+  Webserver sie lesen kann, noch bevor der abschließende Chown-Schritt den
+  Rest des Berichtsverzeichnisses übergibt). `GET /api/security/scan-progress`
+  liest nur diese Datei — kein root nötig. Ein abgestürzter Lauf kann höchstens
+  eine veraltete Datei hinterlassen, die beim nächsten echten Lauf einfach
+  überschrieben wird; kein Sicherheitsrisiko, da die Datei nur Tool-Namen und
+  eine Schrittzahl enthält, keine Scan-Ergebnisse.
+- **Deploy**: ein beliebiges, vom Projekt-Besitzer selbst hinterlegtes
+  Deploy-Skript hat keine dem System bekannte Schrittzahl — statt eines
+  erfundenen Prozent-Werts gibt es stattdessen echtes Live-Output (`sh -c`
+  läuft ebenfalls über `spawn` statt `execFile`, zeilenweise über eine neue
+  WebSocket-Route `/ws/deploy/:projectId` gestreamt) plus eine verstrichene
+  Zeit. Dasselbe Vertrauensniveau wie zuvor: es ist weiterhin exakt der
+  Befehl, den der Projekt-Besitzer selbst hinterlegt hat.
+  Ein während der Entwicklung gefundener und behobener Fehler: eine neue
+  WebSocket-Verbindung darf den zwischengespeicherten Mitschnitt eines
+  *bereits abgeschlossenen* vorherigen Laufs nicht mehr an einen Client
+  ausliefern, bevor der nächste Lauf überhaupt begonnen hat — sonst
+  erscheinen alte Zeilen fälschlich vor den neuen. Der zwischengespeicherte
+  Mitschnitt wird jetzt nur noch an einen Client geschickt, während ein Lauf
+  tatsächlich noch `running` ist (deckt eine knappe Verbindung kurz nach
+  Start ab), nicht mehr für einen bereits fertigen Lauf.
+
 ## Bekannte Grenzen (v1)
 
 - Ein Neustart des Overlay-Servers beendet alle laufenden `claude`-pty-

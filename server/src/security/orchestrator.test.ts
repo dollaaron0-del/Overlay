@@ -64,6 +64,30 @@ test("runScan produces a report with one entry per tool", async () => {
   ]);
 });
 
+test("onProgress is called once per stage, in order, with a consistent totalSteps", async () => {
+  const calls: Array<{ step: number; totalSteps: number; tool: string }> = [];
+  await orchestrator.runScan((info) => calls.push(info));
+
+  assert.equal(calls.length, 10); // 9 tool stages + the final llm-triage stage
+  assert.ok(calls.every((c) => c.totalSteps === 10));
+  assert.deepEqual(
+    calls.map((c) => c.step),
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  );
+  assert.deepEqual(calls.map((c) => c.tool), [
+    "clamav",
+    "rkhunter",
+    "chkrootkit",
+    "lynis",
+    "aide",
+    "trivy",
+    "npm-audit",
+    "apt-updates",
+    "listening-ports",
+    "llm-triage",
+  ]);
+});
+
 test("missing native tools are reported as 'skipped', not 'error'", { timeout: 20_000 }, async () => {
   const report = await orchestrator.runScan();
   for (const toolName of ["clamav", "rkhunter", "chkrootkit", "listening-ports", "aide", "trivy"]) {
