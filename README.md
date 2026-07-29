@@ -40,7 +40,10 @@ GPU): jede Nachricht geht zuerst dorthin, und nur wenn das jeweilige
 Modell selbst entscheidet, dass die Anfrage echten Code-Zugriff braucht,
 eskaliert es zur echten Claude-CLI. So kostet reines Ideen-Feedback keinen
 Claude-Aufruf, nur tatsächliches Programmieren tut das. Welche Stufe
-geantwortet hat, wird direkt an jeder Nachricht angezeigt.
+geantwortet hat, wird direkt an jeder Nachricht angezeigt — eine
+"KI-Kaskade"-Übersicht in der Ideen-App zeigt außerdem alle drei Stufen in
+ihrer Reihenfolge samt Zuständigkeit und Live-Status (konfiguriert,
+erreichbar, Modell installiert).
 
 ## Struktur
 

@@ -4,6 +4,7 @@ import { getProject, resolveProjectDir } from "../projects/projects.registry.js"
 import { listIdeaChats, getIdeaChat, createIdeaChat, appendIdeaChatMessages } from "./ideachat-store.js";
 import { answerIdeaChatMessage } from "./tiered-answer.js";
 import { writeIdeaPlan } from "./plan-writer.js";
+import { getAiCascadeStatus } from "./ai-status.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
 
 export const ideaChatRouter = Router();
@@ -11,6 +12,12 @@ export const ideaChatRouter = Router();
 ideaChatRouter.get("/", async (_req, res) => {
   const chats = await listIdeaChats();
   res.json(chats.map(({ id, projectId, title, createdAt, updatedAt }) => ({ id, projectId, title, createdAt, updatedAt })));
+});
+
+// Registered before "/:id" — otherwise the param route would swallow this
+// path as if "ai-status" were a chat id.
+ideaChatRouter.get("/ai-status", async (_req, res) => {
+  res.json(await getAiCascadeStatus());
 });
 
 ideaChatRouter.get("/:id", async (req, res) => {

@@ -344,6 +344,11 @@ Anfrage weiter.
   Nachricht mitgespeichert und in der UI angezeigt — Transparenz darüber,
   wann tatsächlich ein Claude-Aufruf (und damit Nutzungskontingent)
   verbraucht wurde.
+- Die "KI-Kaskade"-Übersicht (`GET /api/idea-chats/ai-status`) prüft
+  Erreichbarkeit und installierte Modelle nur per kurzer Liveness-Anfrage
+  (`/api/tags`, 5s Timeout) — keine echte Chat-Nachricht, kein zusätzlicher
+  Claude-Aufruf. Der Endpunkt liegt hinter derselben `requireAuth`-Middleware
+  wie der Rest von `/api/idea-chats`, ist also nicht öffentlich einsehbar.
 
 ## Bekannte Grenzen (v1)
 

@@ -34,10 +34,55 @@ interface ChatDetail extends ChatSummary {
   messages: ChatMessage[];
 }
 
+interface AiTierStatus {
+  id: AnswerSource;
+  label: string;
+  role: string;
+  configured: boolean;
+  reachable?: boolean;
+  model?: string;
+  modelInstalled?: boolean;
+  error?: string;
+}
+
 type View = { mode: "list" } | { mode: "new" } | { mode: "chat"; chatId: string };
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" });
+}
+
+function tierState(tier: AiTierStatus): { className: string; text: string } {
+  if (!tier.configured) return { className: "skipped", text: "Nicht konfiguriert — wird übersprungen" };
+  if (!tier.reachable) return { className: "error", text: `Nicht erreichbar${tier.error ? ` (${tier.error})` : ""}` };
+  if (tier.modelInstalled === false) return { className: "warn", text: `Erreichbar, Modell "${tier.model}" nicht installiert` };
+  return { className: "ok", text: tier.model ? `Bereit (${tier.model})` : "Bereit" };
+}
+
+function AiCascadeStatus({ tiers }: { tiers: AiTierStatus[] | null }) {
+  return (
+    <div className="ideachat-ai-status">
+      <h3>KI-Kaskade</h3>
+      {tiers === null ? (
+        <p className="empty-hint">Lädt…</p>
+      ) : (
+        <ol className="ideachat-ai-status-list">
+          {tiers.map((tier) => {
+            const state = tierState(tier);
+            return (
+              <li key={tier.id} className={`ideachat-ai-tier ideachat-ai-tier-${state.className}`}>
+                <span className="ideachat-ai-tier-dot" />
+                <div className="ideachat-ai-tier-body">
+                  <div className="ideachat-ai-tier-label">{tier.label}</div>
+                  <div className="ideachat-ai-tier-role">{tier.role}</div>
+                  <div className="ideachat-ai-tier-state">{state.text}</div>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </div>
+  );
 }
 
 export function IdeaChatApp() {
@@ -49,6 +94,7 @@ export function IdeaChatApp() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [planSaved, setPlanSaved] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<AiTierStatus[] | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const loadChats = () => {
@@ -60,6 +106,10 @@ export function IdeaChatApp() {
 
   useEffect(() => {
     loadChats();
+    api
+      .get<AiTierStatus[]>("/api/idea-chats/ai-status")
+      .then(setAiStatus)
+      .catch(() => setAiStatus([]));
   }, []);
 
   useEffect(() => {
@@ -157,6 +207,7 @@ export function IdeaChatApp() {
             + Neue Idee
           </button>
         </div>
+        <AiCascadeStatus tiers={aiStatus} />
         {chats === null ? (
           <p className="empty-hint">Lädt…</p>
         ) : chats.length === 0 ? (
