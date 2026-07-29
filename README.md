@@ -1,13 +1,21 @@
 # Overlay
 
-Selbst gehostetes Web-Dashboard für den eigenen Homeserver: verwaltet Web-Apps
+Selbst gehostetes Web-Dashboard für den eigenen Homeserver, mit einer
+iOS-artigen Oberfläche: ein Homescreen mit Widgets (Server-Ressourcen,
+Sicherheits-Status, Backups, Ollama) und App-Kacheln für jedes Projekt sowie
+für Sicherheit/Aktivität/Einstellungen — dazu eine Spotlight-Suche, ein
+Benachrichtigungs-Center, Hell/Dunkel-Theme und eine anpassbare
+Icon-Anordnung (Kacheln per Drag & Drop verschieben oder ausblenden). Jedes
+Projekt lässt sich starten/stoppen/neu starten/deployen und verwaltet
 (Start/Stop/Restart/Logs über PM2), bettet die echte Claude Code CLI direkt
 im Browser ein (statt eines rohen SSH-Terminals), als installierbare PWA fürs
 iPad — und überwacht den Server selbst mit einem nächtlichen Security-Scan
-(ClamAV, rkhunter, chkrootkit, Lynis, AIDE, Trivy, npm audit, offene Ports),
-optional ergänzt um eine rein beratende LLM-Triage über ein lokal laufendes
-Ollama-Modell, sichtbar im "Sicherheit"-Tab. Optional lässt sich zusätzlich
-echtes 2FA (Authelia + Caddy) vorschalten.
+(ClamAV, rkhunter, chkrootkit, Lynis, AIDE, Trivy, npm audit, verfügbare
+apt-Updates, offene Ports), optional ergänzt um eine rein beratende
+LLM-Triage über ein lokal laufendes Ollama-Modell, sichtbar in der
+"Sicherheit"-App. Nächtliche Backups (restic), Ressourcen-Monitoring und ein
+Aktivitätsprotokoll runden den Serverbetrieb ab. Optional lässt sich
+zusätzlich echtes 2FA (Authelia + Caddy) vorschalten.
 
 ## Struktur
 

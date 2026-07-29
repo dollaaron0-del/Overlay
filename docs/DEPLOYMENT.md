@@ -87,9 +87,9 @@ pm2 startup   # richtet Autostart beim Boot ein
 ## 5. Projekte registrieren
 
 Jede verwaltete Web-App muss als direktes Unterverzeichnis von `APPS_ROOT`
-liegen. Registrierung über das "+"-Formular in der Sidebar des Dashboards
-(Verzeichnis auswählen, Projekt-ID/PM2-Name/Start-Befehl eintragen), oder
-per API:
+liegen. Registrierung über die "Hinzufügen"-Kachel auf dem Homescreen des
+Dashboards (Verzeichnis auswählen, Projekt-ID/PM2-Name/Start-Befehl
+eintragen), oder per API:
 ```
 curl -b cookie.txt -X POST https://<tailscale-host>/api/projects \
   -H "Content-Type: application/json" \
