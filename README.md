@@ -34,6 +34,14 @@ lesen. Jedes Projekt hat dafür im Dashboard einen eigenen "Pläne"-Tab
 (neben Terminal/Logs/Dateien), der alle so gespeicherten Pläne auflistet —
 später am eigentlichen Rechner reicht dann "setz das aus plans/... um".
 
+Optional lässt sich davor ein zweistufiger, lokaler Ollama-Vorfilter
+schalten (z.B. ein schwächeres Modell im RAM und ein stärkeres auf der
+GPU): jede Nachricht geht zuerst dorthin, und nur wenn das jeweilige
+Modell selbst entscheidet, dass die Anfrage echten Code-Zugriff braucht,
+eskaliert es zur echten Claude-CLI. So kostet reines Ideen-Feedback keinen
+Claude-Aufruf, nur tatsächliches Programmieren tut das. Welche Stufe
+geantwortet hat, wird direkt an jeder Nachricht angezeigt.
+
 ## Struktur
 
 - `server/` — Node.js/TypeScript-Backend (Express, WebSocket, PM2-,

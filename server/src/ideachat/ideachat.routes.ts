@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { getProject, resolveProjectDir } from "../projects/projects.registry.js";
 import { listIdeaChats, getIdeaChat, createIdeaChat, appendIdeaChatMessages } from "./ideachat-store.js";
-import { sendIdeaChatMessage } from "./ideachat.js";
+import { answerIdeaChatMessage } from "./tiered-answer.js";
 import { writeIdeaPlan } from "./plan-writer.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
 
@@ -40,9 +40,9 @@ ideaChatRouter.post("/", async (req, res) => {
     return;
   }
 
-  let reply: Awaited<ReturnType<typeof sendIdeaChatMessage>>;
+  let answer: Awaited<ReturnType<typeof answerIdeaChatMessage>>;
   try {
-    reply = await sendIdeaChatMessage(message, resolveProjectDir(project), null);
+    answer = await answerIdeaChatMessage([], message, resolveProjectDir(project), null);
   } catch (err) {
     res.status(502).json({ error: "chat_failed", message: (err as Error).message });
     return;
@@ -53,8 +53,8 @@ ideaChatRouter.post("/", async (req, res) => {
   const chat = await createIdeaChat(projectId, message);
   const updated = await appendIdeaChatMessages(
     chat.id,
-    [{ role: "assistant", text: reply.reply, at: new Date().toISOString() }],
-    reply.sessionId,
+    [{ role: "assistant", text: answer.reply, at: new Date().toISOString(), source: answer.source }],
+    answer.claudeSessionId,
   );
   res.status(201).json(updated);
 });
@@ -78,9 +78,14 @@ ideaChatRouter.post("/:id/messages", async (req, res) => {
     return;
   }
 
-  let reply: Awaited<ReturnType<typeof sendIdeaChatMessage>>;
+  let answer: Awaited<ReturnType<typeof answerIdeaChatMessage>>;
   try {
-    reply = await sendIdeaChatMessage(parsed.data.message, resolveProjectDir(project), chat.claudeSessionId);
+    answer = await answerIdeaChatMessage(
+      chat.messages,
+      parsed.data.message,
+      resolveProjectDir(project),
+      chat.claudeSessionId,
+    );
   } catch (err) {
     res.status(502).json({ error: "chat_failed", message: (err as Error).message });
     return;
@@ -91,9 +96,9 @@ ideaChatRouter.post("/:id/messages", async (req, res) => {
     chat.id,
     [
       { role: "user", text: parsed.data.message, at: now },
-      { role: "assistant", text: reply.reply, at: new Date().toISOString() },
+      { role: "assistant", text: answer.reply, at: new Date().toISOString(), source: answer.source },
     ],
-    reply.sessionId,
+    answer.claudeSessionId,
   );
   res.json(updated);
 });

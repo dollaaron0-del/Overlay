@@ -9,6 +9,7 @@ export async function generateOllamaCompletion(
   model: string,
   prompt: string,
   timeoutMs: number,
+  format?: "json",
 ): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -18,7 +19,7 @@ export async function generateOllamaCompletion(
     response = await fetch(new URL("/api/generate", baseUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt, stream: false }),
+      body: JSON.stringify({ model, prompt, stream: false, ...(format ? { format } : {}) }),
       signal: controller.signal,
     });
   } catch (err) {

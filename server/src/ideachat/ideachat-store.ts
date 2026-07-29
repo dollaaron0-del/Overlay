@@ -67,11 +67,16 @@ export async function createIdeaChat(projectId: string, firstUserMessage: string
   return chat;
 }
 
-/** Appends one or more messages (e.g. the user's turn and the assistant's reply together) and records the resumable claude session id. */
+/**
+ * Appends one or more messages (e.g. the user's turn and the assistant's
+ * reply together) and records the resumable claude session id — null if
+ * this turn was answered by a local Ollama tier and Claude still hasn't
+ * been involved in this chat at all (see tiered-answer.ts).
+ */
 export async function appendIdeaChatMessages(
   id: string,
   newMessages: IdeaChatMessage[],
-  claudeSessionId: string,
+  claudeSessionId: string | null,
 ): Promise<IdeaChat | undefined> {
   const chats = await ensureLoaded();
   const index = chats.findIndex((c) => c.id === id);

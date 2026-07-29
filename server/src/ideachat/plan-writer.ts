@@ -37,12 +37,21 @@ export async function writeIdeaPlan(
   chat: IdeaChat,
   synthesize: typeof sendIdeaChatMessage = sendIdeaChatMessage,
 ): Promise<{ filename: string; relativePath: string }> {
-  if (!chat.claudeSessionId || !chat.messages.some((m) => m.role === "assistant")) {
+  if (!chat.messages.some((m) => m.role === "assistant")) {
     throw new Error("Dieser Chat hat noch keine Antwort, aus der sich ein Plan zusammenfassen ließe.");
   }
 
   const projectDir = resolveProjectDir(project);
-  const { reply } = await synthesize(SYNTHESIS_PROMPT, projectDir, chat.claudeSessionId);
+
+  // If a local Ollama tier answered every turn, Claude has never seen this
+  // chat and there's no session to --resume — give it the whole transcript
+  // inline instead so the summary is still grounded in the real
+  // conversation, not just the synthesis instruction on its own.
+  const prompt = chat.claudeSessionId
+    ? SYNTHESIS_PROMPT
+    : `${chat.messages.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`).join("\n\n")}\n\n${SYNTHESIS_PROMPT}`;
+
+  const { reply } = await synthesize(prompt, projectDir, chat.claudeSessionId);
 
   const plansDir = path.join(projectDir, "plans");
   await fs.mkdir(plansDir, { recursive: true });

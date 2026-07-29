@@ -1721,6 +1721,13 @@ button.active {
   white-space: pre-wrap;
 }
 
+.ideachat-message-source {
+  display: block;
+  font-size: 0.7rem;
+  opacity: 0.65;
+  margin-bottom: 0.3rem;
+}
+
 .ideachat-message-user {
   align-self: flex-end;
   background: var(--c-accent);

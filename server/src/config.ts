@@ -72,6 +72,20 @@ const schema = z.object({
   // read-only tool access to the chosen project. A single turn can involve
   // several tool calls (Read/Glob/Grep) before the model replies.
   IDEA_CHAT_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60_000),
+  // Optional two-tier local pre-filter in front of the real claude CLI call
+  // above: every idea-chat message is tried against a fast/cheap local
+  // Ollama model first, then a stronger local one, and only escalates to
+  // Claude if a tier's model itself decides the request needs actual code
+  // access. Meant for two separate local Ollama instances (e.g. one bound
+  // to CPU/RAM-only, one to a GPU) — set OLLAMA_HOST to different ports
+  // when starting each. Empty *_MODEL disables that tier (falls straight
+  // through), same pattern as OLLAMA_MODEL above; both empty reproduces the
+  // original Claude-only behavior exactly.
+  IDEA_CHAT_OLLAMA_RAM_URL: z.string().default("http://127.0.0.1:11434"),
+  IDEA_CHAT_OLLAMA_RAM_MODEL: z.string().default(""),
+  IDEA_CHAT_OLLAMA_GPU_URL: z.string().default("http://127.0.0.1:11435"),
+  IDEA_CHAT_OLLAMA_GPU_MODEL: z.string().default(""),
+  IDEA_CHAT_OLLAMA_TIMEOUT_MS: z.coerce.number().int().positive().default(2 * 60_000),
   COOKIE_SECURE: z
     .string()
     .default("false")

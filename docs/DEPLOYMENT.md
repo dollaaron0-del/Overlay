@@ -634,3 +634,49 @@ pm2 restart overlay
 Ein `.env`-Tippfehler oder eine ungültige Konfiguration lässt Overlay beim
 Start sofort mit einer Fehlermeldung abbrechen (siehe `config.ts`) — die
 steht dann in `pm2 logs overlay`.
+
+## 12. Optional: Lokaler Ollama-Vorfilter für die "Ideen"-App (RAM + GPU)
+
+Standardmäßig geht jede Nachricht in der "Ideen"-App direkt an die echte
+`claude`-CLI. Wer zusätzlich zwei lokale Ollama-Instanzen betreiben möchte
+(z.B. ein kleineres Modell rein auf CPU/RAM, ein größeres auf der GPU),
+kann diese als kostenlose Vorstufe vorschalten: jede Nachricht geht zuerst
+dorthin, und nur wenn das jeweilige Modell selbst entscheidet, dass die
+Anfrage echten Code-Zugriff braucht (z.B. tatsächliches Programmieren),
+eskaliert sie weiter — erst zur GPU-Stufe, dann zu Claude. Siehe
+`docs/SECURITY.md` Abschnitt "Lokaler Ollama-Vorfilter" für das genaue
+Sicherheitsmodell.
+
+**Zwei Ollama-Instanzen auf unterschiedlichen Ports starten.** Ollama bindet
+standardmäßig an Port 11434; für eine zweite Instanz `OLLAMA_HOST` auf
+einen anderen Port setzen. Beispiel mit systemd-Overrides (oder einfach
+zwei manuell gestartete `ollama serve`-Prozesse, falls kein systemd-Setup
+gewünscht ist):
+
+```
+# Instanz 1 (RAM/CPU-only) — kein GPU-Zugriff
+OLLAMA_HOST=127.0.0.1:11434 CUDA_VISIBLE_DEVICES="" ollama serve &
+
+# Instanz 2 (GPU)
+OLLAMA_HOST=127.0.0.1:11435 ollama serve &
+```
+
+Modelle wie gewohnt pro Instanz laden (`OLLAMA_HOST=127.0.0.1:11434 ollama
+pull <kleines-modell>`, entsprechend für Port 11435 mit einem stärkeren
+Modell).
+
+**In `.env`:**
+```
+IDEA_CHAT_OLLAMA_RAM_URL=http://127.0.0.1:11434
+IDEA_CHAT_OLLAMA_RAM_MODEL=<name des kleinen Modells>
+IDEA_CHAT_OLLAMA_GPU_URL=http://127.0.0.1:11435
+IDEA_CHAT_OLLAMA_GPU_MODEL=<name des größeren Modells>
+```
+Eine der beiden `_MODEL`-Variablen leer lassen, um nur eine Stufe zu
+nutzen; beide leer lassen (Standard), um komplett beim bisherigen
+Claude-only-Verhalten zu bleiben.
+
+**Verifikation:** in der "Ideen"-App eine Nachricht schicken und prüfen,
+dass an der Antwort "🖥️ RAM-Ollama" statt "✨ Claude" steht — dann lief die
+Anfrage tatsächlich über die lokale Instanz. Eine gezielt komplexe/coding-
+lastige Anfrage sollte stattdessen zu "✨ Claude" eskalieren.

@@ -44,6 +44,43 @@ test("parses a successful Ollama response", async () => {
   );
 });
 
+test("passes format:json through to the request body when requested", async () => {
+  await withMockServer(
+    (req, res) => {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        const parsed = JSON.parse(body);
+        assert.equal(parsed.format, "json");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ response: '{"escalate":false}' }));
+      });
+    },
+    async (baseUrl) => {
+      const text = await generateOllamaCompletion(baseUrl, "llama3.1", "prompt", 5000, "json");
+      assert.equal(text, '{"escalate":false}');
+    },
+  );
+});
+
+test("omits format from the request body when not requested", async () => {
+  await withMockServer(
+    (req, res) => {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        const parsed = JSON.parse(body);
+        assert.equal("format" in parsed, false);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ response: "ok" }));
+      });
+    },
+    async (baseUrl) => {
+      await generateOllamaCompletion(baseUrl, "llama3.1", "prompt", 5000);
+    },
+  );
+});
+
 test("throws a normal error on a non-2xx response", async () => {
   await withMockServer(
     (_req, res) => {

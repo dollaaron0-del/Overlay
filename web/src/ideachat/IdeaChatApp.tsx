@@ -14,11 +14,20 @@ interface ChatSummary {
   updatedAt: string;
 }
 
+type AnswerSource = "ollama-ram" | "ollama-gpu" | "claude";
+
 interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   at: string;
+  source?: AnswerSource;
 }
+
+const SOURCE_LABEL: Record<AnswerSource, string> = {
+  "ollama-ram": "🖥️ RAM-Ollama",
+  "ollama-gpu": "🎮 GPU-Ollama",
+  claude: "✨ Claude",
+};
 
 interface ChatDetail extends ChatSummary {
   claudeSessionId: string | null;
@@ -197,7 +206,7 @@ export function IdeaChatApp() {
             ))}
           </div>
         )}
-        {sending && <p className="empty-hint">Claude denkt nach…</p>}
+        {sending && <p className="empty-hint">Denkt nach…</p>}
         {error && <p className="login-error">{error}</p>}
       </div>
     );
@@ -219,12 +228,13 @@ export function IdeaChatApp() {
           <div className="ideachat-messages">
             {activeChat.messages.map((m, i) => (
               <div key={i} className={`ideachat-message ideachat-message-${m.role}`}>
+                {m.source && <span className="ideachat-message-source">{SOURCE_LABEL[m.source]}</span>}
                 <p>{m.text}</p>
               </div>
             ))}
             {sending && (
               <div className="ideachat-message ideachat-message-assistant ideachat-message-pending">
-                <p>Claude denkt nach…</p>
+                <p>Denkt nach…</p>
               </div>
             )}
             <div ref={messagesEndRef} />

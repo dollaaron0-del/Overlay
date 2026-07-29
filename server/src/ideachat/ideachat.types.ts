@@ -1,7 +1,12 @@
+/** Which tier actually produced an assistant reply — see tiered-answer.ts. */
+export type AnswerSource = "ollama-ram" | "ollama-gpu" | "claude";
+
 export interface IdeaChatMessage {
   role: "user" | "assistant";
   text: string;
   at: string;
+  /** Only set on assistant messages. */
+  source?: AnswerSource;
 }
 
 export interface IdeaChat {

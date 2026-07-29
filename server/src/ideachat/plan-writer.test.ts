@@ -102,6 +102,29 @@ test("throws when the chat has no assistant reply yet, without calling the model
   assert.equal(synth.calls.length, 0);
 });
 
+test("when Claude never took part (Ollama answered everything), the full transcript is sent inline to a fresh session", async () => {
+  const chat = makeChat({
+    claudeSessionId: null,
+    messages: [
+      { role: "user", text: "Sollten wir Dark Mode einbauen?", at: new Date().toISOString(), source: undefined },
+      {
+        role: "assistant",
+        text: "Ja, klingt sinnvoll.",
+        at: new Date().toISOString(),
+        source: "ollama-ram",
+      },
+    ],
+  });
+  const synth = stubSynthesize("Zusammengefasster Plan");
+  await writeIdeaPlan(project, chat, synth);
+
+  assert.equal(synth.calls.length, 1);
+  assert.equal(synth.calls[0].sessionId, null);
+  assert.match(synth.calls[0].message, /Sollten wir Dark Mode einbauen\?/);
+  assert.match(synth.calls[0].message, /Ja, klingt sinnvoll\./);
+  assert.match(synth.calls[0].message, /Fasse das gesamte bisherige Gespräch/);
+});
+
 test("writing twice does not overwrite the previous plan file", async () => {
   const chat = makeChat();
   const synth = stubSynthesize("Erster Plan");

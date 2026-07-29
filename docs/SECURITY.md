@@ -312,6 +312,39 @@ das Ergebnis als Plan-Datei im Projekt ablegen. Sicherheitsrelevant:
   bereits vorhandene, rein lesende Datei-API (`/api/projects/:id/tree`,
   `/api/projects/:id/file`) wie der "Dateien"-Tab — keine neue Angriffsfläche.
 
+### Lokaler Ollama-Vorfilter (RAM/GPU-Tiers)
+
+Optional lässt sich vor die echte `claude`-CLI eine zweistufige lokale
+Vorstufe schalten (`IDEA_CHAT_OLLAMA_RAM_MODEL`/`IDEA_CHAT_OLLAMA_GPU_MODEL`
+in `.env`, leer = deaktiviert = unverändertes Claude-only-Verhalten). Jede
+Nachricht geht zuerst an die RAM-, dann an die GPU-Stufe; nur wenn das
+jeweilige Modell selbst per JSON-Antwort (`{"escalate": true, ...}`)
+signalisiert, dass es die Anfrage nicht beantworten kann, eskaliert die
+Anfrage weiter.
+
+- Die lokalen Ollama-Stufen bekommen **keinerlei Werkzeugzugriff** — anders
+  als die claude-CLI-Stufe sehen sie nur den bisherigen Chat-Text, nie den
+  Quellcode des Projekts. Das ist genau der Grund, warum überhaupt zu Claude
+  eskaliert werden kann/muss: alles, was echten Code-Einblick braucht, kann
+  eine reine Text-Ollama-Stufe grundsätzlich nicht fundiert beantworten.
+- Eine unerreichbare oder fehlerhafte Ollama-Instanz wird wie "eskaliert"
+  behandelt (nie ein harter Fehler) — ein kaputter lokaler Dienst blockiert
+  den Chat also nie, er fällt einfach zur nächsten Stufe durch.
+- Springt eine Nachricht doch zu Claude, während vorherige Züge lokal von
+  Ollama beantwortet wurden, bekommt Claude ein kurzes Recap dieser
+  Ollama-Züge als **normalen Text innerhalb der Nutzer-Nachricht**
+  mitgeschickt (keine privilegierte System-Ebene) — Claude behandelt diesen
+  Text bewusst wie jede andere Nutzereingabe und übernimmt ihn nicht
+  blind als verifizierten Fakt (in Tests beobachtet: Claude wies explizit
+  darauf hin, dass es die Herkunft dieses "vorherigen Gesprächs" nicht
+  verifizieren kann). Dasselbe gilt für "Als Plan speichern" bei einem
+  Chat, den Claude nie gesehen hat: das komplette Transkript wird dann als
+  Text an einen frischen Claude-Aufruf übergeben statt per `--resume`.
+- Welche Stufe geantwortet hat (`ollama-ram`/`ollama-gpu`/`claude`) wird pro
+  Nachricht mitgespeichert und in der UI angezeigt — Transparenz darüber,
+  wann tatsächlich ein Claude-Aufruf (und damit Nutzungskontingent)
+  verbraucht wurde.
+
 ## Bekannte Grenzen (v1)
 
 - Ein Neustart des Overlay-Servers beendet alle laufenden `claude`-pty-
