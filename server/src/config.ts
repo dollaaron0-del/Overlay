@@ -67,6 +67,11 @@ const schema = z.object({
   // Deploy scripts (git pull + install + build) can legitimately take a
   // while, hence the generous default.
   DEPLOY_TIMEOUT_MS: z.coerce.number().int().positive().default(10 * 60_000),
+  // Per-message timeout for the "Ideen"-chat (server/src/ideachat/), which
+  // invokes the real `claude` CLI headlessly (-p/--output-format json) with
+  // read-only tool access to the chosen project. A single turn can involve
+  // several tool calls (Read/Glob/Grep) before the model replies.
+  IDEA_CHAT_TIMEOUT_MS: z.coerce.number().int().positive().default(5 * 60_000),
   COOKIE_SECURE: z
     .string()
     .default("false")

@@ -278,6 +278,31 @@ einmalig gewählten Ziel-Projekts (Bilder zusätzlich als Datei in dessen
   akzeptiert, der Dateiname wird serverseitig aus Zeitstempel + Zufallswert
   erzeugt (nie aus Client-Eingaben) — Path-Traversal ist damit ausgeschlossen.
 
+## Ideen-Chat
+
+Die "Ideen"-App bespricht Verbesserungsideen für ein gewähltes Projekt mit
+der echten `claude`-CLI (derselbe Login/Abo wie im Terminal, per
+`-p`/`--output-format json` headless statt interaktiv aufgerufen) und kann
+das Ergebnis als Plan-Datei im Projekt ablegen. Sicherheitsrelevant:
+
+- Die KI läuft je Nachricht mit `--tools Read,Glob,Grep` und
+  `--permission-mode dontAsk`: sie darf Dateien im gewählten Projekt lesen,
+  um eine fundierte Einschätzung zu geben, hat aber **keinerlei Zugriff auf
+  Edit/Write/Bash** — sie kann das Projekt (oder sonst irgendwas auf dem
+  Server) nicht verändern, nur lesen. Das ist bewusst enger als das
+  Terminal, das mit vollen Rechten interaktiv läuft.
+- Die einzige Datei, die aus einem Ideen-Chat entsteht (`plans/<Zeitstempel>-
+  <slug>.md` im Zielprojekt), wird ausschließlich vom Overlay-Backend selbst
+  geschrieben (`server/src/ideachat/plan-writer.ts`), nie von der KI direkt —
+  der Dateiname wird aus einem sanitierten Zeitstempel und einem auf
+  `[a-z0-9-]` reduzierten Slug gebildet, nie aus rohen Client-Pfaden.
+- Chat-Verläufe (inkl. der `claude`-Session-ID zum Fortsetzen des
+  Gesprächs) liegen unverschlüsselt in `server/data/idea-chats.json` — im
+  selben Vertrauensniveau wie die übrigen Konfigurationsdateien in
+  `server/data/`, ohne eigene Verschlüsselung.
+- Jede Nachricht ist ein echter Aufruf gegen Claude und zählt gegen das
+  reguläre Nutzungskontingent/Abo des Nutzers, genau wie die Terminal-App.
+
 ## Bekannte Grenzen (v1)
 
 - Ein Neustart des Overlay-Servers beendet alle laufenden `claude`-pty-

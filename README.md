@@ -22,6 +22,15 @@ Text, Link und/oder Foto in Sekunden erfassen, landet als Eintrag in der
 `inbox.md` eines frei wählbaren Projekts (z.B. dem eigenen Second Brain) —
 das Ziel-Projekt ist serverseitig gespeichert, gilt also geräteübergreifend.
 
+Für Ideen, die tatsächlich Rückmeldung brauchen, gibt es zusätzlich die
+"Ideen"-App: eine Idee eintippen, ein Projekt auswählen, und die echte
+Claude Code CLI (derselbe Login wie im Terminal) liest sich lesend in das
+gewählte Projekt ein und schätzt ein, ob und wie sich die Idee umsetzen
+ließe — inklusive Rückfragen und einem ausformulierten Plan, den man per
+Knopfdruck als Datei im Projekt (`plans/`) ablegen und später am
+eigentlichen Rechner umsetzen (lassen) kann. Die KI kann dabei nichts am
+Projekt verändern, nur lesen.
+
 ## Struktur
 
 - `server/` — Node.js/TypeScript-Backend (Express, WebSocket, PM2-,

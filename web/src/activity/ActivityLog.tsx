@@ -18,6 +18,7 @@ const EVENT_LABEL: Record<AuditEventType, string> = {
   backup_triggered: "Backup manuell gestartet",
   unlock_failed: "Fehlgeschlagener Entsperr-Versuch",
   quick_capture: "Schnellnotiz gespeichert",
+  idea_plan_saved: "Ideen-Plan gespeichert",
 };
 
 function eventClass(entry: AuditEntry): string {

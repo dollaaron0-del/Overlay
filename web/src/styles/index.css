@@ -1606,3 +1606,164 @@ button.active {
   opacity: 0.5;
   cursor: default;
 }
+
+/* --- Ideen-Chat --- */
+
+.ideachat-app {
+  padding: 1.25rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+  height: 100%;
+}
+
+.ideachat-chat-view {
+  overflow-y: hidden;
+}
+
+.ideachat-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ideachat-header h2 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ideachat-new-button {
+  margin-left: auto;
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  font-weight: 600;
+}
+
+.ideachat-back-button {
+  background: var(--c-surface-2);
+  font-size: 0.9rem;
+}
+
+.ideachat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  overflow-y: auto;
+}
+
+.ideachat-list-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding: 0.85rem 1rem;
+  text-align: left;
+}
+
+.ideachat-list-item-title {
+  font-size: 1rem;
+}
+
+.ideachat-list-item-meta {
+  font-size: 0.8rem;
+  color: var(--c-text-3);
+}
+
+.ideachat-project-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.ideachat-project-picker button {
+  padding: 0.9rem 1rem;
+  font-size: 1rem;
+  text-align: left;
+}
+
+.ideachat-textarea {
+  width: 100%;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  color: var(--c-text);
+  font-size: 1.05rem;
+  font-family: inherit;
+  padding: 0.9rem 1rem;
+  resize: vertical;
+}
+
+.ideachat-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+}
+
+.ideachat-message {
+  max-width: 85%;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  font-size: 0.98rem;
+}
+
+.ideachat-message p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.ideachat-message-user {
+  align-self: flex-end;
+  background: var(--c-accent);
+  color: #fff;
+}
+
+.ideachat-message-assistant {
+  align-self: flex-start;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+}
+
+.ideachat-message-pending {
+  opacity: 0.7;
+}
+
+.ideachat-save-plan-button {
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border-strong);
+  font-size: 0.9rem;
+  align-self: flex-start;
+}
+
+.ideachat-input-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+
+.ideachat-input-row .ideachat-textarea {
+  flex: 1;
+}
+
+.ideachat-send-button {
+  padding: 0.9rem 1.1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  white-space: nowrap;
+}
+
+.ideachat-send-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

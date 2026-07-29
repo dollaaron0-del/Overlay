@@ -3,6 +3,7 @@ import { SecurityDashboard } from "../security/SecurityDashboard";
 import { ActivityLog } from "../activity/ActivityLog";
 import { SettingsApp } from "../settings/SettingsApp";
 import { QuickCaptureApp } from "../quickcapture/QuickCaptureApp";
+import { IdeaChatApp } from "../ideachat/IdeaChatApp";
 
 /**
  * Static, always-present apps (as opposed to project apps, which are
@@ -15,6 +16,7 @@ export const STATIC_APPS: AppDef[] = [
   { id: "security", title: "Sicherheit", icon: "🛡", render: () => <SecurityDashboard /> },
   { id: "activity", title: "Aktivität", icon: "📋", render: () => <ActivityLog /> },
   { id: "quickcapture", title: "Schnellnotiz", icon: "📝", render: () => <QuickCaptureApp /> },
+  { id: "ideachat", title: "Ideen", icon: "💡", render: () => <IdeaChatApp /> },
   { id: "settings", title: "Einstellungen", icon: "⚙️", render: () => <SettingsApp /> },
 ];
 

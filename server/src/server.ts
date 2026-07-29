@@ -13,6 +13,7 @@ import { backupRouter } from "./backup/backup.routes.js";
 import { systemRouter } from "./system.routes.js";
 import { auditRouter } from "./audit/audit.routes.js";
 import { quickCaptureRouter } from "./quickcapture/quickcapture.routes.js";
+import { ideaChatRouter } from "./ideachat/ideachat.routes.js";
 import { apiRateLimiter } from "./rate-limit.js";
 
 // Quick-capture photos arrive as base64 JSON (~33% larger than the raw
@@ -79,6 +80,7 @@ export function createApp() {
   protectedApi.use("/backup", backupRouter);
   protectedApi.use("/system", systemRouter);
   protectedApi.use("/audit", auditRouter);
+  protectedApi.use("/idea-chats", ideaChatRouter);
   app.use("/api", protectedApi);
 
   if (config.isProduction) {
