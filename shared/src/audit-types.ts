@@ -10,7 +10,8 @@ export type AuditEventType =
   | "project_deployed"
   | "scan_triggered"
   | "backup_triggered"
-  | "unlock_failed";
+  | "unlock_failed"
+  | "quick_capture";
 
 export interface AuditEntry {
   timestamp: string; // ISO

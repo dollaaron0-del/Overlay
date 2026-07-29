@@ -2,6 +2,7 @@ import type { AppDef } from "./types";
 import { SecurityDashboard } from "../security/SecurityDashboard";
 import { ActivityLog } from "../activity/ActivityLog";
 import { SettingsApp } from "../settings/SettingsApp";
+import { QuickCaptureApp } from "../quickcapture/QuickCaptureApp";
 
 /**
  * Static, always-present apps (as opposed to project apps, which are
@@ -13,6 +14,7 @@ import { SettingsApp } from "../settings/SettingsApp";
 export const STATIC_APPS: AppDef[] = [
   { id: "security", title: "Sicherheit", icon: "🛡", render: () => <SecurityDashboard /> },
   { id: "activity", title: "Aktivität", icon: "📋", render: () => <ActivityLog /> },
+  { id: "quickcapture", title: "Schnellnotiz", icon: "📝", render: () => <QuickCaptureApp /> },
   { id: "settings", title: "Einstellungen", icon: "⚙️", render: () => <SettingsApp /> },
 ];
 

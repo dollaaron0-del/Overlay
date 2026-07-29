@@ -12,7 +12,13 @@ import { securityRouter } from "./security/security.routes.js";
 import { backupRouter } from "./backup/backup.routes.js";
 import { systemRouter } from "./system.routes.js";
 import { auditRouter } from "./audit/audit.routes.js";
+import { quickCaptureRouter } from "./quickcapture/quickcapture.routes.js";
 import { apiRateLimiter } from "./rate-limit.js";
+
+// Quick-capture photos arrive as base64 JSON (~33% larger than the raw
+// file) — comfortably covers a real phone photo without raising the body
+// limit for every other endpoint.
+const QUICK_CAPTURE_BODY_LIMIT = "15mb";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,7 +53,6 @@ export function createApp() {
     }),
   );
 
-  app.use(express.json());
   app.use("/api", apiRateLimiter);
 
   // Intentionally unauthenticated (a healthcheck pinger has no session), and
@@ -56,6 +61,13 @@ export function createApp() {
     res.json({ status: "ok", uptimeSeconds: Math.floor(process.uptime()) });
   });
 
+  // Own, larger body-size limit for quick-capture photos — must be
+  // registered (and consume the request body) before the default-limit
+  // express.json() below, since only the first body parser a request
+  // reaches ever gets to read the stream.
+  app.use("/api/quick-capture", express.json({ limit: QUICK_CAPTURE_BODY_LIMIT }), requireAuth, quickCaptureRouter);
+
+  app.use(express.json());
   app.use("/api", authRouter);
 
   const protectedApi = express.Router();

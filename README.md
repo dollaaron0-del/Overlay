@@ -17,6 +17,11 @@ LLM-Triage über ein lokal laufendes Ollama-Modell, sichtbar in der
 Aktivitätsprotokoll runden den Serverbetrieb ab. Optional lässt sich
 zusätzlich echtes 2FA (Authelia + Caddy) vorschalten.
 
+Für unterwegs (z.B. vom iPhone) gibt es eine eigene "Schnellnotiz"-App:
+Text, Link und/oder Foto in Sekunden erfassen, landet als Eintrag in der
+`inbox.md` eines frei wählbaren Projekts (z.B. dem eigenen Second Brain) —
+das Ziel-Projekt ist serverseitig gespeichert, gilt also geräteübergreifend.
+
 ## Struktur
 
 - `server/` — Node.js/TypeScript-Backend (Express, WebSocket, PM2-,
