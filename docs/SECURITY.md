@@ -296,12 +296,21 @@ das Ergebnis als Plan-Datei im Projekt ablegen. Sicherheitsrelevant:
   geschrieben (`server/src/ideachat/plan-writer.ts`), nie von der KI direkt —
   der Dateiname wird aus einem sanitierten Zeitstempel und einem auf
   `[a-z0-9-]` reduzierten Slug gebildet, nie aus rohen Client-Pfaden.
+- "Als Plan speichern" schickt dafür eine zusätzliche Nachricht über
+  `--resume` an dieselbe `claude`-Session (bittet um eine strukturierte
+  Zusammenfassung des *gesamten* bisherigen Gesprächs statt nur der letzten
+  Antwort) — ebenfalls mit den oben genannten Read-only-Rechten, also ein
+  weiterer regulärer Nutzungs-Aufruf, kein privilegierter Sonderpfad.
 - Chat-Verläufe (inkl. der `claude`-Session-ID zum Fortsetzen des
   Gesprächs) liegen unverschlüsselt in `server/data/idea-chats.json` — im
   selben Vertrauensniveau wie die übrigen Konfigurationsdateien in
   `server/data/`, ohne eigene Verschlüsselung.
-- Jede Nachricht ist ein echter Aufruf gegen Claude und zählt gegen das
-  reguläre Nutzungskontingent/Abo des Nutzers, genau wie die Terminal-App.
+- Jede Nachricht (inkl. der Zusammenfassung beim Plan-Speichern) ist ein
+  echter Aufruf gegen Claude und zählt gegen das reguläre
+  Nutzungskontingent/Abo des Nutzers, genau wie die Terminal-App.
+- Der "Pläne"-Tab im Projekt-Workspace liest die Plan-Dateien über dieselbe
+  bereits vorhandene, rein lesende Datei-API (`/api/projects/:id/tree`,
+  `/api/projects/:id/file`) wie der "Dateien"-Tab — keine neue Angriffsfläche.
 
 ## Bekannte Grenzen (v1)
 

@@ -26,10 +26,13 @@ Für Ideen, die tatsächlich Rückmeldung brauchen, gibt es zusätzlich die
 "Ideen"-App: eine Idee eintippen, ein Projekt auswählen, und die echte
 Claude Code CLI (derselbe Login wie im Terminal) liest sich lesend in das
 gewählte Projekt ein und schätzt ein, ob und wie sich die Idee umsetzen
-ließe — inklusive Rückfragen und einem ausformulierten Plan, den man per
-Knopfdruck als Datei im Projekt (`plans/`) ablegen und später am
-eigentlichen Rechner umsetzen (lassen) kann. Die KI kann dabei nichts am
-Projekt verändern, nur lesen.
+ließe — inklusive Rückfragen. Ist man sich einig, fasst "Als Plan
+speichern" das *gesamte* Gespräch (nicht nur die letzte Antwort) zu einem
+strukturierten, umsetzungsfertigen Plan zusammen und legt ihn als Datei im
+Projekt (`plans/`) ab. Die KI kann dabei nichts am Projekt verändern, nur
+lesen. Jedes Projekt hat dafür im Dashboard einen eigenen "Pläne"-Tab
+(neben Terminal/Logs/Dateien), der alle so gespeicherten Pläne auflistet —
+später am eigentlichen Rechner reicht dann "setz das aus plans/... um".
 
 ## Struktur
 

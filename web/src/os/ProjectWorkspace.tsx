@@ -6,8 +6,9 @@ import { TerminalPanel } from "../terminal/TerminalPanel";
 import { LogPanel } from "../logs/LogPanel";
 import { FileTree } from "../files/FileTree";
 import { FileViewer } from "../files/FileViewer";
+import { PlansTab } from "./PlansTab";
 
-type Tab = "terminal" | "logs" | "files";
+type Tab = "terminal" | "logs" | "files" | "plans";
 
 const ICON_PRESETS = ["📁", "🚀", "💻", "🌐", "🔧", "📦", "🗂", "⚙️", "📊", "🔒", "🎨", "🛠", "📡", "🧩", "☁️", "🐳", "🔥", "📈"];
 
@@ -126,6 +127,9 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
         <button className={tab === "files" ? "active" : ""} onClick={() => setTab("files")}>
           Dateien
         </button>
+        <button className={tab === "plans" ? "active" : ""} onClick={() => setTab("plans")}>
+          Pläne
+        </button>
       </nav>
       <div className="tab-content">
         {tab === "terminal" && <TerminalPanel key={project.id} projectId={project.id} />}
@@ -136,6 +140,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
             <FileViewer projectId={project.id} path={selectedFile} />
           </div>
         )}
+        {tab === "plans" && <PlansTab key={project.id} projectId={project.id} />}
       </div>
     </div>
   );

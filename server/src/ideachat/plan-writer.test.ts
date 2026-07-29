@@ -66,28 +66,48 @@ test("slugify produces a safe, lowercase, dash-separated slug", () => {
   assert.equal(slugify(""), "idee");
 });
 
-test("writes the last assistant reply as a new markdown file under plans/", async () => {
+// Stands in for the real `claude` CLI call — tests must not spend real API
+// usage, and must verify the synthesis prompt is sent with the chat's own
+// session id via --resume rather than the transcript being reassembled here.
+function stubSynthesize(reply: string) {
+  const calls: Array<{ message: string; cwd: string; sessionId: string | null }> = [];
+  const fn = async (message: string, cwd: string, sessionId: string | null) => {
+    calls.push({ message, cwd, sessionId });
+    return { sessionId: sessionId ?? "new-session", reply };
+  };
+  return Object.assign(fn, { calls });
+}
+
+test("asks the model to synthesize the whole chat (via --resume) and writes the result under plans/", async () => {
   const chat = makeChat();
-  const { filename, relativePath } = await writeIdeaPlan(project, chat);
+  const synth = stubSynthesize("1) Ausgangsidee: Dark Mode\n2) Ansatz: CSS-Variablen\n3) Schritte: ...\n4) Offene Fragen: keine");
+  const { filename, relativePath } = await writeIdeaPlan(project, chat, synth);
   assert.match(filename, /\.md$/);
   assert.equal(relativePath, `plans/${filename}`);
 
+  assert.equal(synth.calls.length, 1);
+  assert.equal(synth.calls[0].sessionId, "sess-1");
+  assert.equal(synth.calls[0].cwd, path.join(appsRoot, "demo-app"));
+  assert.match(synth.calls[0].message, /Fasse das gesamte bisherige Gespräch/);
+
   const content = await fs.readFile(path.join(appsRoot, "demo-app", "plans", filename), "utf8");
   assert.match(content, /# Ideenplan: Dark Mode einbauen\?/);
-  assert.match(content, /Sollten wir Dark Mode einbauen\?/);
-  assert.match(content, /Hier ist ein Plan:/);
+  assert.match(content, /Ausgangsidee: Dark Mode/);
 });
 
-test("throws when the chat has no assistant reply yet", async () => {
+test("throws when the chat has no assistant reply yet, without calling the model", async () => {
   const chat = makeChat({ messages: [{ role: "user", text: "Nur eine Frage", at: new Date().toISOString() }] });
-  await assert.rejects(() => writeIdeaPlan(project, chat), /noch keine Antwort/);
+  const synth = stubSynthesize("sollte nie aufgerufen werden");
+  await assert.rejects(() => writeIdeaPlan(project, chat, synth), /noch keine Antwort/);
+  assert.equal(synth.calls.length, 0);
 });
 
 test("writing twice does not overwrite the previous plan file", async () => {
   const chat = makeChat();
-  const first = await writeIdeaPlan(project, chat);
+  const synth = stubSynthesize("Erster Plan");
+  const first = await writeIdeaPlan(project, chat, synth);
   await new Promise((r) => setTimeout(r, 5));
-  const second = await writeIdeaPlan(project, { ...chat, messages: [...chat.messages, { role: "assistant", text: "Zweite Antwort", at: new Date().toISOString() }] });
+  const second = await writeIdeaPlan(project, chat, stubSynthesize("Zweiter Plan"));
   assert.notEqual(first.filename, second.filename);
 
   const plansDir = path.join(appsRoot, "demo-app", "plans");
