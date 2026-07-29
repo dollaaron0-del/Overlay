@@ -1,10 +1,12 @@
 export function Dock({
   onSearch,
   onNotifications,
+  onControlCenter,
   hasAlerts,
 }: {
   onSearch: () => void;
   onNotifications: () => void;
+  onControlCenter: () => void;
   hasAlerts: boolean;
 }) {
   return (
@@ -19,6 +21,10 @@ export function Dock({
           {hasAlerts && <span className="os-topbar-badge" />}
         </span>
         <span className="os-dock-label">Aktivität</span>
+      </button>
+      <button className="os-dock-button" onClick={onControlCenter} aria-label="Kontrollzentrum">
+        <span className="os-dock-icon">🎛</span>
+        <span className="os-dock-label">Steuerung</span>
       </button>
     </nav>
   );

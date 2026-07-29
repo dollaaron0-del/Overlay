@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AuditEntry, AuditEventType } from "@overlay/shared";
 import { api } from "../api/client";
 import { formatTimestamp } from "../format";
+import { markActivityViewed } from "../os/activity-badge";
 
 const EVENT_LABEL: Record<AuditEventType, string> = {
   login: "Login",
@@ -13,10 +14,13 @@ const EVENT_LABEL: Record<AuditEventType, string> = {
   project_stop: "Projekt gestoppt",
   project_restart: "Projekt neu gestartet",
   project_deployed: "Projekt deployt",
+  scan_triggered: "Sicherheits-Scan manuell gestartet",
+  backup_triggered: "Backup manuell gestartet",
+  unlock_failed: "Fehlgeschlagener Entsperr-Versuch",
 };
 
 function eventClass(entry: AuditEntry): string {
-  if (entry.type === "login_failed") return "activity-event-warn";
+  if (entry.type === "login_failed" || entry.type === "unlock_failed") return "activity-event-warn";
   if (entry.type === "project_deployed" && entry.detail?.includes("(failed)")) return "activity-event-warn";
   return "activity-event-normal";
 }
@@ -30,6 +34,7 @@ export function ActivityLog() {
       .get<AuditEntry[]>("/api/audit")
       .then(setEntries)
       .catch(() => setEntries([]));
+    markActivityViewed();
   }, []);
 
   const filtered = (entries ?? []).filter((entry) => {

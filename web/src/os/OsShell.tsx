@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useProjectsStatus } from "../layout/useProjectsStatus";
+import { api, ApiError } from "../api/client";
 import { TopBar } from "./TopBar";
 import { HomeScreen } from "./HomeScreen";
 import { Dock } from "./Dock";
 import { Spotlight, type SpotlightItem } from "./Spotlight";
 import { NotificationCenter } from "./NotificationCenter";
+import { ControlCenter } from "./ControlCenter";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { STATIC_APPS, getStaticApp } from "./apps";
 import { useAlertStatus } from "./useAlertStatus";
@@ -17,6 +19,7 @@ export function OsShell() {
   const [open, setOpen] = useState<OpenTarget>(null);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [controlCenterOpen, setControlCenterOpen] = useState(false);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -26,6 +29,7 @@ export function OsShell() {
       } else if (e.key === "Escape") {
         setSpotlightOpen(false);
         setNotificationsOpen(false);
+        setControlCenterOpen(false);
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -36,18 +40,58 @@ export function OsShell() {
   const openProject = (projectId: string) => setOpen({ kind: "project", projectId });
   const openStaticApp = (appId: string) => setOpen({ kind: "static", appId });
 
-  const spotlightItems: SpotlightItem[] = useMemo(
-    () => [
-      ...projects.map((p) => ({ id: `project:${p.id}`, title: p.dirName, icon: "📁" })),
-      ...STATIC_APPS.map((a) => ({ id: `app:${a.id}`, title: a.title, icon: a.icon })),
-    ],
-    [projects],
-  );
+  const spotlightItems: SpotlightItem[] = useMemo(() => {
+    const navItems: SpotlightItem[] = [
+      ...projects.map((p) => ({ id: `project:${p.id}`, title: p.dirName, icon: p.icon || "📁", kind: "navigate" as const })),
+      ...STATIC_APPS.map((a) => ({ id: `app:${a.id}`, title: a.title, icon: a.icon, kind: "navigate" as const })),
+    ];
+    const actionItems: SpotlightItem[] = [
+      { id: "action:scan", title: "Scan jetzt starten", icon: "🛡", kind: "action" },
+      { id: "action:backup", title: "Backup jetzt starten", icon: "💾", kind: "action" },
+      ...projects.flatMap((p) => [
+        { id: `action:project:start:${p.id}`, title: `${p.dirName} starten`, icon: "▶️", kind: "action" as const },
+        { id: `action:project:stop:${p.id}`, title: `${p.dirName} stoppen`, icon: "⏹", kind: "action" as const },
+        { id: `action:project:restart:${p.id}`, title: `${p.dirName} neu starten`, icon: "🔁", kind: "action" as const },
+      ]),
+    ];
+    return [...navItems, ...actionItems];
+  }, [projects]);
 
-  const selectSpotlightItem = (item: SpotlightItem) => {
-    setSpotlightOpen(false);
-    if (item.id.startsWith("project:")) openProject(item.id.slice("project:".length));
-    else openStaticApp(item.id.slice("app:".length));
+  const projectActionPattern = /^action:project:(start|stop|restart):(.+)$/;
+
+  const selectSpotlightItem = async (item: SpotlightItem): Promise<string | undefined> => {
+    if (item.kind === "navigate") {
+      setSpotlightOpen(false);
+      if (item.id.startsWith("project:")) openProject(item.id.slice("project:".length));
+      else openStaticApp(item.id.slice("app:".length));
+      return undefined;
+    }
+
+    if (item.id === "action:scan") {
+      try {
+        await api.post("/api/security/scans/run");
+        return "Scan gestartet — Ergebnis erscheint in der Sicherheit-App.";
+      } catch (err) {
+        return `Fehler: ${err instanceof ApiError ? (err.message ?? "unbekannt") : "unbekannt"}`;
+      }
+    }
+    if (item.id === "action:backup") {
+      try {
+        await api.post("/api/backup/run");
+        return "Backup gestartet — Status erscheint im Backups-Widget.";
+      } catch (err) {
+        if (err instanceof ApiError && err.message === "not_configured") return "Nicht konfiguriert (RESTIC_REPOSITORY leer).";
+        if (err instanceof ApiError && err.message === "already_running") return "Läuft bereits.";
+        return `Fehler: ${err instanceof ApiError ? (err.message ?? "unbekannt") : "unbekannt"}`;
+      }
+    }
+    const projectMatch = projectActionPattern.exec(item.id);
+    if (projectMatch) {
+      const [, action, projectId] = projectMatch;
+      await api.post(`/api/projects/${projectId}/${action}`);
+      setSpotlightOpen(false);
+    }
+    return undefined;
   };
 
   let title = "Overlay";
@@ -80,6 +124,7 @@ export function OsShell() {
         onBack={goHome}
         onSearch={() => setSpotlightOpen(true)}
         onNotifications={() => setNotificationsOpen((v) => !v)}
+        onControlCenter={() => setControlCenterOpen((v) => !v)}
         hasAlerts={hasAlerts}
       />
       <main className="os-main">{content}</main>
@@ -87,6 +132,7 @@ export function OsShell() {
         <Dock
           onSearch={() => setSpotlightOpen(true)}
           onNotifications={() => setNotificationsOpen((v) => !v)}
+          onControlCenter={() => setControlCenterOpen((v) => !v)}
           hasAlerts={hasAlerts}
         />
       )}
@@ -96,6 +142,7 @@ export function OsShell() {
       {notificationsOpen && (
         <NotificationCenter onClose={() => setNotificationsOpen(false)} onOpenApp={openStaticApp} />
       )}
+      {controlCenterOpen && <ControlCenter onClose={() => setControlCenterOpen(false)} />}
     </div>
   );
 }

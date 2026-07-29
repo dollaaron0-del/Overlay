@@ -9,6 +9,8 @@ import { FileViewer } from "../files/FileViewer";
 
 type Tab = "terminal" | "logs" | "files";
 
+const ICON_PRESETS = ["📁", "🚀", "💻", "🌐", "🔧", "📦", "🗂", "⚙️", "📊", "🔒", "🎨", "🛠", "📡", "🧩", "☁️", "🐳", "🔥", "📈"];
+
 const STATUS_LABEL: Record<ProjectSummary["status"], string> = {
   online: "läuft",
   stopped: "gestoppt",
@@ -28,8 +30,14 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
   const runAction = (action: "start" | "stop" | "restart") => api.post(`/api/projects/${project.id}/${action}`);
+
+  const setIcon = async (icon: string | null) => {
+    await api.patch(`/api/projects/${project.id}`, { icon });
+    setIconPickerOpen(false);
+  };
 
   const removeProject = async () => {
     if (!confirm(`"${project.dirName}" aus Overlay entfernen? Die Dateien und der Prozess bleiben erhalten.`)) {
@@ -55,9 +63,29 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
       <div className="project-workspace-header">
         <div className="project-workspace-title">
           <span className={`status-dot status-${project.status}`} />
+          <button
+            className="project-icon-button"
+            onClick={() => setIconPickerOpen((v) => !v)}
+            title="Icon ändern"
+            aria-label="Icon ändern"
+          >
+            {project.icon || "📁"}
+          </button>
           <span className="project-workspace-name">{project.dirName}</span>
           <span className="project-status-label">{STATUS_LABEL[project.status]}</span>
         </div>
+        {iconPickerOpen && (
+          <div className="project-icon-picker">
+            {ICON_PRESETS.map((icon) => (
+              <button key={icon} onClick={() => setIcon(icon)} className="project-icon-picker-option">
+                {icon}
+              </button>
+            ))}
+            <button onClick={() => setIcon(null)} className="project-icon-picker-reset">
+              Zurücksetzen
+            </button>
+          </div>
+        )}
         {project.status === "online" && (project.cpuPercent !== null || project.memoryBytes !== null) && (
           <div className="project-resource-usage">
             {project.cpuPercent !== null && <span>{project.cpuPercent}% CPU</span>}

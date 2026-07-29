@@ -27,11 +27,24 @@ Gleichzeitig soll das Dashboard auch von unterwegs erreichbar sein.
    Konfigurationsaufwand als die ersten beiden Schichten), aber die
    naheliegende nächste Härtungsstufe, seit sensible Daten gehostet werden:
    selbst ein geleaktes Overlay-Passwort reicht dann allein nicht mehr.
+4. **Geräte-Layer (optional): automatische Sperre nach Inaktivität.**
+   Schützt gegen ein anderes Szenario als die drei Schichten oben — nicht
+   unbefugten *Netzwerk*-Zugriff, sondern ein physisch zugängliches,
+   bereits entsperrtes iPad. Nach einstellbarer Inaktivität (Einstellungen,
+   Standard 5 Minuten, "Nie" abwählbar) verlangt ein Sperrbildschirm das
+   Passwort erneut, bevor die Oberfläche wieder bedienbar ist. Rein
+   client-seitig: die eigentliche Session/Cookie bleibt währenddessen gültig,
+   laufende Terminal-Sessions oder WebSocket-Verbindungen werden nicht
+   unterbrochen — es ist also kein Ersatz für Login/2FA, sondern eine
+   zusätzliche Hürde gegen "kurz das Zimmer verlassen, Gerät lag entsperrt
+   herum".
 
 Alle Schichten sind bewusst redundant: Tailscale schützt vor Netzwerk-
 Exposure, der App-Login vor unbefugtem Zugriff durch andere Tailnet-Mitglieder
 oder falls der Bind-Adresse-Schutz versehentlich umgangen wird, Authelia
-zusätzlich vor einem kompromittierten/erratenen Overlay-Passwort allein.
+zusätzlich vor einem kompromittierten/erratenen Overlay-Passwort allein, die
+automatische Sperre vor einem physisch zugänglichen, bereits eingeloggten
+Gerät.
 
 ## Angriffsflächen im Detail
 
@@ -110,6 +123,16 @@ nur die fertigen JSON-Reports, die der Scan-Dienst nach dem Schreiben per
 Webserver-Prozess (z.B. über eine noch unbekannte Lücke in einer der
 gehosteten Apps) hätte damit keinen direkten Root-Zugriff über den
 Scan-Mechanismus.
+
+**Manueller Trigger ("Jetzt scannen") respektiert dieselbe Trennung:** Der
+Knopf im Kontrollzentrum lässt den Overlay-Webserver nicht selbst scannen
+(das würde nur einen unprivilegierten Teil-Scan liefern, siehe oben) —
+stattdessen bittet er systemd per `sudo systemctl start
+overlay-security-scan.service`, den echten Dienst zu starten, erlaubt über
+eine `sudoers`-Regel, die *ausschließlich* diesen einen Befehl freigibt
+(siehe `docs/DEPLOYMENT.md` Abschnitt 7.5). Der manuelle Backup-Trigger
+("Jetzt sichern") braucht diese Einschränkung nicht, da Backups ohnehin
+bereits als derselbe unprivilegierte Benutzer laufen.
 
 **Warum "voller Scan" statt "nur App-Verzeichnisse":** Auf Wunsch des
 Betreibers bewusst so gewählt — der Server ist ein umfunktionierter

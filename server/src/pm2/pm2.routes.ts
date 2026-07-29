@@ -29,15 +29,23 @@ pm2Router.post("/:id/start", async (req, res) => {
     res.status(404).json({ error: "not_found" });
     return;
   }
-  const [script, ...args] = project.startScript.split(" ");
-  await startProcess({
-    name: project.pm2Name,
-    script,
-    args,
-    cwd: resolveProjectDir(project),
-  });
-  await appendAuditEntry({ type: "project_start", detail: project.id });
-  res.json({ ok: true });
+  try {
+    const [script, ...args] = project.startScript.split(" ");
+    await startProcess({
+      name: project.pm2Name,
+      script,
+      args,
+      cwd: resolveProjectDir(project),
+    });
+    await appendAuditEntry({ type: "project_start", detail: project.id });
+    res.json({ ok: true });
+  } catch (err) {
+    // A rejected PM2 callback (e.g. a stale/conflicting process entry) must
+    // never bubble up as an unhandled rejection here — Express 4 doesn't
+    // catch async handler rejections itself, so without this it would take
+    // down the whole server process, not just this one request.
+    res.status(500).json({ error: "pm2_error", message: (err as Error).message });
+  }
 });
 
 pm2Router.post("/:id/stop", async (req, res) => {
@@ -46,9 +54,13 @@ pm2Router.post("/:id/stop", async (req, res) => {
     res.status(404).json({ error: "not_found" });
     return;
   }
-  await stopProcess(project.pm2Name);
-  await appendAuditEntry({ type: "project_stop", detail: project.id });
-  res.json({ ok: true });
+  try {
+    await stopProcess(project.pm2Name);
+    await appendAuditEntry({ type: "project_stop", detail: project.id });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "pm2_error", message: (err as Error).message });
+  }
 });
 
 pm2Router.post("/:id/restart", async (req, res) => {
@@ -57,7 +69,11 @@ pm2Router.post("/:id/restart", async (req, res) => {
     res.status(404).json({ error: "not_found" });
     return;
   }
-  await restartProcess(project.pm2Name);
-  await appendAuditEntry({ type: "project_restart", detail: project.id });
-  res.json({ ok: true });
+  try {
+    await restartProcess(project.pm2Name);
+    await appendAuditEntry({ type: "project_restart", detail: project.id });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "pm2_error", message: (err as Error).message });
+  }
 });

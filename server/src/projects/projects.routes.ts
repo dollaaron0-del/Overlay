@@ -8,6 +8,7 @@ import {
   listProjects,
   removeProject,
   resolveProjectDir,
+  updateProjectIcon,
 } from "./projects.registry.js";
 import { describeProcess, restartProcess, statusOf } from "../pm2/pm2.service.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
@@ -73,6 +74,28 @@ projectsRouter.delete("/:id", async (req, res) => {
   }
   await appendAuditEntry({ type: "project_removed", detail: req.params.id });
   res.json({ ok: true });
+});
+
+const updateProjectSchema = z.object({
+  // A single emoji can be multiple UTF-16 code units (skin tone/ZWJ
+  // sequences), so this caps on visual length loosely rather than exactly —
+  // generous enough for any real emoji, tight enough to block someone
+  // pasting a paragraph in here.
+  icon: z.string().max(16).nullable(),
+});
+
+projectsRouter.patch("/:id", async (req, res) => {
+  const parsed = updateProjectSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_request", details: parsed.error.issues });
+    return;
+  }
+  const updated = await updateProjectIcon(req.params.id, parsed.data.icon);
+  if (!updated) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  res.json(updated);
 });
 
 projectsRouter.post("/:id/deploy", async (req, res) => {

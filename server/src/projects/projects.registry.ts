@@ -117,6 +117,19 @@ export async function addProject(input: {
   return project;
 }
 
+/** Sets (or clears, with null) a project's custom home-screen icon. */
+export async function updateProjectIcon(id: string, icon: string | null): Promise<Project | undefined> {
+  const projects = await ensureLoaded();
+  const index = projects.findIndex((p) => p.id === id);
+  if (index === -1) return undefined;
+
+  const next = [...projects];
+  next[index] = { ...next[index], icon: icon ?? undefined };
+  await writeToDisk(next);
+  cache = next;
+  return next[index];
+}
+
 /** Subdirectories of APPS_ROOT that aren't registered as a project yet. */
 export async function listAvailableDirs(): Promise<string[]> {
   const projects = await ensureLoaded();

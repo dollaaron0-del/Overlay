@@ -307,6 +307,34 @@ Einrichtung:
 3. Leer lassen (Standard), um Push-Benachrichtigungen komplett zu
    deaktivieren — der Rest des Scans bleibt davon unberührt.
 
+### 7.5 Manueller Scan-Trigger ("Jetzt scannen") einrichten
+
+Das Dashboard bietet einen "Jetzt scannen"-Knopf (Kontrollzentrum). Da der
+Scan root-Rechte für vollen Dateisystemzugriff braucht und der
+Overlay-Webserver bewusst *nicht* als root läuft (siehe Abschnitt 1), kann
+dieser Knopf den Scan nicht einfach direkt ausführen — das würde entweder
+scheitern oder, schlimmer, einen unvollständigen Scan ohne Rechte auf
+geschützte Pfade liefern, ohne dass das im Dashboard sichtbar wäre. Stattdessen
+bittet der Knopf **systemd**, den echten (root-privilegierten) Scan-Dienst zu
+starten — über eine eng gefasste `sudoers`-Regel, die dem Overlay-Benutzer
+*ausschließlich* diesen einen Befehl erlaubt, sonst nichts:
+
+```
+# /etc/sudoers.d/overlay-security-scan (mit `visudo -f` anlegen, nicht direkt editieren!)
+overlay ALL=(root) NOPASSWD: /usr/bin/systemctl start overlay-security-scan.service
+```
+
+`overlay` durch den tatsächlichen Benutzernamen ersetzen, unter dem der
+Overlay-Webserver läuft (siehe Abschnitt 1). Ohne diese Regel liefert der
+"Jetzt scannen"-Knopf einen klaren Fehler im Dashboard (kein stiller
+Fehlschlag) — der nächtliche automatische Scan über den Timer (Abschnitt 7.2)
+funktioniert davon unabhängig auch ohne diese Regel weiter.
+
+Der Backup-Trigger ("Jetzt sichern") braucht dagegen **keine** sudoers-Regel:
+Backups laufen bereits als derselbe unprivilegierte Benutzer wie der
+Webserver selbst (siehe Abschnitt 8), das Dashboard kann sie direkt
+auslösen.
+
 ## 8. Nächtliche Backups (restic)
 
 Läuft als eigener systemd-Timer, unabhängig vom Security-Scan (Abschnitt 7).

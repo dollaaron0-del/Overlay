@@ -4,6 +4,20 @@ import { createApp } from "./server.js";
 import { attachWebSocketServer } from "./ws/ws.server.js";
 import { loadSessions } from "./auth/session.js";
 
+// Defense in depth: Express 4 does not catch a rejected promise thrown by an
+// async route handler on its own — without this, one unexpected rejection
+// (a flaky PM2 call, a transient fs error, anything not wrapped in its own
+// try/catch) would otherwise crash this entire process for every project
+// and every open terminal, not just fail the one request that triggered it.
+// Route handlers should still catch their own expected failure modes and
+// return a proper error response; this is only the last-resort net.
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err);
+});
+
 await loadSessions();
 
 const app = createApp();

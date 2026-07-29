@@ -148,3 +148,25 @@ test("addProject without a deployScript leaves it undefined", async () => {
   const project = await registry.getProject("app-no-deploy");
   assert.equal(project?.deployScript, undefined);
 });
+
+test("updateProjectIcon sets and clears a project's custom icon", async () => {
+  await fs.mkdir(path.join(appsRoot, "app-icon-test"), { recursive: true });
+  await registry.addProject({
+    id: "app-icon-test",
+    dirName: "app-icon-test",
+    pm2Name: "app-icon-test",
+    startScript: "npm start",
+  });
+
+  const updated = await registry.updateProjectIcon("app-icon-test", "🚀");
+  assert.equal(updated?.icon, "🚀");
+  assert.equal((await registry.getProject("app-icon-test"))?.icon, "🚀");
+
+  const cleared = await registry.updateProjectIcon("app-icon-test", null);
+  assert.equal(cleared?.icon, undefined);
+});
+
+test("updateProjectIcon on an unknown id returns undefined", async () => {
+  const result = await registry.updateProjectIcon("does-not-exist", "🚀");
+  assert.equal(result, undefined);
+});

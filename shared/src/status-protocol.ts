@@ -12,6 +12,8 @@ export interface ProjectSummary {
   memoryBytes: number | null;
   cpuPercent: number | null;
   hasDeployScript: boolean;
+  /** Custom home-screen icon (single emoji), if the user set one. */
+  icon?: string;
 }
 
 export type StatusServerMessage = {

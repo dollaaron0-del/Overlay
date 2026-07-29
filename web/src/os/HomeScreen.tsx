@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ProjectSummary } from "@overlay/shared";
 import { STATIC_APPS } from "./apps";
 import { AppIcon } from "./AppIcon";
+import { FolderIcon } from "./FolderIcon";
+import { FolderView } from "./FolderView";
 import { AddProjectForm } from "../layout/AddProjectForm";
 import { useHomescreenLayout } from "./homescreen-layout";
+import { useAppBadges } from "./useAppBadges";
 import { SystemStatsWidget } from "./widgets/SystemStatsWidget";
 import { SecurityWidget } from "./widgets/SecurityWidget";
 import { BackupWidget } from "./widgets/BackupWidget";
@@ -15,6 +18,10 @@ interface IconItem {
   icon: string;
   statusDot?: ProjectSummary["status"];
   kind: "project" | "app";
+}
+
+function isFolderId(id: string): boolean {
+  return id.startsWith("folder:");
 }
 
 export function HomeScreen({
@@ -29,15 +36,25 @@ export function HomeScreen({
   const [showAddForm, setShowAddForm] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [openFolderId, setOpenFolderId] = useState<string | null>(null);
 
   const items: IconItem[] = [
-    ...projects.map((p) => ({ id: `project:${p.id}`, title: p.dirName, icon: "📁", statusDot: p.status, kind: "project" as const })),
+    ...projects.map((p) => ({
+      id: `project:${p.id}`,
+      title: p.dirName,
+      icon: p.icon || "📁",
+      statusDot: p.status,
+      kind: "project" as const,
+    })),
     ...STATIC_APPS.map((a) => ({ id: `app:${a.id}`, title: a.title, icon: a.icon, kind: "app" as const })),
   ];
   const itemsById = new Map(items.map((item) => [item.id, item]));
 
-  const { visibleIds, hiddenIds, reorder, hide, unhide } = useHomescreenLayout(items.map((i) => i.id));
+  const { visibleIds, hiddenIds, folders, reorder, hide, unhide, groupIntoFolder, dissolveFolder, removeFromFolder } =
+    useHomescreenLayout(items.map((i) => i.id));
+  const foldersById = new Map(folders.map((f) => [f.id, f]));
+  const badges = useAppBadges();
 
   useEffect(() => {
     if (!draggingId) return;
@@ -59,10 +76,35 @@ export function HomeScreen({
     };
   }, [draggingId, reorder]);
 
-  const open = (item: IconItem) => {
-    if (item.kind === "project") onOpenProject(item.id.slice("project:".length));
-    else onOpenApp(item.id.slice("app:".length));
+  const openItem = (id: string) => {
+    const item = itemsById.get(id);
+    if (!item) return;
+    if (item.kind === "project") onOpenProject(id.slice("project:".length));
+    else onOpenApp(id.slice("app:".length));
   };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitEditMode = () => {
+    setEditMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const groupSelected = () => {
+    const name = window.prompt("Ordnername:", "Neuer Ordner");
+    if (!name || !name.trim()) return;
+    groupIntoFolder(name.trim(), [...selectedIds]);
+    setSelectedIds(new Set());
+  };
+
+  const openFolder = foldersById.get(openFolderId ?? "");
 
   return (
     <div className="home-screen">
@@ -77,16 +119,40 @@ export function HomeScreen({
 
       <div className="home-app-grid-header">
         {editMode ? (
-          <button className="home-edit-done-button" onClick={() => setEditMode(false)}>
-            Fertig
-          </button>
+          <>
+            {selectedIds.size >= 2 && (
+              <button className="home-group-button" onClick={groupSelected}>
+                In Ordner gruppieren ({selectedIds.size})
+              </button>
+            )}
+            <button className="home-edit-done-button" onClick={exitEditMode}>
+              Fertig
+            </button>
+          </>
         ) : (
           <span />
         )}
       </div>
 
-      <div className="home-app-grid" ref={gridRef}>
+      <div className="home-app-grid">
         {visibleIds.map((id) => {
+          if (isFolderId(id)) {
+            const folder = foldersById.get(id);
+            if (!folder) return null;
+            return (
+              <FolderIcon
+                key={id}
+                id={id}
+                name={folder.name}
+                previewIcons={folder.memberIds.map((m) => itemsById.get(m)?.icon ?? "❓")}
+                editMode={editMode}
+                onOpen={() => setOpenFolderId(id)}
+                onHide={() => hide(id)}
+                onLongPress={() => setEditMode(true)}
+                onDragStart={setDraggingId}
+              />
+            );
+          }
           const item = itemsById.get(id);
           if (!item) return null;
           return (
@@ -96,15 +162,28 @@ export function HomeScreen({
               icon={item.icon}
               label={item.title}
               statusDot={item.statusDot}
+              badge={badges[id]}
               editMode={editMode}
-              onClick={() => open(item)}
+              selected={selectedIds.has(id)}
+              onToggleSelect={() => toggleSelect(id)}
+              onClick={() => openItem(id)}
               onLongPress={() => setEditMode(true)}
               onHide={() => hide(id)}
               onDragStart={setDraggingId}
             />
           );
         })}
-        {!editMode && <AppIcon id="__add__" icon="➕" label="Hinzufügen" editMode={false} onClick={() => setShowAddForm(true)} onLongPress={() => undefined} onDragStart={() => undefined} />}
+        {!editMode && (
+          <AppIcon
+            id="__add__"
+            icon="➕"
+            label="Hinzufügen"
+            editMode={false}
+            onClick={() => setShowAddForm(true)}
+            onLongPress={() => undefined}
+            onDragStart={() => undefined}
+          />
+        )}
       </div>
 
       {editMode && hiddenIds.length > 0 && (
@@ -112,18 +191,39 @@ export function HomeScreen({
           <h3>Ausgeblendet</h3>
           <div className="home-app-grid">
             {hiddenIds.map((id) => {
-              const item = itemsById.get(id);
-              if (!item) return null;
+              const folder = isFolderId(id) ? foldersById.get(id) : undefined;
+              const label = folder ? folder.name : itemsById.get(id)?.title;
+              const icon = folder ? (folder.memberIds.map((m) => itemsById.get(m)?.icon ?? "❓")[0] ?? "🗂") : itemsById.get(id)?.icon;
+              if (!label) return null;
               return (
                 <button key={id} className="os-app-icon home-hidden-icon" onClick={() => unhide(id)}>
-                  <span className="os-app-icon-glyph">{item.icon}</span>
-                  <span className="os-app-icon-label">{item.title}</span>
+                  <span className="os-app-icon-glyph">{icon}</span>
+                  <span className="os-app-icon-label">{label}</span>
                   <span className="home-hidden-icon-restore">Wieder einblenden</span>
                 </button>
               );
             })}
           </div>
         </div>
+      )}
+
+      {openFolder && (
+        <FolderView
+          folderName={openFolder.name}
+          memberIds={openFolder.memberIds}
+          itemsById={itemsById}
+          editMode={editMode}
+          onOpenItem={(id) => {
+            setOpenFolderId(null);
+            openItem(id);
+          }}
+          onClose={() => setOpenFolderId(null)}
+          onRemoveMember={(memberId) => removeFromFolder(openFolder.id, memberId)}
+          onDissolve={() => {
+            dissolveFolder(openFolder.id);
+            setOpenFolderId(null);
+          }}
+        />
       )}
 
       {showAddForm && (

@@ -4,6 +4,7 @@ export function TopBar({
   onBack,
   onSearch,
   onNotifications,
+  onControlCenter,
   hasAlerts,
 }: {
   title: string;
@@ -11,6 +12,7 @@ export function TopBar({
   onBack: () => void;
   onSearch: () => void;
   onNotifications: () => void;
+  onControlCenter: () => void;
   hasAlerts: boolean;
 }) {
   return (
@@ -37,6 +39,14 @@ export function TopBar({
         >
           🔔
           {hasAlerts && <span className="os-topbar-badge" />}
+        </button>
+        <button
+          className="os-topbar-icon-button"
+          onClick={onControlCenter}
+          title="Kontrollzentrum"
+          aria-label="Kontrollzentrum"
+        >
+          🎛
         </button>
       </div>
     </header>
