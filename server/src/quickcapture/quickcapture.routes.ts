@@ -1,7 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
 import { getProject } from "../projects/projects.registry.js";
-import { getQuickCaptureTarget, setQuickCaptureTarget } from "./quickcapture-store.js";
+import {
+  getQuickCaptureTarget,
+  setQuickCaptureTarget,
+  getQuickCaptureObsidianMode,
+  setQuickCaptureObsidianMode,
+} from "./quickcapture-store.js";
 import { appendQuickCapture } from "./quickcapture.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
 
@@ -26,6 +31,23 @@ quickCaptureRouter.put("/target", async (req, res) => {
     return;
   }
   await setQuickCaptureTarget(parsed.data.projectId);
+  res.json({ ok: true });
+});
+
+quickCaptureRouter.get("/obsidian-mode", async (_req, res) => {
+  const obsidianMode = await getQuickCaptureObsidianMode();
+  res.json({ obsidianMode });
+});
+
+const setObsidianModeSchema = z.object({ obsidianMode: z.boolean() });
+
+quickCaptureRouter.put("/obsidian-mode", async (req, res) => {
+  const parsed = setObsidianModeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_request" });
+    return;
+  }
+  await setQuickCaptureObsidianMode(parsed.data.obsidianMode);
   res.json({ ok: true });
 });
 
@@ -64,7 +86,8 @@ quickCaptureRouter.post("/", async (req, res) => {
   }
 
   try {
-    await appendQuickCapture(project, { text, link, image });
+    const obsidianMode = await getQuickCaptureObsidianMode();
+    await appendQuickCapture(project, { text, link, image }, obsidianMode);
   } catch (err) {
     res.status(400).json({ error: "capture_failed", message: (err as Error).message });
     return;

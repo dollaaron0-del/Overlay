@@ -350,6 +350,76 @@ Anfrage weiter.
   Claude-Aufruf. Der Endpunkt liegt hinter derselben `requireAuth`-Middleware
   wie der Rest von `/api/idea-chats`, ist also nicht öffentlich einsehbar.
 
+## Obsidian-Integration
+
+Overlay parst/schreibt Obsidian-typische `.md`-Dateien (YAML-Frontmatter,
+`#tags`, `[[Wikilinks]]`) mit einem eigenen, minimalen, abhängigkeitsfreien
+Parser (`server/src/obsidian/obsidian-note.ts`) — bewusst keine
+YAML-/Markdown-Bibliothek als neue Abhängigkeit, gleiches Prinzip wie schon
+bei Bild-Uploads (Base64 statt `multer`). Sicherheitsrelevant:
+
+- Der Vault-Index (`server/src/obsidian/vault-index.ts`, Grundlage für den
+  "Obsidian"-Tab) scannt rekursiv nur `.md`-Dateien innerhalb des jeweiligen
+  Projektverzeichnisses; ein client-gelieferter Notiz-Pfad (`GET
+  /api/projects/:id/obsidian/note?path=...`) läuft durch dieselbe
+  `resolveSafePath`-Prüfung (inkl. Symlink-Escape-Check) wie die bestehende
+  Datei-API — keine neue Path-Traversal-Angriffsfläche.
+- Der Vault-Index ist rein lesend und wird pro Anfrage frisch aufgebaut
+  (kein persistenter Cache) — bei typischer Second-Brain-Größe unkritisch
+  für Performance, aber relevant fürs Bedrohungsmodell: es gibt keinen
+  Index-Zustand, der veralten oder manipuliert werden könnte.
+- Der Mini-Markdown-Renderer im Frontend (`web/src/obsidian/miniMarkdown.tsx`)
+  gibt React-Elemente zurück statt HTML-Strings zu bauen — kein
+  `dangerouslySetInnerHTML`, kein XSS-Risiko über Notizinhalte, selbst wenn
+  eine Notiz absichtlich präparierten Text enthält.
+- Der Obsidian-Modus der Schnellnotiz (atomare Notiz-Dateien statt
+  `inbox.md`-Anhängen) teilt sich dieselbe Bild-Validierung/Dateinamens-
+  Erzeugung wie der bisherige Modus (Whitelist an Bildtypen, Dateiname aus
+  Zeitstempel + Zufallswert) — siehe Abschnitt "Schnellnotiz" oben.
+- Das "In Obsidian öffnen"-Deeplink (`obsidian://open?...`) ist reines
+  URL-Scheme-Handling im Browser/Betriebssystem des Nutzers; Overlay selbst
+  spricht dabei keine Obsidian-Instanz an und braucht dafür keinen Zugriff.
+
+## OpenClaw-Integration (optional)
+
+Zwei unabhängige, jeweils standardmäßig deaktivierte Anbindungen an ein
+separat betriebenes [OpenClaw](https://openclaw.ai/)-Gateway:
+
+- **Ausgehender Webhook** (`server/src/openclaw/openclaw-webhook.ts`):
+  sendet bei kritischen Scan-Funden, Backup-Fehlern und gespeicherten
+  Ideenplänen eine einfache `{"text": "..."}`-Payload an
+  `OPENCLAW_WEBHOOK_URL` (optional mit `Authorization: Bearer
+  OPENCLAW_WEBHOOK_SECRET`). Ein fehlgeschlagener Versand wird abgefangen
+  und nur geloggt — er lässt den auslösenden Vorgang (Scan/Backup/
+  Plan-Speicherung) selbst nie fehlschlagen. Leere `OPENCLAW_WEBHOOK_URL`
+  deaktiviert den Versand vollständig, ganz ohne Netzwerkzugriff.
+  **Nicht gegen OpenClaws Primärdokumentation verifiziert** (beim Schreiben
+  dieser Integration per automatisiertem Abruf nicht erreichbar, HTTP 403)
+  — Payload-Format/Auth-Header stammen aus Sekundärquellen; vor
+  produktivem Einsatz gegen die eigene OpenClaw-Instanz testen.
+- **Eingehende Automatisierungs-API** (`server/src/automation/`): eine
+  eigene, **token-basierte** Authentifizierung
+  (`Authorization: Bearer AUTOMATION_TOKEN`), bewusst getrennt vom
+  Session-Cookie-Login der Browser-UI — ein Skript/Gateway hat keine
+  Browser-Session. Der Vergleich läuft zeitkonstant
+  (`crypto.timingSafeEqual`, gleiches Muster wie die Session-Signatur-
+  Prüfung in `auth/session.ts`). Leerer `AUTOMATION_TOKEN` lässt den
+  gesamten `/api/automation/*`-Router durchgehend **404** statt 401
+  liefern — die Existenz des Routers wird also gar nicht erst offengelegt,
+  solange niemand ihn bewusst aktiviert. Jede Aktion (Start/Stop/Restart/
+  Deploy/Backup-Trigger/Scan-Trigger) ruft exakt dieselben Service-
+  Funktionen wie das reguläre Dashboard auf und landet mit
+  `actor: "automation"` im Aktivitätsprotokoll — unterscheidbar von
+  Aktionen des eingeloggten Menschen, aber mit denselben Rechten/Grenzen
+  (der Security-Scan-Trigger braucht z.B. weiterhin dieselbe sudoers-Regel
+  wie der manuelle Trigger im Dashboard, siehe Abschnitt 7.5 in
+  `docs/DEPLOYMENT.md`).
+- **OpenClaw als verwaltetes Projekt**: läuft OpenClaw selbst als
+  Node-Prozess auf demselben Server, lässt es sich wie jedes andere Projekt
+  über die normale Projekt-Registrierung hinzufügen — kein Sonderfall, kein
+  zusätzlicher Code, exakt dieselbe Vertrauens-/Rechte-Grenze wie jedes
+  andere PM2-verwaltete Projekt (Abschnitt "Angriffsflächen im Detail" oben).
+
 ## Echter Fortschritt statt nur "Lädt…"
 
 Drei länger laufende Aktionen zeigen ihren tatsächlichen Fortschritt statt

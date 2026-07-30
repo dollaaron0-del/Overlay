@@ -6,6 +6,7 @@ import { answerIdeaChatMessage } from "./tiered-answer.js";
 import { writeIdeaPlan } from "./plan-writer.js";
 import { getAiCascadeStatus } from "./ai-status.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
+import { notifyOpenClawIfConfigured } from "../openclaw/openclaw-webhook.js";
 
 export const ideaChatRouter = Router();
 
@@ -125,6 +126,7 @@ ideaChatRouter.post("/:id/save-plan", async (req, res) => {
   try {
     const { filename, relativePath } = await writeIdeaPlan(project, chat);
     await appendAuditEntry({ type: "idea_plan_saved", detail: project.id });
+    await notifyOpenClawIfConfigured(`Neuer Ideenplan gespeichert: "${chat.title}" (${project.id}/${relativePath})`);
     res.json({ ok: true, filename, relativePath });
   } catch (err) {
     res.status(400).json({ error: "save_failed", message: (err as Error).message });

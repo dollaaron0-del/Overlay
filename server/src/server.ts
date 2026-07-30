@@ -14,6 +14,9 @@ import { systemRouter } from "./system.routes.js";
 import { auditRouter } from "./audit/audit.routes.js";
 import { quickCaptureRouter } from "./quickcapture/quickcapture.routes.js";
 import { ideaChatRouter } from "./ideachat/ideachat.routes.js";
+import { obsidianRouter } from "./obsidian/obsidian.routes.js";
+import { automationRouter } from "./automation/automation.routes.js";
+import { requireAutomationToken } from "./automation/automation.middleware.js";
 import { apiRateLimiter } from "./rate-limit.js";
 
 // Quick-capture photos arrive as base64 JSON (~33% larger than the raw
@@ -71,11 +74,17 @@ export function createApp() {
   app.use(express.json());
   app.use("/api", authRouter);
 
+  // Token-authenticated, not session-cookie-authenticated — see
+  // automation.middleware.ts. Deliberately its own mount, outside
+  // protectedApi/requireAuth below.
+  app.use("/api/automation", requireAutomationToken, automationRouter);
+
   const protectedApi = express.Router();
   protectedApi.use(requireAuth);
   protectedApi.use("/projects", projectsRouter);
   protectedApi.use("/projects", pm2Router);
   protectedApi.use("/projects", filesRouter);
+  protectedApi.use("/projects", obsidianRouter);
   protectedApi.use("/security", securityRouter);
   protectedApi.use("/backup", backupRouter);
   protectedApi.use("/system", systemRouter);

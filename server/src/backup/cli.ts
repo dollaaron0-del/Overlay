@@ -5,6 +5,7 @@
 // backing up APPS_ROOT and this server's own data/ needs no elevated
 // privilege.
 import { runBackupJob } from "./backup-job.js";
+import { notifyOpenClawIfConfigured } from "../openclaw/openclaw-webhook.js";
 
 const summary = await runBackupJob();
 
@@ -22,5 +23,6 @@ if (summary.success) {
   process.exit(0);
 } else {
   console.error(`[overlay-backup] failed after ${summary.durationSeconds}s: ${summary.error}`);
+  await notifyOpenClawIfConfigured(`Overlay-Backup fehlgeschlagen nach ${summary.durationSeconds}s: ${summary.error}`);
   process.exit(1);
 }

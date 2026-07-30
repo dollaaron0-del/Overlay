@@ -86,6 +86,21 @@ const schema = z.object({
   IDEA_CHAT_OLLAMA_GPU_URL: z.string().default("http://127.0.0.1:11435"),
   IDEA_CHAT_OLLAMA_GPU_MODEL: z.string().default(""),
   IDEA_CHAT_OLLAMA_TIMEOUT_MS: z.coerce.number().int().positive().default(2 * 60_000),
+  // Optional outgoing webhook to a self-hosted OpenClaw gateway
+  // (https://openclaw.ai/), so critical scan findings, backup failures and
+  // saved Ideenpläne also reach chat apps (Discord/Telegram/WhatsApp/etc.)
+  // OpenClaw is connected to — in addition to ntfy, not instead of it. Empty
+  // URL disables this entirely. The exact payload shape/auth header were
+  // not verified against OpenClaw's primary docs (only reachable via
+  // third-party sources) — see server/src/openclaw/openclaw-webhook.ts.
+  OPENCLAW_WEBHOOK_URL: z.string().default(""),
+  OPENCLAW_WEBHOOK_SECRET: z.string().default(""),
+  // Token-authenticated automation API (/api/automation/*) — lets OpenClaw
+  // (or any other script) start/stop/restart/deploy projects and trigger a
+  // backup/scan, e.g. from a chat command. Deliberately separate from the
+  // session-cookie auth the browser UI uses: a long-lived Bearer token
+  // instead of a login. Empty = the whole /api/automation/* router 404s.
+  AUTOMATION_TOKEN: z.string().default(""),
   COOKIE_SECURE: z
     .string()
     .default("false")

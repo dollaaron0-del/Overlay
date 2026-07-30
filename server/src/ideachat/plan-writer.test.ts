@@ -93,6 +93,9 @@ test("asks the model to synthesize the whole chat (via --resume) and writes the 
   const content = await fs.readFile(path.join(appsRoot, "demo-app", "plans", filename), "utf8");
   assert.match(content, /# Ideenplan: Dark Mode einbauen\?/);
   assert.match(content, /Ausgangsidee: Dark Mode/);
+
+  // Obsidian-compatible YAML frontmatter at the very top of the file.
+  assert.match(content, /^---\ntags:\n {2}- idee-plan\nproject: demo-app\nchat-id: chat-1\ncreated: .+\n---\n/);
 });
 
 test("throws when the chat has no assistant reply yet, without calling the model", async () => {

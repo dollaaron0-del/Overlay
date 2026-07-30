@@ -680,3 +680,122 @@ Claude-only-Verhalten zu bleiben.
 dass an der Antwort "🖥️ RAM-Ollama" statt "✨ Claude" steht — dann lief die
 Anfrage tatsächlich über die lokale Instanz. Eine gezielt komplexe/coding-
 lastige Anfrage sollte stattdessen zu "✨ Claude" eskalieren.
+
+## 13. Obsidian-Second-Brain-Integration
+
+Overlay liest/schreibt Notizen im normalen Obsidian-Dateiformat (YAML-
+Frontmatter, `#tags`, `[[Wikilinks]]`) — dafür ist **keine zusätzliche
+Software auf dem Server nötig**, kein Plugin, kein separater Prozess.
+Overlay arbeitet direkt auf den `.md`-Dateien im Projektverzeichnis; ob
+parallel dazu die echte Obsidian-App (Desktop/Mobile, per Syncthing/iCloud/
+Obsidian Sync) auf denselben Dateien läuft, ist Overlay egal.
+
+**1. Schnellnotiz im Obsidian-Modus.** In der "Schnellnotiz"-App (Ziel-
+Projekt-Auswahl, Zahnrad-Symbol) den Schalter "Obsidian-Modus" aktivieren.
+Danach landet jede Notiz als eigene Datei unter `<projekt>/inbox/` (mit
+YAML-Frontmatter `tags`, `created`, ggf. eingebettetem Bild via
+`![[datei]]`) statt an eine gemeinsame `inbox.md` angehängt zu werden —
+das idiomatische Obsidian/Second-Brain-Muster (ein verlinkbarer, taggbarer
+Knoten pro Gedanke). Standardmäßig aus, um bestehendes Verhalten nicht zu
+brechen.
+
+**2. Mini-Vault-Browser.** Jedes Projekt hat im Dashboard einen "Obsidian"-
+Tab: alle `.md`-Dateien des Projekts (rekursiv, `node_modules`/`.git`
+ausgenommen) mit Tag-Filter, Frontmatter-Anzeige, gerendertem Inhalt
+(Überschriften/Fett/Kursiv/Links/Wikilinks/Listen) und Backlinks ("wer
+verlinkt hierher"). Rein lesend, kein Caching — bei typischer Second-
+Brain-Größe (tausende, nicht Millionen Notizen) wird pro Anfrage frisch
+gescannt. Ein "In Obsidian öffnen"-Link nutzt das `obsidian://open`-
+Deeplink-Schema; das funktioniert nur, wenn der lokale Obsidian-Vault-Name
+mit dem Overlay-Projektnamen übereinstimmt (Obsidian selbst wird dabei
+nicht angesprochen, das ist reines URL-Scheme-Handling im Betriebssystem).
+
+**3. Direkte Anbindung an ein laufendes Obsidian (optional, außerhalb
+dieses Repos).** Wer zusätzlich das Obsidian-Plugin "Local REST API"
+nutzt, kann von woanders (z.B. einem eigenen Skript oder OpenClaw, siehe
+Abschnitt 14) direkt mit der laufenden Obsidian-Instanz sprechen — das ist
+unabhängig von Overlay und braucht keine Konfiguration hier.
+
+Keine der drei Optionen erfordert einen neuen Dienst oder Port auf dem
+Server; alles läuft im bestehenden Overlay-Prozess mit.
+
+## 14. OpenClaw-Integration (optional)
+
+[OpenClaw](https://openclaw.ai/) ist ein separat zu betreibendes,
+selbst gehostetes Gateway, das Messenger-Apps (Discord/Telegram/WhatsApp/
+Slack/etc.) mit KI-Agenten verbindet. Overlay bindet es auf zwei
+unabhängigen Wegen an; beide sind rein optional (leer = deaktiviert) und
+beeinträchtigen nichts, wenn OpenClaw gar nicht läuft.
+
+> **Hinweis zur Quellenlage:** OpenClaws primäre Dokumentation war beim
+> Schreiben dieser Integration nicht per automatisiertem Abruf erreichbar
+> (403). Die genauen Endpunkt-Pfade/Payload-Formate unten stammen aus
+> Sekundärquellen und wurden nicht gegen die Primärdokumentation
+> verifiziert — vor dem produktiven Einsatz gegen die eigene laufende
+> OpenClaw-Instanz testen (siehe Verifikation unten) und bei Bedarf
+> `server/src/openclaw/openclaw-webhook.ts` anpassen.
+
+**14.1 Overlay → OpenClaw: Benachrichtigungen per Messenger.** Zusätzlich
+zu ntfy (Abschnitt 7.4) sendet Overlay bei kritischen Scan-Funden,
+fehlgeschlagenen Backups und gespeicherten Ideenplänen eine einfache
+`{"text": "..."}`-Payload an einen konfigurierbaren Webhook — OpenClaw
+leitet das dann an die angebundenen Messenger weiter.
+
+In `.env`:
+```
+OPENCLAW_WEBHOOK_URL=http://127.0.0.1:18789/pfad/zu/deinem/webhook
+OPENCLAW_WEBHOOK_SECRET=<falls deine OpenClaw-Instanz einen Bearer-Token erwartet>
+```
+Leere `OPENCLAW_WEBHOOK_URL` deaktiviert den Versand vollständig — ein
+fehlgeschlagener Versand lässt den auslösenden Vorgang (Scan/Backup/
+Plan-Speicherung) selbst nicht fehlschlagen, er wird nur ins Server-Log
+geschrieben.
+
+**14.2 OpenClaw → Overlay: Aktionen per Chat auslösen.** Eine token-
+authentifizierte Automatisierungs-API unter `/api/automation/*` (separat
+vom Session-Cookie-Login) erlaubt Start/Stop/Restart/Deploy pro Projekt
+sowie das Auslösen von Backup und Security-Scan — genau die Aktionen, die
+sonst über das Dashboard laufen, hier aber z.B. per Chat-Kommando aus
+OpenClaw heraus. Jede Aktion landet mit `actor: "automation"` im
+Aktivitätsprotokoll.
+
+In `.env`:
+```
+AUTOMATION_TOKEN=<langer, zufälliger String>
+```
+Erzeugen z.B. mit `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+Leerer Wert lässt `/api/automation/*` durchgehend mit 404 antworten (der
+Router existiert dann praktisch nicht, statt nur unauthentifiziert
+abzulehnen). Mit gesetztem Token:
+
+```
+curl -H "Authorization: Bearer <AUTOMATION_TOKEN>" \
+  https://<overlay-host>/api/automation/projects/<projekt-id>/status
+
+curl -X POST -H "Authorization: Bearer <AUTOMATION_TOKEN>" \
+  https://<overlay-host>/api/automation/projects/<projekt-id>/restart
+
+curl -X POST -H "Authorization: Bearer <AUTOMATION_TOKEN>" \
+  https://<overlay-host>/api/automation/backup
+
+curl -X POST -H "Authorization: Bearer <AUTOMATION_TOKEN>" \
+  https://<overlay-host>/api/automation/scan
+```
+
+Endpunkte: `GET/POST /api/automation/projects/:id/{status,start,stop,restart,deploy}`,
+`POST /api/automation/backup`, `POST /api/automation/scan`.
+
+**14.3 OpenClaw selbst als verwaltetes Projekt.** Läuft OpenClaw als
+eigener Node-Prozess auf demselben Server, lässt es sich wie jedes andere
+Projekt über "Hinzufügen" im Dashboard registrieren (PM2-Name, Start-
+Skript, optionales Deploy-Skript) — dafür ist kein Overlay-Code nötig,
+es ist einfach ein weiteres PM2-verwaltetes Projekt.
+
+**Verifikation:** `OPENCLAW_WEBHOOK_URL` testweise auf einen simplen
+lokalen Mock-Endpoint zeigen lassen (z.B. `nc -l 8080` oder ein
+Ein-Zeiler-HTTP-Server) und einen Ideenplan speichern oder den
+Backup-Trigger mit absichtlich falscher `RESTIC_REPOSITORY` laufen lassen
+— der Mock-Endpoint sollte die `{"text": "..."}`-Payload empfangen. Für
+die Automatisierungs-API: die vier `curl`-Aufrufe oben gegen ein
+Testprojekt ausführen und im "Aktivität"-Tab prüfen, dass die Einträge mit
+`actor: automation` erscheinen.

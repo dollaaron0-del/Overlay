@@ -39,6 +39,19 @@ lesen. Jedes Projekt hat dafür im Dashboard einen eigenen "Pläne"-Tab
 (neben Terminal/Logs/Dateien), der alle so gespeicherten Pläne auflistet —
 später am eigentlichen Rechner reicht dann "setz das aus plans/... um".
 
+Wer sein "Second Brain" in Obsidian führt, kann die Schnellnotiz
+zusätzlich in einen Obsidian-Modus schalten (jede Notiz eine eigene Datei
+mit YAML-Frontmatter statt Anhängen an eine `inbox.md`), Ideenpläne
+bekommen ohnehin automatisch passendes Frontmatter. Ein "Obsidian"-Tab pro
+Projekt zeigt alle Notizen mit Tag-Filter, Backlinks und einem einfachen
+Markdown-Renderer (kein neues Obsidian-Plugin, keine neue Abhängigkeit
+nötig). Optional lässt sich zusätzlich ein selbst gehostetes
+[OpenClaw](https://openclaw.ai/)-Gateway anbinden: Overlay meldet
+kritische Scan-Funde/Backup-Fehler/gespeicherte Pläne per Webhook dorthin
+weiter (zusätzlich zu ntfy), und eine token-authentifizierte
+Automatisierungs-API erlaubt umgekehrt Start/Stop/Restart/Deploy/Backup/
+Scan-Trigger per Chat-Kommando aus OpenClaw heraus.
+
 Optional lässt sich davor ein zweistufiger, lokaler Ollama-Vorfilter
 schalten (z.B. ein schwächeres Modell im RAM und ein stärkeres auf der
 GPU): jede Nachricht geht zuerst dorthin, und nur wenn das jeweilige

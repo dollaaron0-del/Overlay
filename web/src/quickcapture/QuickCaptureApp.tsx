@@ -26,6 +26,7 @@ export function QuickCaptureApp() {
   const [projects, setProjects] = useState<ProjectOption[] | null>(null);
   const [targetProjectId, setTargetProjectId] = useState<string | null | undefined>(undefined);
   const [choosingTarget, setChoosingTarget] = useState(false);
+  const [obsidianMode, setObsidianMode] = useState(false);
   const [text, setText] = useState("");
   const [link, setLink] = useState("");
   const [image, setImage] = useState<PendingImage | null>(null);
@@ -43,6 +44,10 @@ export function QuickCaptureApp() {
       .get<{ targetProjectId: string | null }>("/api/quick-capture/target")
       .then((res) => setTargetProjectId(res.targetProjectId))
       .catch(() => setTargetProjectId(null));
+    api
+      .get<{ obsidianMode: boolean }>("/api/quick-capture/obsidian-mode")
+      .then((res) => setObsidianMode(res.obsidianMode))
+      .catch(() => {});
   }, []);
 
   const targetProject = projects?.find((p) => p.id === targetProjectId);
@@ -52,6 +57,11 @@ export function QuickCaptureApp() {
     await api.put("/api/quick-capture/target", { projectId });
     setTargetProjectId(projectId);
     setChoosingTarget(false);
+  };
+
+  const toggleObsidianMode = async (checked: boolean) => {
+    setObsidianMode(checked);
+    await api.put("/api/quick-capture/obsidian-mode", { obsidianMode: checked });
   };
 
   const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,6 +124,15 @@ export function QuickCaptureApp() {
             ))}
           </div>
         )}
+        <label className="quick-capture-obsidian-toggle">
+          <input
+            type="checkbox"
+            checked={obsidianMode}
+            onChange={(e) => toggleObsidianMode(e.target.checked)}
+          />
+          Obsidian-Modus: jede Notiz als eigene Datei mit Frontmatter unter <code>inbox/</code> statt an{" "}
+          <code>inbox.md</code> angehängt
+        </label>
       </div>
     );
   }
@@ -126,6 +145,8 @@ export function QuickCaptureApp() {
           Ziel: {targetProject?.dirName} ✎
         </button>
       </div>
+
+      {obsidianMode && <p className="quick-capture-obsidian-hint">Obsidian-Modus aktiv: jede Notiz wird als eigene Datei gespeichert.</p>}
 
       <textarea
         className="quick-capture-textarea"

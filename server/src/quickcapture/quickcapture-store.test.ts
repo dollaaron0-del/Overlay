@@ -43,3 +43,24 @@ test("survives a fresh module instance re-reading from disk", async () => {
   const fresh = (await import(`./quickcapture-store.js?fresh=${Date.now()}`)) as typeof import("./quickcapture-store.js");
   assert.equal(await fresh.getQuickCaptureTarget(), "my-app");
 });
+
+test("getQuickCaptureObsidianMode defaults to false", async () => {
+  assert.equal(await store.getQuickCaptureObsidianMode(), false);
+});
+
+test("setQuickCaptureObsidianMode persists and is retrievable", async () => {
+  await store.setQuickCaptureObsidianMode(true);
+  assert.equal(await store.getQuickCaptureObsidianMode(), true);
+  await store.setQuickCaptureObsidianMode(false);
+  assert.equal(await store.getQuickCaptureObsidianMode(), false);
+});
+
+test("setting the target project does not reset obsidianMode, and vice versa", async () => {
+  await store.setQuickCaptureObsidianMode(true);
+  await store.setQuickCaptureTarget("second-brain");
+  assert.equal(await store.getQuickCaptureObsidianMode(), true);
+  assert.equal(await store.getQuickCaptureTarget(), "second-brain");
+
+  await store.setQuickCaptureTarget("other-app");
+  assert.equal(await store.getQuickCaptureObsidianMode(), true);
+});

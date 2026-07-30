@@ -2,6 +2,7 @@ import path from "node:path";
 import type { ScanReport } from "@overlay/shared";
 import { runCommand } from "./run-tool.js";
 import { sendNtfyNotification } from "./ntfy-client.js";
+import { notifyOpenClawIfConfigured } from "../openclaw/openclaw-webhook.js";
 import { config } from "../config.js";
 
 export function formatSummaryLine(report: ScanReport): string {
@@ -13,7 +14,6 @@ export function formatSummaryLine(report: ScanReport): string {
 }
 
 export async function notifyIfConfigured(report: ScanReport): Promise<void> {
-  if (!config.NTFY_URL) return;
   const { critical, high } = report.summary;
   if (critical === 0 && high === 0) return; // no push for an all-clear or low/medium/info-only night
 
@@ -23,13 +23,19 @@ export async function notifyIfConfigured(report: ScanReport): Promise<void> {
       ? report.llmTriage.text
       : `${formatSummaryLine(report)}\n\nDetails im "Sicherheit"-Tab von Overlay.`;
 
-  try {
-    await sendNtfyNotification(config.NTFY_URL, title, message, critical > 0 ? "urgent" : "high");
-  } catch (err) {
-    // A failed push shouldn't fail the whole scan run — the report is still
-    // saved and visible in the dashboard either way.
-    console.error(`[overlay-security-scan] ntfy notification failed: ${(err as Error).message}`);
+  if (config.NTFY_URL) {
+    try {
+      await sendNtfyNotification(config.NTFY_URL, title, message, critical > 0 ? "urgent" : "high");
+    } catch (err) {
+      // A failed push shouldn't fail the whole scan run — the report is still
+      // saved and visible in the dashboard either way.
+      console.error(`[overlay-security-scan] ntfy notification failed: ${(err as Error).message}`);
+    }
   }
+
+  // Additional, independent of ntfy — OpenClaw relays into whatever chat
+  // apps that gateway is connected to.
+  await notifyOpenClawIfConfigured(`${title}\n\n${message}`);
 }
 
 export async function chownReportsDirIfConfigured(): Promise<void> {

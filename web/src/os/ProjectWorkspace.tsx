@@ -8,8 +8,9 @@ import { LogPanel } from "../logs/LogPanel";
 import { FileTree } from "../files/FileTree";
 import { FileViewer } from "../files/FileViewer";
 import { PlansTab } from "./PlansTab";
+import { ObsidianTab } from "./ObsidianTab";
 
-type Tab = "terminal" | "logs" | "files" | "plans";
+type Tab = "terminal" | "logs" | "files" | "plans" | "obsidian";
 
 const ICON_PRESETS = ["📁", "🚀", "💻", "🌐", "🔧", "📦", "🗂", "⚙️", "📊", "🔒", "🎨", "🛠", "📡", "🧩", "☁️", "🐳", "🔥", "📈"];
 
@@ -177,6 +178,9 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
         <button className={tab === "plans" ? "active" : ""} onClick={() => setTab("plans")}>
           Pläne
         </button>
+        <button className={tab === "obsidian" ? "active" : ""} onClick={() => setTab("obsidian")}>
+          Obsidian
+        </button>
       </nav>
       <div className="tab-content">
         {tab === "terminal" && <TerminalPanel key={project.id} projectId={project.id} />}
@@ -188,6 +192,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
           </div>
         )}
         {tab === "plans" && <PlansTab key={project.id} projectId={project.id} />}
+        {tab === "obsidian" && <ObsidianTab key={project.id} projectId={project.id} projectDirName={project.dirName} />}
       </div>
     </div>
   );

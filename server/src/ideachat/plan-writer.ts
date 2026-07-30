@@ -4,17 +4,13 @@ import { resolveProjectDir } from "../projects/projects.registry.js";
 import type { Project } from "../projects/projects.types.js";
 import type { IdeaChat } from "./ideachat.types.js";
 import { sendIdeaChatMessage } from "./ideachat.js";
+import { buildFrontmatter } from "../obsidian/obsidian-note.js";
 
-/** Lowercase, [a-z0-9-] only, no leading/trailing/duplicate dashes — never a raw path segment from client input. */
-export function slugify(input: string): string {
-  const slug = input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40)
-    .replace(/-+$/g, "");
-  return slug || "idee";
-}
+// Re-exported for backward compatibility — plan-writer.test.ts and any
+// other existing importer still get it from here; the implementation now
+// lives in util/slug.ts so quickcapture.ts can share it too.
+export { slugify } from "../util/slug.js";
+import { slugify } from "../util/slug.js";
 
 // Sent via --resume on the chat's existing claude session, so the model
 // already has the full conversation in context — it only needs to be told
@@ -60,7 +56,13 @@ export async function writeIdeaPlan(
   const isoStamp = now.toISOString().replace(/[:.]/g, "-");
   const filename = `${isoStamp}-${slugify(chat.title)}.md`;
 
-  const content = `# Ideenplan: ${chat.title}\n\nErstellt: ${now.toLocaleString("de-DE")}\n\n${reply}\n`;
+  const frontmatter = buildFrontmatter({
+    tags: ["idee-plan"],
+    project: project.id,
+    "chat-id": chat.id,
+    created: now.toISOString(),
+  });
+  const content = `${frontmatter}\n# Ideenplan: ${chat.title}\n\nErstellt: ${now.toLocaleString("de-DE")}\n\n${reply}\n`;
 
   await fs.writeFile(path.join(plansDir, filename), content, "utf8");
   return { filename, relativePath: `plans/${filename}` };
