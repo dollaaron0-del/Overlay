@@ -10,6 +10,21 @@ const SESSIONS_FILE = path.join(process.cwd(), "data", "sessions.json");
 interface SessionRecord {
   id: string;
   expiresAt: number;
+  /** Fingerprint of the admin password this session was created under (see passwordFingerprint). */
+  pw: string;
+}
+
+/**
+ * Ties every session to the admin password in force when it was created.
+ * Changing ADMIN_PASSWORD_HASH is the normal reaction to a suspected
+ * compromise, but on its own it only stops *new* logins — an already-stolen
+ * cookie would otherwise keep working for the full 30-day TTL. Comparing this
+ * fingerprint on every validation makes a password change revoke every
+ * existing session immediately. Only a fingerprint is stored, never the hash
+ * itself, so the sessions file stays useless to anyone who reads it.
+ */
+function passwordFingerprint(): string {
+  return crypto.createHash("sha256").update(config.ADMIN_PASSWORD_HASH).digest("hex").slice(0, 32);
 }
 
 const sessions = new Map<string, SessionRecord>();
@@ -18,9 +33,13 @@ let writeQueue: Promise<unknown> = Promise.resolve();
 function persist(): void {
   writeQueue = writeQueue
     .then(async () => {
-      await fs.mkdir(path.dirname(SESSIONS_FILE), { recursive: true });
+      await fs.mkdir(path.dirname(SESSIONS_FILE), { recursive: true, mode: 0o700 });
       const records = Array.from(sessions.values());
-      await fs.writeFile(SESSIONS_FILE, JSON.stringify(records), "utf8");
+      // Explicit 0600: these ids are live credentials — combined with
+      // SESSION_SECRET they reconstruct a valid cookie — so they must not be
+      // readable by other local accounts on the box. (mode only applies when
+      // the file is created; deploy/harden-permissions.sh fixes existing ones.)
+      await fs.writeFile(SESSIONS_FILE, JSON.stringify(records), { encoding: "utf8", mode: 0o600 });
     })
     .catch((err) => console.error("Failed to persist sessions:", err));
 }
@@ -30,8 +49,12 @@ export async function loadSessions(): Promise<void> {
     const raw = await fs.readFile(SESSIONS_FILE, "utf8");
     const records: SessionRecord[] = JSON.parse(raw);
     const now = Date.now();
+    const currentPw = passwordFingerprint();
     for (const record of records) {
-      if (record.expiresAt > now) sessions.set(record.id, record);
+      // Records written before sessions carried a fingerprint have no `pw` and
+      // are dropped here — worst case that costs one re-login after an upgrade,
+      // which is the safe direction to fail in.
+      if (record.expiresAt > now && record.pw === currentPw) sessions.set(record.id, record);
     }
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
@@ -61,7 +84,7 @@ function unsign(signed: string): string | null {
 
 export function createSession(): string {
   const id = crypto.randomBytes(32).toString("hex");
-  sessions.set(id, { id, expiresAt: Date.now() + SESSION_TTL_MS });
+  sessions.set(id, { id, expiresAt: Date.now() + SESSION_TTL_MS, pw: passwordFingerprint() });
   persist();
   return sign(id);
 }
@@ -73,6 +96,12 @@ export function validateSessionCookie(cookieValue: string | undefined): boolean 
   const record = sessions.get(id);
   if (!record) return false;
   if (record.expiresAt < Date.now()) {
+    sessions.delete(id);
+    persist();
+    return false;
+  }
+  if (record.pw !== passwordFingerprint()) {
+    // The admin password changed after this session was issued — revoke it.
     sessions.delete(id);
     persist();
     return false;

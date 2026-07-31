@@ -107,6 +107,15 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
           </button>
           <span className="project-workspace-name">{project.dirName}</span>
           <span className="project-status-label">{STATUS_LABEL[project.status]}</span>
+          {project.version && (
+            <span
+              className="project-version-badge"
+              title={project.version.branch ? `Branch: ${project.version.branch}` : "Detached HEAD"}
+            >
+              {project.version.branch ? `${project.version.branch}@` : ""}
+              {project.version.commit}
+            </span>
+          )}
         </div>
         {iconPickerOpen && (
           <div className="project-icon-picker">

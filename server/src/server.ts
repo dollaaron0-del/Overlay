@@ -30,6 +30,16 @@ export function createApp() {
   const app = express();
   app.disable("x-powered-by");
 
+  // Caddy terminates TLS on the Tailscale interface and proxies to this
+  // process over loopback (see deploy/caddy/Caddyfile), so without this every
+  // request's req.ip is 127.0.0.1 — which collapses the per-IP login backoff
+  // (auth.routes.ts) and the /api rate limiter into one shared bucket: any
+  // client hammering /login would lock out the real admin too, and every
+  // failed-login audit entry would record "127.0.0.1" instead of where the
+  // attempt actually came from. "loopback" trusts only a proxy on 127.0.0.1
+  // to set X-Forwarded-For, so a remote client still can't spoof its own IP.
+  app.set("trust proxy", "loopback");
+
   // Everything served by this app is same-origin (the built SPA + our own
   // API/WS) — a strict, self-only CSP costs nothing here and blocks the
   // classic "inject a <script src=evil.com>" XSS payload outright. style-src

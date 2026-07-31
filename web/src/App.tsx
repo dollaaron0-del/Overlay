@@ -3,6 +3,7 @@ import { LoginPage } from "./auth/LoginPage";
 import { OsShell } from "./os/OsShell";
 import { ThemeProvider } from "./theme/ThemeProvider";
 import { IdleLockProvider } from "./os/IdleLockProvider";
+import { useDynamicViewportHeight } from "./layout/useDynamicViewportHeight";
 
 function Gate() {
   const { authenticated, loading } = useAuth();
@@ -17,6 +18,7 @@ function Gate() {
 }
 
 export function App() {
+  useDynamicViewportHeight();
   return (
     <ThemeProvider>
       <AuthProvider>

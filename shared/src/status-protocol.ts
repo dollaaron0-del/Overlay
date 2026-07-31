@@ -14,6 +14,8 @@ export interface ProjectSummary {
   hasDeployScript: boolean;
   /** Custom home-screen icon (single emoji), if the user set one. */
   icon?: string;
+  /** Current git commit/branch of the project directory, or null when it isn't a git repo. */
+  version: { commit: string; branch: string | null } | null;
 }
 
 export type StatusServerMessage = {

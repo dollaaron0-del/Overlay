@@ -71,6 +71,23 @@ test("destroying an unrelated/garbage cookie does not throw", () => {
   assert.doesNotThrow(() => session.destroySessionCookie(undefined));
 });
 
+// Changing the admin password is the standard reaction to a suspected
+// compromise; without this, a cookie stolen beforehand would stay valid for
+// the rest of its 30-day TTL.
+test("changing the admin password invalidates already-issued sessions", async () => {
+  const { config } = await import("../config.js");
+  const cookie = session.createSession();
+  assert.equal(session.validateSessionCookie(cookie), true);
+
+  const original = config.ADMIN_PASSWORD_HASH;
+  config.ADMIN_PASSWORD_HASH = "$2b$04$1111111111111111111111111111111111111111111111111111";
+  try {
+    assert.equal(session.validateSessionCookie(cookie), false);
+  } finally {
+    config.ADMIN_PASSWORD_HASH = original;
+  }
+});
+
 test("two created sessions produce distinct, independently valid cookies", () => {
   const a = session.createSession();
   const b = session.createSession();

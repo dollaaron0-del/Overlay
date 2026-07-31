@@ -50,7 +50,17 @@
   }
 }
 
-html,
+html {
+  /* --app-vh is set from window.visualViewport by useDynamicViewportHeight
+     (see web/src/layout/useDynamicViewportHeight.ts) — falls back to the
+     static 100% before that effect runs on first paint, and on browsers
+     without visualViewport support. Needed because iOS Safari (including
+     installed-PWA/standalone mode) doesn't shrink a plain `100%` height
+     when the on-screen keyboard opens, which used to clip/hide the bottom
+     of full-height panels like the project terminal behind the keyboard. */
+  height: var(--app-vh, 100%);
+}
+
 body,
 #root {
   height: 100%;
@@ -245,6 +255,16 @@ button.active {
   font-size: 0.75rem;
   color: var(--c-text-2);
   margin: 0.2rem 0 0.5rem;
+}
+
+.project-version-badge {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--c-text-3);
+  background: var(--c-surface-2);
+  border-radius: 6px;
+  padding: 0.1rem 0.4rem;
+  margin-left: 0.4rem;
 }
 
 .project-resource-usage {

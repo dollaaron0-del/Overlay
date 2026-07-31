@@ -32,11 +32,33 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     fitAddon.fit();
     setTerminal(term);
 
+    // fit() right after open() can undersize the grid: the monospace font
+    // xterm measures cell size from may still be loading, and the very
+    // first layout pass isn't guaranteed final. Re-fit once fonts are
+    // actually ready and after the next paint, instead of trusting only
+    // the synchronous call above.
+    document.fonts?.ready.then(() => fitAddon.fit());
+    const raf = requestAnimationFrame(() => fitAddon.fit());
+
+    // iOS Safari finalizes flex layout a beat after mount; the raf/fonts.ready
+    // refits can still land before the container has its real height. One more
+    // delayed fit removes the "cursor row clipped until you rotate" bug.
+    const lateFit = setTimeout(() => fitAddon.fit(), 300);
+
     const resizeObserver = new ResizeObserver(() => fitAddon.fit());
     resizeObserver.observe(containerRef.current);
+    // Covers iOS keyboard show/hide: the container's box size changes via
+    // the --app-vh cascade (see useDynamicViewportHeight), which normally
+    // reaches this ResizeObserver too, but re-fitting directly off
+    // visualViewport as well costs nothing and removes that assumption.
+    const onViewportResize = () => fitAddon.fit();
+    window.visualViewport?.addEventListener("resize", onViewportResize);
 
     return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(lateFit);
       resizeObserver.disconnect();
+      window.visualViewport?.removeEventListener("resize", onViewportResize);
       term.dispose();
       setTerminal(null);
     };

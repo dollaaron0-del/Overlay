@@ -1,7 +1,8 @@
 import type { WebSocket } from "ws";
 import type { ProjectSummary, StatusServerMessage } from "@overlay/shared";
-import { listProjects } from "../projects/projects.registry.js";
+import { listProjects, resolveProjectDir } from "../projects/projects.registry.js";
 import { describeProcess, statusOf } from "../pm2/pm2.service.js";
+import { getGitVersion } from "../projects/git-version.js";
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -12,6 +13,7 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
       const desc = await describeProcess(p.pm2Name).catch(() => undefined);
       const env = desc?.pm2_env as { pm_uptime?: number; restart_time?: number } | undefined;
       const monit = desc?.monit as { memory?: number; cpu?: number } | undefined;
+      const version = await getGitVersion(resolveProjectDir(p)).catch(() => null);
       return {
         id: p.id,
         dirName: p.dirName,
@@ -23,6 +25,7 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
         cpuPercent: monit?.cpu ?? null,
         hasDeployScript: Boolean(p.deployScript),
         icon: p.icon,
+        version,
       } satisfies ProjectSummary;
     }),
   );

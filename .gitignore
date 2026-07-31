@@ -15,3 +15,6 @@ server/data/audit.jsonl.tmp
 .DS_Store
 *.tsbuildinfo
 server/scripts/*.js
+
+# runtime data (app writes sessions/audit here, cwd-relative)
+/data/
