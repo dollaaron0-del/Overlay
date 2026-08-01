@@ -17,6 +17,9 @@ import { ideaChatRouter, ideaChatAttachmentsRouter } from "./ideachat/ideachat.r
 import { obsidianRouter } from "./obsidian/obsidian.routes.js";
 import { automationRouter } from "./automation/automation.routes.js";
 import { requireAutomationToken } from "./automation/automation.middleware.js";
+import { emmyRouter } from "./emmy/emmy.routes.js";
+import { emmyInboundRouter } from "./emmy/emmy-inbound.routes.js";
+import { requireEmmyInboundToken } from "./emmy/emmy-inbound.middleware.js";
 import { apiRateLimiter } from "./rate-limit.js";
 
 // Quick-capture photos arrive as base64 JSON (~33% larger than the raw
@@ -101,6 +104,14 @@ export function createApp() {
   // protectedApi/requireAuth below.
   app.use("/api/automation", requireAutomationToken, automationRouter);
 
+  // Same reasoning as /api/automation above: OpenClaw calling in to deliver
+  // Emmy's reply has no browser session, so it authenticates with its own
+  // Bearer token (EMMY_INBOUND_TOKEN) instead. Mounted at the exact
+  // "/api/emmy/inbound" path (not the "/api/emmy" prefix) so this
+  // token-gated middleware can't shadow the session-authenticated
+  // "/api/emmy/messages" routes mounted below under protectedApi.
+  app.use("/api/emmy/inbound", requireEmmyInboundToken, emmyInboundRouter);
+
   const protectedApi = express.Router();
   protectedApi.use(requireAuth);
   protectedApi.use("/projects", projectsRouter);
@@ -112,6 +123,7 @@ export function createApp() {
   protectedApi.use("/system", systemRouter);
   protectedApi.use("/audit", auditRouter);
   protectedApi.use("/idea-chats", ideaChatRouter);
+  protectedApi.use("/emmy", emmyRouter);
   app.use("/api", protectedApi);
 
   if (config.isProduction) {

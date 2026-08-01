@@ -10,6 +10,7 @@ import path from "node:path";
 let tmpCwd: string;
 let originalCwd: string;
 let notifyOpenClawIfConfigured: typeof import("./openclaw-webhook.js").notifyOpenClawIfConfigured;
+let sendEmmyChatMessage: typeof import("./openclaw-webhook.js").sendEmmyChatMessage;
 
 before(async () => {
   originalCwd = process.cwd();
@@ -21,7 +22,7 @@ before(async () => {
   process.env.ADMIN_USERNAME = "admin";
   process.env.ADMIN_PASSWORD_HASH = "$2b$04$0000000000000000000000000000000000000000000000000000";
 
-  ({ notifyOpenClawIfConfigured } = await import("./openclaw-webhook.js"));
+  ({ notifyOpenClawIfConfigured, sendEmmyChatMessage } = await import("./openclaw-webhook.js"));
 });
 
 after(async () => {
@@ -32,4 +33,12 @@ after(async () => {
 test("notifyOpenClawIfConfigured is a silent no-op when no webhook URL is configured", async () => {
   // Should resolve without throwing and without needing any network access.
   await notifyOpenClawIfConfigured("sollte nie irgendwo ankommen");
+});
+
+test("sendEmmyChatMessage throws when no webhook URL is configured, unlike the best-effort notification above", async () => {
+  // emmy.routes.ts relies on this throwing so it can tell the sender the
+  // message didn't reach OpenClaw (see the 502 branch there) — unlike
+  // notifyOpenClawIfConfigured, an unconfigured OpenClaw isn't a silent
+  // no-op here, it's the only way this chat can reach anyone.
+  await assert.rejects(() => sendEmmyChatMessage("sollte nie irgendwo ankommen"), /OPENCLAW_WEBHOOK_URL/);
 });

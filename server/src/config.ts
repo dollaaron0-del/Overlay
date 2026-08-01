@@ -101,6 +101,15 @@ const schema = z.object({
   // session-cookie auth the browser UI uses: a long-lived Bearer token
   // instead of a login. Empty = the whole /api/automation/* router 404s.
   AUTOMATION_TOKEN: z.string().default(""),
+  // Token-authenticated inbound endpoint (/api/emmy/inbound) that OpenClaw
+  // calls when the Emmy agent replies to a chat message sent via
+  // sendEmmyChatMessage (server/src/openclaw/openclaw-webhook.ts) — the
+  // other half of the two-way "Emmy" chat app. Deliberately a separate
+  // token from AUTOMATION_TOKEN: that one lets a caller *act* on Overlay
+  // (start/stop/deploy), this one only lets a caller *append a chat
+  // message* — narrower blast radius if it ever leaks. Empty = the whole
+  // /api/emmy/inbound router 404s, same as AUTOMATION_TOKEN above.
+  EMMY_INBOUND_TOKEN: z.string().default(""),
   COOKIE_SECURE: z
     .string()
     .default("false")

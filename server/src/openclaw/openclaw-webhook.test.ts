@@ -29,6 +29,7 @@ let tmpCwd: string;
 let originalCwd: string;
 let sendOpenClawNotification: typeof import("./openclaw-webhook.js").sendOpenClawNotification;
 let notifyOpenClawIfConfigured: typeof import("./openclaw-webhook.js").notifyOpenClawIfConfigured;
+let sendEmmyChatMessage: typeof import("./openclaw-webhook.js").sendEmmyChatMessage;
 let webhookUrl: string;
 let receivedBodies: string[];
 let mockServer: http.Server;
@@ -60,7 +61,7 @@ before(async () => {
   process.env.OPENCLAW_WEBHOOK_URL = webhookUrl;
   process.env.OPENCLAW_WEBHOOK_SECRET = "";
 
-  ({ sendOpenClawNotification, notifyOpenClawIfConfigured } = await import("./openclaw-webhook.js"));
+  ({ sendOpenClawNotification, notifyOpenClawIfConfigured, sendEmmyChatMessage } = await import("./openclaw-webhook.js"));
 });
 
 after(async () => {
@@ -117,4 +118,9 @@ test("throws on a non-2xx response", async () => {
 test("notifyOpenClawIfConfigured sends the text to the configured webhook", async () => {
   await notifyOpenClawIfConfigured("Backup fehlgeschlagen");
   assert.deepEqual(JSON.parse(receivedBodies[receivedBodies.length - 1]), { text: "Backup fehlgeschlagen" });
+});
+
+test("sendEmmyChatMessage tags the payload with thread: emmy, unlike a plain notification", async () => {
+  await sendEmmyChatMessage("Hallo Emmy");
+  assert.deepEqual(JSON.parse(receivedBodies[receivedBodies.length - 1]), { text: "Hallo Emmy", thread: "emmy" });
 });

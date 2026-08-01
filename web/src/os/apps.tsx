@@ -4,6 +4,7 @@ import { ActivityLog } from "../activity/ActivityLog";
 import { SettingsApp } from "../settings/SettingsApp";
 import { QuickCaptureApp } from "../quickcapture/QuickCaptureApp";
 import { IdeaChatApp } from "../ideachat/IdeaChatApp";
+import { EmmyChatApp } from "../emmy/EmmyChatApp";
 
 /**
  * Static, always-present apps (as opposed to project apps, which are
@@ -17,6 +18,7 @@ export const STATIC_APPS: AppDef[] = [
   { id: "activity", title: "Aktivität", icon: "📋", render: () => <ActivityLog /> },
   { id: "quickcapture", title: "Schnellnotiz", icon: "📝", render: () => <QuickCaptureApp /> },
   { id: "ideachat", title: "Ideen", icon: "💡", render: () => <IdeaChatApp /> },
+  { id: "emmy", title: "Emmy", icon: "💬", render: () => <EmmyChatApp /> },
   { id: "settings", title: "Einstellungen", icon: "⚙️", render: () => <SettingsApp /> },
 ];
 
