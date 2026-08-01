@@ -13,7 +13,7 @@ import { backupRouter } from "./backup/backup.routes.js";
 import { systemRouter } from "./system.routes.js";
 import { auditRouter } from "./audit/audit.routes.js";
 import { quickCaptureRouter } from "./quickcapture/quickcapture.routes.js";
-import { ideaChatRouter } from "./ideachat/ideachat.routes.js";
+import { ideaChatRouter, ideaChatAttachmentsRouter } from "./ideachat/ideachat.routes.js";
 import { obsidianRouter } from "./obsidian/obsidian.routes.js";
 import { automationRouter } from "./automation/automation.routes.js";
 import { requireAutomationToken } from "./automation/automation.middleware.js";
@@ -23,6 +23,11 @@ import { apiRateLimiter } from "./rate-limit.js";
 // file) — comfortably covers a real phone photo without raising the body
 // limit for every other endpoint.
 const QUICK_CAPTURE_BODY_LIMIT = "15mb";
+
+// Idea-chat attachments (documents/photos) are also base64 JSON, and a
+// request can carry several files at once — same reasoning as quick-capture
+// above, just a bit more headroom for multi-file uploads.
+const IDEA_CHAT_ATTACHMENT_BODY_LIMIT = "40mb";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -80,6 +85,13 @@ export function createApp() {
   // express.json() below, since only the first body parser a request
   // reaches ever gets to read the stream.
   app.use("/api/quick-capture", express.json({ limit: QUICK_CAPTURE_BODY_LIMIT }), requireAuth, quickCaptureRouter);
+
+  // Must be registered (and consume the request body) before the
+  // default-limit express.json() below — see the quick-capture mount above
+  // for why. Non-attachment idea-chat requests hitting this prefix (e.g.
+  // POST /messages) simply fall through unmatched to the protectedApi mount
+  // further down, body already parsed.
+  app.use("/api/idea-chats", express.json({ limit: IDEA_CHAT_ATTACHMENT_BODY_LIMIT }), requireAuth, ideaChatAttachmentsRouter);
 
   app.use(express.json());
   app.use("/api", authRouter);

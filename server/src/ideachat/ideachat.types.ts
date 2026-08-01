@@ -1,12 +1,22 @@
 /** Which tier actually produced an assistant reply — see tiered-answer.ts. */
 export type AnswerSource = "ollama-ram" | "ollama-gpu" | "claude";
 
+export interface IdeaChatAttachment {
+  /** Sanitized on-disk filename (timestamp + random suffix + extension) — never the client-supplied name. */
+  filename: string;
+  /** User-facing name for display only; never used to build a filesystem path. */
+  originalName: string;
+  mimeType: string;
+  kind: "image" | "document";
+}
+
 export interface IdeaChatMessage {
   role: "user" | "assistant";
   text: string;
   at: string;
   /** Only set on assistant messages. */
   source?: AnswerSource;
+  attachments?: IdeaChatAttachment[];
 }
 
 export interface IdeaChat {

@@ -1835,6 +1835,52 @@ button.active {
   cursor: default;
 }
 
+.ideachat-file-input {
+  display: none;
+}
+
+.ideachat-attach-button {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.ideachat-attach-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ideachat-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.ideachat-attachment-image img {
+  display: block;
+  max-width: 140px;
+  max-height: 140px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.ideachat-attachment-doc {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.6rem;
+  background: var(--c-surface-2);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  color: var(--c-text);
+  text-decoration: none;
+}
+
 .ideachat-ai-status {
   background: var(--c-surface);
   border: 1px solid var(--c-border);

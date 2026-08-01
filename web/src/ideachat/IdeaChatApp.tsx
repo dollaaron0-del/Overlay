@@ -16,11 +16,33 @@ interface ChatSummary {
 
 type AnswerSource = "ollama-ram" | "ollama-gpu" | "claude";
 
+interface ChatAttachment {
+  filename: string;
+  originalName: string;
+  mimeType: string;
+  kind: "image" | "document";
+}
+
 interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   at: string;
   source?: AnswerSource;
+  attachments?: ChatAttachment[];
+}
+
+const ATTACHMENT_ACCEPT = "image/jpeg,image/png,image/webp,image/heic,application/pdf,text/plain,text/markdown,.md,.doc,.docx";
+
+function readFileAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Datei konnte nicht gelesen werden"));
+    reader.readAsDataURL(file);
+  });
 }
 
 const SOURCE_LABEL: Record<AnswerSource, string> = {
@@ -95,7 +117,9 @@ export function IdeaChatApp() {
   const [error, setError] = useState<string | null>(null);
   const [planSaved, setPlanSaved] = useState<string | null>(null);
   const [aiStatus, setAiStatus] = useState<AiTierStatus[] | null>(null);
+  const [attaching, setAttaching] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadChats = () => {
     api
@@ -175,6 +199,34 @@ export function IdeaChatApp() {
       setError(err instanceof ApiError ? (err.message ?? "Fehler beim Senden") : "Fehler beim Senden");
     } finally {
       setSending(false);
+    }
+  };
+
+  const sendAttachments = async (fileList: FileList) => {
+    if (view.mode !== "chat" || fileList.length === 0) return;
+    const chatId = view.chatId;
+    setAttaching(true);
+    setError(null);
+    const messageText = draft.trim() || undefined;
+    setDraft("");
+    try {
+      const attachments = await Promise.all(
+        Array.from(fileList).map(async (file) => ({
+          dataBase64: await readFileAsBase64(file),
+          mimeType: file.type,
+          originalName: file.name,
+        })),
+      );
+      const chat = await api.post<ChatDetail>(`/api/idea-chats/${chatId}/attachments`, {
+        message: messageText,
+        attachments,
+      });
+      setActiveChat(chat);
+      loadChats();
+    } catch (err) {
+      setError(err instanceof ApiError ? (err.message ?? "Fehler beim Anhängen") : "Fehler beim Anhängen");
+    } finally {
+      setAttaching(false);
     }
   };
 
@@ -281,6 +333,22 @@ export function IdeaChatApp() {
               <div key={i} className={`ideachat-message ideachat-message-${m.role}`}>
                 {m.source && <span className="ideachat-message-source">{SOURCE_LABEL[m.source]}</span>}
                 <p>{m.text}</p>
+                {m.attachments && m.attachments.length > 0 && (
+                  <div className="ideachat-attachments">
+                    {m.attachments.map((a) => {
+                      const url = `/api/idea-chats/${activeChat.id}/attachments/${a.filename}`;
+                      return a.kind === "image" ? (
+                        <a key={a.filename} href={url} target="_blank" rel="noreferrer" className="ideachat-attachment-image">
+                          <img src={url} alt={a.originalName} />
+                        </a>
+                      ) : (
+                        <a key={a.filename} href={url} target="_blank" rel="noreferrer" className="ideachat-attachment-doc">
+                          📄 {a.originalName}
+                        </a>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ))}
             {sending && (
@@ -298,8 +366,29 @@ export function IdeaChatApp() {
           )}
           {planSaved && <p className="overview-ollama-ok">Plan gespeichert: {planSaved}</p>}
           {error && <p className="login-error">{error}</p>}
+          {attaching && <p className="empty-hint">Lädt Anhang hoch…</p>}
 
           <div className="ideachat-input-row">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={ATTACHMENT_ACCEPT}
+              className="ideachat-file-input"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) sendAttachments(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="ideachat-attach-button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sending || attaching}
+              title="Dokument oder Foto anhängen"
+            >
+              📎
+            </button>
             <textarea
               className="ideachat-textarea"
               placeholder="Antworten oder weiter ausarbeiten…"
