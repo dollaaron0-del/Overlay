@@ -414,6 +414,19 @@ separat betriebenes [OpenClaw](https://openclaw.ai/)-Gateway:
   (der Security-Scan-Trigger braucht z.B. weiterhin dieselbe sudoers-Regel
   wie der manuelle Trigger im Dashboard, siehe Abschnitt 7.5 in
   `docs/DEPLOYMENT.md`).
+- **Emmy-Chat Eingang** (`server/src/emmy/emmy-inbound.middleware.ts`):
+  eine dritte, ebenfalls token-basierte Authentifizierung
+  (`Authorization: Bearer EMMY_INBOUND_TOKEN`), bewusst getrennt von
+  `AUTOMATION_TOKEN` — die Automatisierungs-API kann Projekte starten/
+  stoppen/deployen, dieser Endpunkt kann ausschließlich eine Chat-
+  Nachricht anhängen, also eine deutlich kleinere Angriffsfläche bei einem
+  geleakten Token. Gleiches Muster wie oben: zeitkonstanter Vergleich,
+  leerer Token lässt `/api/emmy/inbound` durchgehend 404 liefern. Nimmt
+  Emmys Antworten entgegen und broadcastet sie live an offene Emmy-Chat-
+  Fenster (`server/src/emmy/emmy-bus.ts`); der ausgehende Teil (Overlay →
+  Emmy) läuft über denselben `OPENCLAW_WEBHOOK_URL` wie der ausgehende
+  Webhook oben, nur mit einer zusätzlichen `"thread": "emmy"`-Markierung
+  im Payload.
 - **OpenClaw als verwaltetes Projekt**: läuft OpenClaw selbst als
   Node-Prozess auf demselben Server, lässt es sich wie jedes andere Projekt
   über die normale Projekt-Registrierung hinzufügen — kein Sonderfall, kein

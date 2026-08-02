@@ -6,6 +6,7 @@ import { handleLogsConnection } from "../pm2/pm2.ws.js";
 import { handleStatusConnection } from "./status.ws.js";
 import { handleBackupProgressConnection } from "../backup/backup.ws.js";
 import { handleDeployConnection } from "../projects/deploy.ws.js";
+import { handleEmmyConnection } from "../emmy/emmy.ws.js";
 import { isAllowedOrigin } from "./origin-check.js";
 
 export function attachWebSocketServer(server: HttpServer): void {
@@ -43,6 +44,8 @@ export function attachWebSocketServer(server: HttpServer): void {
         handleBackupProgressConnection(ws);
       } else if (segments[1] === "deploy" && segments[2]) {
         handleDeployConnection(ws, segments[2]);
+      } else if (segments[1] === "emmy") {
+        handleEmmyConnection(ws);
       } else {
         ws.close(4404, "unknown_route");
       }

@@ -785,7 +785,38 @@ curl -X POST -H "Authorization: Bearer <AUTOMATION_TOKEN>" \
 Endpunkte: `GET/POST /api/automation/projects/:id/{status,start,stop,restart,deploy}`,
 `POST /api/automation/backup`, `POST /api/automation/scan`.
 
-**14.3 OpenClaw selbst als verwaltetes Projekt.** Läuft OpenClaw als
+**14.3 Emmy-Chat: zweiseitige Unterhaltung mit dem OpenClaw-Agenten.**
+Das "Emmy"-App-Icon im Homescreen ist ein WhatsApp-artiges Chat-Fenster für
+eine einzelne, durchgehende Unterhaltung mit dem OpenClaw-Hauptagenten
+("Emmy"). Ausgehend (Overlay → Emmy) läuft das über denselben
+`OPENCLAW_WEBHOOK_URL`/`OPENCLAW_WEBHOOK_SECRET` wie 14.1, nur mit einer
+zusätzlichen `"thread": "emmy"`-Markierung im Payload, damit sich das vom
+reinen Notification-Text unterscheiden lässt
+(`server/src/openclaw/openclaw-webhook.ts`, `sendEmmyChatMessage`).
+
+Eingehend (Emmy → Overlay) braucht es einen neuen, separaten
+Token-authentifizierten Endpunkt — anders als 14.2 (das nur Aktionen
+auslöst) transportiert dieser hier tatsächliche Chat-Inhalte:
+
+```
+EMMY_INBOUND_TOKEN=<langer, zufälliger String>
+```
+
+```
+curl -X POST -H "Authorization: Bearer <EMMY_INBOUND_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Antwort von Emmy"}' \
+  https://<overlay-host>/api/emmy/inbound
+```
+
+Leerer Wert lässt `/api/emmy/inbound` durchgehend mit 404 antworten, wie
+`AUTOMATION_TOKEN` in 14.2. In OpenClaw muss eine Antwort des Emmy-Agenten
+entsprechend an diesen Endpunkt weitergeleitet werden — der genaue
+Konfigurationsweg dafür hängt von der eigenen OpenClaw-Instanz ab und war,
+wie in der Quellenlage oben beschrieben, zum Schreibzeitpunkt nicht gegen
+die Primärdokumentation verifizierbar.
+
+**14.4 OpenClaw selbst als verwaltetes Projekt.** Läuft OpenClaw als
 eigener Node-Prozess auf demselben Server, lässt es sich wie jedes andere
 Projekt über "Hinzufügen" im Dashboard registrieren (PM2-Name, Start-
 Skript, optionales Deploy-Skript) — dafür ist kein Overlay-Code nötig,

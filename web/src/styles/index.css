@@ -1956,6 +1956,132 @@ button.active {
   color: var(--c-danger);
 }
 
+/* --- Emmy-Chat --- */
+
+.emmy-app {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.emmy-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.emmy-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.emmy-header-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.emmy-header-text h2 {
+  margin: 0;
+}
+
+.emmy-header-sub {
+  font-size: 0.8rem;
+  color: var(--c-text-3);
+}
+
+.emmy-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+}
+
+.emmy-bubble {
+  max-width: 85%;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  font-size: 0.98rem;
+}
+
+.emmy-bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.emmy-bubble-time {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  opacity: 0.65;
+}
+
+.emmy-bubble-me {
+  align-self: flex-end;
+  background: var(--c-accent);
+  color: #fff;
+}
+
+.emmy-bubble-emmy {
+  align-self: flex-start;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+}
+
+.emmy-error {
+  color: var(--c-danger);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.emmy-input-row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+
+.emmy-textarea {
+  flex: 1;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  color: var(--c-text);
+  font-size: 1.05rem;
+  font-family: inherit;
+  padding: 0.9rem 1rem;
+  resize: vertical;
+}
+
+.emmy-send-button {
+  padding: 0.9rem 1.1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  white-space: nowrap;
+}
+
+.emmy-send-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* --- Pläne-Tab (Projekt-Workspace) --- */
 
 .plans-tab {
