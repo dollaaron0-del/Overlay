@@ -443,6 +443,23 @@ button.active {
   overflow: hidden;
 }
 
+/* xterm.css sets `user-select: none` on `.xterm` and re-implements selection
+   itself (a `.xterm-selection` overlay driven by mouse drag) so it can snap to
+   the cell grid. The cost is that iOS has no DOM selection to work with, so
+   long-press, magnifier, drag handles and the "Kopieren" callout never appear —
+   the thing that works everywhere else in this app. Hand the rendered rows back
+   to the browser's own selection engine. Desktop is unaffected: xterm
+   preventDefault()s mousedown (SelectionService.handleMouseDown) before a
+   native selection can start, so mouse drag keeps using xterm's grid selection
+   including block select and alt-click. TerminalPanel's copy handling reads
+   whichever of the two selections is actually populated. */
+.terminal-panel .xterm .xterm-screen,
+.terminal-panel .xterm .xterm-rows {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
 .log-panel-wrapper {
   flex: 1;
   min-width: 0;

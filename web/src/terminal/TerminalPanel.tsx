@@ -18,6 +18,7 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (!containerRef.current) return;
+    const container = containerRef.current;
 
     const term = new Terminal({
       cursorBlink: true,
@@ -28,7 +29,65 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
-    term.open(containerRef.current);
+
+    // Two selections can be active in this panel: xterm's own cell-grid one
+    // (mouse drag on desktop) and the browser's native one (iOS long-press,
+    // enabled via the user-select override in index.css). Prefer the native
+    // one when it actually lies inside the terminal, so whichever the user
+    // sees highlighted is what gets copied.
+    const selectedText = () => {
+      const selection = window.getSelection();
+      const nativeText = selection && !selection.isCollapsed ? selection.toString() : "";
+      if (nativeText.trim() && container.contains(selection!.anchorNode)) {
+        return nativeText;
+      }
+      return term.hasSelection() ? term.getSelection() : "";
+    };
+
+    // xterm.js otherwise always forwards Ctrl/Cmd+C as SIGINT (0x03) to the
+    // pty, even with an active selection, and relies on the browser's native
+    // paste event for Ctrl/Cmd+V, which doesn't reliably fire while focus sits
+    // in xterm's off-screen helper textarea. Handle both explicitly via the
+    // clipboard API so copy doesn't kill the running command and paste works.
+    // With no selection at all, Ctrl+C must still fall through as SIGINT.
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true;
+      const mod = event.ctrlKey || event.metaKey;
+      if (mod && event.key.toLowerCase() === "c") {
+        const text = selectedText();
+        if (!text) return true;
+        navigator.clipboard.writeText(text).catch(() => {});
+        event.preventDefault();
+        return false;
+      }
+      if (mod && event.key.toLowerCase() === "v") {
+        navigator.clipboard
+          .readText()
+          .then((text) => term.paste(text))
+          .catch(() => {});
+        event.preventDefault();
+        return false;
+      }
+      return true;
+    });
+
+    // The Ctrl/Cmd+C handler above only fires on keydown, so it never runs on
+    // mobile: tapping "Kopieren" in iOS's selection callout dispatches a `copy`
+    // ClipboardEvent instead, with no keydown involved. WebKit's default
+    // handling would copy the native selection correctly on its own, but
+    // xterm registers its own `copy` listener on term.element (a descendant of
+    // this container) which overwrites clipboardData from its internal
+    // selection whenever that one happens to be non-empty. Setting the data
+    // again here, on the way up, makes the visible selection win.
+    const onCopy = (event: ClipboardEvent) => {
+      const text = selectedText();
+      if (!text) return;
+      event.preventDefault();
+      event.clipboardData?.setData("text/plain", text);
+    };
+    container.addEventListener("copy", onCopy);
+
+    term.open(container);
     fitAddon.fit();
     setTerminal(term);
 
@@ -46,7 +105,7 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     const lateFit = setTimeout(() => fitAddon.fit(), 300);
 
     const resizeObserver = new ResizeObserver(() => fitAddon.fit());
-    resizeObserver.observe(containerRef.current);
+    resizeObserver.observe(container);
     // Covers iOS keyboard show/hide: the container's box size changes via
     // the --app-vh cascade (see useDynamicViewportHeight), which normally
     // reaches this ResizeObserver too, but re-fitting directly off
@@ -59,6 +118,7 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       clearTimeout(lateFit);
       resizeObserver.disconnect();
       window.visualViewport?.removeEventListener("resize", onViewportResize);
+      container.removeEventListener("copy", onCopy);
       term.dispose();
       setTerminal(null);
     };
