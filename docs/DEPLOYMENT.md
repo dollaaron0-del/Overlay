@@ -86,36 +86,37 @@ pm2 startup   # richtet Autostart beim Boot ein
 
 ### 4.1 Eine Code-Änderung an Overlay ausrollen
 
-Overlay verwaltet sich nicht selbst: der "🚀 Deploy"-Button gilt nur für die
-*verwalteten* Projekte, nicht für Overlay. Eine Änderung geht diesen Weg:
+Overlay verwaltet sich nicht über den "🚀 Deploy"-Button — der gilt nur für
+die *verwalteten* Projekte. Für Overlay selbst gibt es stattdessen den
+"Jetzt aktualisieren"-Knopf im Kontrollzentrum (Abschnitt 15). Der komplette
+Weg einer Änderung:
 
 1. Commit landet per Push auf einem `overlay-agent/<name>`-Branch (Agenten
    pushen nie auf main, siehe AGENTS.md) — damit liegt sie erst auf GitHub,
    **nicht** auf dem Server.
-2. Auf dem Server einspielen und bauen:
-   ```
-   cd /opt/overlay
-   git pull                  # bzw. git merge origin/overlay-agent/<name>
-   npm install               # nur nötig, wenn sich Dependencies geändert haben
-   npm run build             # baut shared -> server -> web
-   pm2 restart overlay
-   ```
-3. Im Browser einmal neu laden.
+2. PR öffnen, reviewen, auf den Upstream-Branch mergen. **Das ist das
+   eigentliche Sicherheits-Gate** — der Update-Knopf holt ausschließlich
+   `@{u}` per `--ff-only`, also nur bereits gemergten Code.
+3. Im Kontrollzentrum "Jetzt aktualisieren" drücken. Kein SSH nötig.
 
-**Was wann nötig ist:** Das Frontend wird von `express.static` direkt von der
-Platte ausgeliefert (`web/dist/`), also reicht bei reinen Frontend-Änderungen
-`npm run build -w web` — ohne PM2-Neustart. Nur Änderungen am Server-Code
-brauchen zwingend `pm2 restart overlay`, weil der laufende Prozess sonst
-weiter den alten `server/dist/` im Speicher hat.
+**Häufigster Grund, warum "Jetzt aktualisieren" scheinbar nichts tut:** Es
+ist nichts zu holen. Der Knopf zieht nur den getrackten Upstream-Branch —
+Commits, die noch auf einem `overlay-agent/*`-Branch liegen und nie gemergt
+wurden, sind für ihn unsichtbar, und `--ff-only` macht dann korrekterweise
+nichts. Vor der Fehlersuche also erst prüfen, ob Schritt 2 wirklich passiert
+ist.
+
+**Manuell (nur wenn der Knopf ausfällt, z.B. weil Overlay gar nicht mehr
+startet):** siehe Abschnitt 11.2.
 
 **Zum Neuladen im Browser:** Overlay ist eine PWA mit Service Worker, der
 Navigationen aus seinem eigenen Cache beantwortet. Ein neuer Worker wird
 dadurch erst bemerkt, während die alte Seite schon angezeigt wird — früher
 zeigte deshalb erst der *zweite* Reload die neue Version, was aussah, als
-würde "Aktualisieren" nichts tun. `web/src/pwa/sw-update.ts` lädt die Seite
-jetzt automatisch einmal nach, sobald der neue Worker übernimmt, und fragt
-zusätzlich regelmäßig nach Updates — ein Reload genügt, offene Tabs ziehen
-auch von selbst nach.
+sei das Update nicht angekommen, obwohl der Server längst neu gebaut war.
+`web/src/pwa/sw-update.ts` lädt die Seite jetzt automatisch einmal nach,
+sobald der neue Worker übernimmt, und fragt zusätzlich regelmäßig nach
+Updates — ein Reload genügt, offene Tabs ziehen auch von selbst nach.
 
 ## 5. Projekte registrieren
 
