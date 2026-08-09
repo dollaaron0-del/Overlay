@@ -23,34 +23,103 @@ after(async () => {
   await fs.rm(tmpCwd, { recursive: true, force: true });
 });
 
-test("listEmmyMessages is empty before anything has been appended", async () => {
-  assert.deepEqual(await store.listEmmyMessages(), []);
+test("listChats lazily creates and pins the general chat", async () => {
+  const chats = await store.listChats();
+  assert.equal(chats.length, 1);
+  assert.equal(chats[0].id, store.GENERAL_CHAT_ID);
+  assert.equal(chats[0].kind, "general");
+  assert.equal(chats[0].status, "open");
 });
 
-test("appendEmmyMessage persists a message with role/text/timestamp", async () => {
-  const message = await store.appendEmmyMessage("me", "Hallo Emmy");
-  assert.equal(message.role, "me");
-  assert.equal(message.text, "Hallo Emmy");
-  assert.ok(message.id);
-  assert.ok(message.at);
-
-  const all = await store.listEmmyMessages();
-  assert.deepEqual(all, [message]);
+test("the general chat starts empty and cannot be deleted", async () => {
+  assert.deepEqual(await store.listMessages(store.GENERAL_CHAT_ID), []);
+  assert.equal(await store.deleteChat(store.GENERAL_CHAT_ID), false);
+  assert.ok(await store.getChat(store.GENERAL_CHAT_ID));
 });
 
-test("appendEmmyMessage keeps insertion order across roles", async () => {
-  const question = await store.appendEmmyMessage("me", "Frage");
-  const answer = await store.appendEmmyMessage("emmy", "Antwort");
+test("createChat adds a task chat with its own id and defaults", async () => {
+  const chat = await store.createChat("task", "  PDF zusammenfassen  ");
+  assert.equal(chat.kind, "task");
+  assert.equal(chat.title, "PDF zusammenfassen");
+  assert.equal(chat.status, "open");
+  assert.notEqual(chat.id, store.GENERAL_CHAT_ID);
+  assert.ok(chat.id);
 
-  const all = await store.listEmmyMessages();
-  const questionIndex = all.findIndex((m) => m.id === question.id);
-  const answerIndex = all.findIndex((m) => m.id === answer.id);
-  assert.ok(questionIndex < answerIndex, "question should be stored before the answer that followed it");
+  assert.ok(await store.getChat(chat.id), "created chat should be retrievable");
+});
+
+test("createChat falls back to a default title when given blank input", async () => {
+  const chat = await store.createChat("task", "   ");
+  assert.equal(chat.title, "Neue Aufgabe");
+});
+
+test("appendMessage stores messages per chat and keeps them isolated", async () => {
+  const chatA = await store.createChat("task", "A");
+  const chatB = await store.createChat("task", "B");
+
+  const a1 = await store.appendMessage(chatA.id, "me", "Frage A");
+  await store.appendMessage(chatB.id, "me", "Frage B");
+  const a2 = await store.appendMessage(chatA.id, "emmy", "Antwort A");
+
+  const inA = await store.listMessages(chatA.id);
+  assert.deepEqual(
+    inA.map((m) => m.id),
+    [a1.id, a2.id],
+    "messages return in insertion order, scoped to their chat",
+  );
+  assert.ok(inA.every((m) => m.chatId === chatA.id));
+
+  const inB = await store.listMessages(chatB.id);
+  assert.equal(inB.length, 1);
+  assert.equal(inB[0].text, "Frage B");
+});
+
+test("appendMessage bumps the chat's updatedAt so it can sort by activity", async () => {
+  const chat = await store.createChat("task", "Aktivität");
+  const before = (await store.getChat(chat.id))!.updatedAt;
+  await new Promise((r) => setTimeout(r, 5));
+  const message = await store.appendMessage(chat.id, "me", "ping");
+  const after = (await store.getChat(chat.id))!.updatedAt;
+  assert.equal(after, message.at);
+  assert.ok(after >= before);
+});
+
+test("appendMessage persists attachments only when present", async () => {
+  const chat = await store.createChat("task", "Anhang");
+  const withAttachment = await store.appendMessage(chat.id, "me", "siehe Datei", [
+    { filename: "1700000000-abc.pdf", originalName: "report.pdf", mimeType: "application/pdf", kind: "document" },
+  ]);
+  assert.equal(withAttachment.attachments?.length, 1);
+  assert.equal(withAttachment.attachments?.[0].originalName, "report.pdf");
+
+  const plain = await store.appendMessage(chat.id, "emmy", "keine Datei");
+  assert.equal(plain.attachments, undefined);
+});
+
+test("updateChat patches title and status without touching other chats", async () => {
+  const chat = await store.createChat("task", "Alt");
+  const updated = await store.updateChat(chat.id, { title: "Neu", status: "done" });
+  assert.equal(updated?.title, "Neu");
+  assert.equal(updated?.status, "done");
+  assert.equal(await store.updateChat("does-not-exist", { status: "done" }), undefined);
+});
+
+test("deleteChat removes the chat and cascades to its messages", async () => {
+  const chat = await store.createChat("task", "Wegwerf");
+  await store.appendMessage(chat.id, "me", "temporär");
+  assert.equal(await store.deleteChat(chat.id), true);
+  assert.equal(await store.getChat(chat.id), undefined);
+  assert.deepEqual(await store.listMessages(chat.id), []);
+  assert.equal(await store.deleteChat(chat.id), false);
 });
 
 test("survives a fresh module instance re-reading from disk", async () => {
-  const message = await store.appendEmmyMessage("me", "Persistente Nachricht");
+  const chat = await store.createChat("task", "Persistenz");
+  const message = await store.appendMessage(chat.id, "me", "Persistente Nachricht");
+
   const fresh = (await import(`./emmy-store.js?fresh=${Date.now()}`)) as typeof import("./emmy-store.js");
-  const all = await fresh.listEmmyMessages();
-  assert.ok(all.some((m) => m.id === message.id && m.text === "Persistente Nachricht"));
+  const chats = await fresh.listChats();
+  assert.ok(chats.some((c) => c.id === chat.id));
+  const messages = await fresh.listMessages(chat.id);
+  assert.ok(messages.some((m) => m.id === message.id && m.text === "Persistente Nachricht"));
 });

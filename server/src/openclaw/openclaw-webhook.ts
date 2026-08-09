@@ -56,3 +56,24 @@ export async function sendEmmyChatMessage(text: string): Promise<void> {
   }
   await postToOpenClaw(config.OPENCLAW_WEBHOOK_URL, config.OPENCLAW_WEBHOOK_SECRET, { text, thread: "emmy" });
 }
+
+/**
+ * Drives one isolated OpenClaw agent turn via the Gateway's `hooks` endpoint
+ * (POST /hooks/agent). Unlike sendEmmyChatMessage above (the legacy webhook-
+ * plugin path), this binds the turn to a per-chat `sessionKey`, so each Emmy
+ * task chat keeps its own isolated context. The reply does NOT come back
+ * through this call — the agent turn posts its answer to /api/emmy/inbound
+ * itself (the message text tells it how, including the chatId), which is why
+ * this is fire-and-return: a 200 here only means the turn was accepted.
+ */
+export async function sendEmmyHookTurn(sessionKey: string, name: string, message: string): Promise<void> {
+  if (!config.OPENCLAW_HOOK_URL) {
+    throw new Error("OPENCLAW_HOOK_URL ist nicht konfiguriert");
+  }
+  await postToOpenClaw(config.OPENCLAW_HOOK_URL, config.OPENCLAW_HOOK_TOKEN, {
+    message,
+    sessionKey,
+    name,
+    deliver: false,
+  });
+}
