@@ -28,7 +28,21 @@ export function useTerminalSocket(projectId: string | null, terminal: Terminal |
       else if (msg.type === "ping") socket.send({ type: "pong" });
       else if (msg.type === "exit") terminal.write(`\r\n[Prozess beendet, Code ${msg.code}]\r\n`);
     });
-    const unsubOpen = socket.onOpen(() => setStatus("connected"));
+    const unsubOpen = socket.onOpen(() => {
+      setStatus("connected");
+      // Report the grid we already have, rather than waiting for an onResize
+      // that will never come. TerminalPanel fits the terminal to its
+      // container immediately after open(), which is before this hook can
+      // subscribe below — that first fit is what establishes the real size,
+      // and its event is gone by now. Every later fit computes the same
+      // numbers and FitAddon skips the resize entirely when nothing changed,
+      // so no further event is emitted either. Without this the pty kept the
+      // 80x24 it was spawned with while xterm rendered a much larger grid,
+      // and full-screen programs drew into the top-left corner of it.
+      // Sending on every (re)connect also re-asserts the size after a
+      // reconnect, where the server may have resized for another client.
+      socket.send({ type: "resize", cols: terminal.cols, rows: terminal.rows });
+    });
     const unsubClose = socket.onClose(() => setStatus("reconnecting"));
 
     const dataDisposable = terminal.onData((data) => socket.send({ type: "input", data }));
