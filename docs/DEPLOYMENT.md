@@ -84,6 +84,39 @@ pm2 save
 pm2 startup   # richtet Autostart beim Boot ein
 ```
 
+### 4.1 Eine Code-Änderung an Overlay ausrollen
+
+Overlay verwaltet sich nicht selbst: der "🚀 Deploy"-Button gilt nur für die
+*verwalteten* Projekte, nicht für Overlay. Eine Änderung geht diesen Weg:
+
+1. Commit landet per Push auf einem `overlay-agent/<name>`-Branch (Agenten
+   pushen nie auf main, siehe AGENTS.md) — damit liegt sie erst auf GitHub,
+   **nicht** auf dem Server.
+2. Auf dem Server einspielen und bauen:
+   ```
+   cd /opt/overlay
+   git pull                  # bzw. git merge origin/overlay-agent/<name>
+   npm install               # nur nötig, wenn sich Dependencies geändert haben
+   npm run build             # baut shared -> server -> web
+   pm2 restart overlay
+   ```
+3. Im Browser einmal neu laden.
+
+**Was wann nötig ist:** Das Frontend wird von `express.static` direkt von der
+Platte ausgeliefert (`web/dist/`), also reicht bei reinen Frontend-Änderungen
+`npm run build -w web` — ohne PM2-Neustart. Nur Änderungen am Server-Code
+brauchen zwingend `pm2 restart overlay`, weil der laufende Prozess sonst
+weiter den alten `server/dist/` im Speicher hat.
+
+**Zum Neuladen im Browser:** Overlay ist eine PWA mit Service Worker, der
+Navigationen aus seinem eigenen Cache beantwortet. Ein neuer Worker wird
+dadurch erst bemerkt, während die alte Seite schon angezeigt wird — früher
+zeigte deshalb erst der *zweite* Reload die neue Version, was aussah, als
+würde "Aktualisieren" nichts tun. `web/src/pwa/sw-update.ts` lädt die Seite
+jetzt automatisch einmal nach, sobald der neue Worker übernimmt, und fragt
+zusätzlich regelmäßig nach Updates — ein Reload genügt, offene Tabs ziehen
+auch von selbst nach.
+
 ## 5. Projekte registrieren
 
 Jede verwaltete Web-App muss als direktes Unterverzeichnis von `APPS_ROOT`
