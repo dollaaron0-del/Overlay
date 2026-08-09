@@ -153,6 +153,14 @@ body {
   width: 100%;
 }
 
+.lock-screen-logout {
+  background: transparent;
+  border-color: transparent;
+  color: var(--c-text-3);
+  font-size: 0.8rem;
+  padding: 0.3rem 0.6rem;
+}
+
 .settings-hint {
   font-size: 0.8rem;
   color: var(--c-text-3);
@@ -441,6 +449,23 @@ button.active {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+/* xterm.css sets `user-select: none` on `.xterm` and re-implements selection
+   itself (a `.xterm-selection` overlay driven by mouse drag) so it can snap to
+   the cell grid. The cost is that iOS has no DOM selection to work with, so
+   long-press, magnifier, drag handles and the "Kopieren" callout never appear —
+   the thing that works everywhere else in this app. Hand the rendered rows back
+   to the browser's own selection engine. Desktop is unaffected: xterm
+   preventDefault()s mousedown (SelectionService.handleMouseDown) before a
+   native selection can start, so mouse drag keeps using xterm's grid selection
+   including block select and alt-click. TerminalPanel's copy handling reads
+   whichever of the two selections is actually populated. */
+.terminal-panel .xterm .xterm-screen,
+.terminal-panel .xterm .xterm-rows {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
 }
 
 .log-panel-wrapper {
@@ -1157,6 +1182,41 @@ button.active {
   background: var(--c-danger);
 }
 
+.os-app-icon-delete-button {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--c-danger);
+  border: 2px solid var(--c-surface);
+  color: #fff;
+  font-size: 0.7rem;
+  line-height: 1;
+  z-index: 1;
+}
+
+.os-app-icon-delete-button:hover {
+  filter: brightness(1.1);
+}
+
+/* Project tiles get a bigger glyph than static apps, so the projects a user
+   actually works in stand out on a homescreen that's otherwise mostly
+   utility apps. */
+.os-app-icon-wrapper--large .os-app-icon-glyph {
+  width: 76px;
+  height: 76px;
+  font-size: 2.6rem;
+  border-radius: 20px;
+}
+
+.os-app-icon-wrapper--large .os-app-icon-label {
+  max-width: 96px;
+  font-size: 0.8rem;
+}
+
 .home-hidden-section {
   border-top: 1px solid var(--c-surface-2);
   padding-top: 1rem;
@@ -1459,6 +1519,21 @@ button.active {
 .project-icon-button:hover {
   background: var(--c-surface-2);
   border-radius: 6px;
+}
+
+.project-rename-button {
+  background: transparent;
+  border: none;
+  font-size: 0.9rem;
+  padding: 0.15rem 0.3rem;
+  line-height: 1;
+  color: var(--c-text-3);
+}
+
+.project-rename-button:hover {
+  background: var(--c-surface-2);
+  border-radius: 6px;
+  color: var(--c-text);
 }
 
 .project-icon-picker {

@@ -4,6 +4,7 @@ import { api, ApiError } from "../api/client";
 interface ProjectOption {
   id: string;
   dirName: string;
+  name?: string;
 }
 
 interface ChatSummary {
@@ -304,7 +305,7 @@ export function IdeaChatApp() {
           <div className="ideachat-project-picker">
             {projects.map((p) => (
               <button key={p.id} disabled={sending || !draft.trim()} onClick={() => startChat(p.id)}>
-                {p.dirName}
+                {p.name || p.dirName}
               </button>
             ))}
           </div>

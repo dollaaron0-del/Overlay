@@ -7,4 +7,6 @@ export interface Project {
   deployScript?: string;
   /** Optional custom home-screen icon (a single emoji), set via PATCH /:id. Falls back to a generic folder icon. */
   icon?: string;
+  /** Optional custom display name, set via PATCH /:id. Falls back to dirName. */
+  name?: string;
 }

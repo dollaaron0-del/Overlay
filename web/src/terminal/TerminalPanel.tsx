@@ -18,6 +18,7 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
 
   useEffect(() => {
     if (!containerRef.current) return;
+    const container = containerRef.current;
 
     const term = new Terminal({
       cursorBlink: true,
@@ -28,8 +29,83 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     fitAddonRef.current = fitAddon;
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
-    term.open(containerRef.current);
-    fitAddon.fit();
+
+    // xterm's own internal scroll-area sync can throw ("Cannot read
+    // properties of undefined (reading 'dimensions')") if it fires before
+    // the renderer has fully initialized — observed in practice right after
+    // open(). An uncaught throw here would abort whichever fit() call hit
+    // it, which (if it's the very first one) skips every mitigation below
+    // it in this effect — fonts.ready/raf/timeout refits, and the
+    // ResizeObserver subscription itself — leaving the terminal stuck at
+    // its default 80x24 size for the lifetime of the mount, immune to any
+    // later resize. Swallow and retry on the next frame instead.
+    const safeFit = () => {
+      try {
+        fitAddon.fit();
+      } catch {
+        requestAnimationFrame(() => fitAddon.fit());
+      }
+    };
+
+    // Two selections can be active in this panel: xterm's own cell-grid one
+    // (mouse drag on desktop) and the browser's native one (iOS long-press,
+    // enabled via the user-select override in index.css). Prefer the native
+    // one when it actually lies inside the terminal, so whichever the user
+    // sees highlighted is what gets copied.
+    const selectedText = () => {
+      const selection = window.getSelection();
+      const nativeText = selection && !selection.isCollapsed ? selection.toString() : "";
+      if (nativeText.trim() && container.contains(selection!.anchorNode)) {
+        return nativeText;
+      }
+      return term.hasSelection() ? term.getSelection() : "";
+    };
+
+    // xterm.js otherwise always forwards Ctrl/Cmd+C as SIGINT (0x03) to the
+    // pty, even with an active selection, and relies on the browser's native
+    // paste event for Ctrl/Cmd+V, which doesn't reliably fire while focus sits
+    // in xterm's off-screen helper textarea. Handle both explicitly via the
+    // clipboard API so copy doesn't kill the running command and paste works.
+    // With no selection at all, Ctrl+C must still fall through as SIGINT.
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true;
+      const mod = event.ctrlKey || event.metaKey;
+      if (mod && event.key.toLowerCase() === "c") {
+        const text = selectedText();
+        if (!text) return true;
+        navigator.clipboard.writeText(text).catch(() => {});
+        event.preventDefault();
+        return false;
+      }
+      if (mod && event.key.toLowerCase() === "v") {
+        navigator.clipboard
+          .readText()
+          .then((text) => term.paste(text))
+          .catch(() => {});
+        event.preventDefault();
+        return false;
+      }
+      return true;
+    });
+
+    // The Ctrl/Cmd+C handler above only fires on keydown, so it never runs on
+    // mobile: tapping "Kopieren" in iOS's selection callout dispatches a `copy`
+    // ClipboardEvent instead, with no keydown involved. WebKit's default
+    // handling would copy the native selection correctly on its own, but
+    // xterm registers its own `copy` listener on term.element (a descendant of
+    // this container) which overwrites clipboardData from its internal
+    // selection whenever that one happens to be non-empty. Setting the data
+    // again here, on the way up, makes the visible selection win.
+    const onCopy = (event: ClipboardEvent) => {
+      const text = selectedText();
+      if (!text) return;
+      event.preventDefault();
+      event.clipboardData?.setData("text/plain", text);
+    };
+    container.addEventListener("copy", onCopy);
+
+    term.open(container);
+    safeFit();
     setTerminal(term);
 
     // fit() right after open() can undersize the grid: the monospace font
@@ -37,28 +113,28 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     // first layout pass isn't guaranteed final. Re-fit once fonts are
     // actually ready and after the next paint, instead of trusting only
     // the synchronous call above.
-    document.fonts?.ready.then(() => fitAddon.fit());
-    const raf = requestAnimationFrame(() => fitAddon.fit());
+    document.fonts?.ready.then(safeFit);
+    const raf = requestAnimationFrame(safeFit);
 
     // iOS Safari finalizes flex layout a beat after mount; the raf/fonts.ready
     // refits can still land before the container has its real height. One more
     // delayed fit removes the "cursor row clipped until you rotate" bug.
-    const lateFit = setTimeout(() => fitAddon.fit(), 300);
+    const lateFit = setTimeout(safeFit, 300);
 
-    const resizeObserver = new ResizeObserver(() => fitAddon.fit());
-    resizeObserver.observe(containerRef.current);
+    const resizeObserver = new ResizeObserver(safeFit);
+    resizeObserver.observe(container);
     // Covers iOS keyboard show/hide: the container's box size changes via
     // the --app-vh cascade (see useDynamicViewportHeight), which normally
     // reaches this ResizeObserver too, but re-fitting directly off
     // visualViewport as well costs nothing and removes that assumption.
-    const onViewportResize = () => fitAddon.fit();
-    window.visualViewport?.addEventListener("resize", onViewportResize);
+    window.visualViewport?.addEventListener("resize", safeFit);
 
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(lateFit);
       resizeObserver.disconnect();
-      window.visualViewport?.removeEventListener("resize", onViewportResize);
+      window.visualViewport?.removeEventListener("resize", safeFit);
+      container.removeEventListener("copy", onCopy);
       term.dispose();
       setTerminal(null);
     };

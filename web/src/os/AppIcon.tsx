@@ -9,9 +9,11 @@ export function AppIcon({
   onClick,
   editMode,
   selected,
+  large,
   onToggleSelect,
   onLongPress,
   onHide,
+  onDelete,
   onDragStart,
 }: {
   id: string;
@@ -22,9 +24,11 @@ export function AppIcon({
   onClick: () => void;
   editMode: boolean;
   selected?: boolean;
+  large?: boolean;
   onToggleSelect?: () => void;
   onLongPress: () => void;
   onHide?: () => void;
+  onDelete?: () => void;
   onDragStart: (id: string) => void;
 }) {
   const pressHandlers = useLongPressDrag({ id, editMode, onLongPress, onDragStart });
@@ -38,10 +42,19 @@ export function AppIcon({
   };
 
   return (
-    <div className={`os-app-icon-wrapper ${editMode ? "edit-mode" : ""}`} data-icon-id={id} {...pressHandlers}>
+    <div
+      className={`os-app-icon-wrapper ${editMode ? "edit-mode" : ""} ${large ? "os-app-icon-wrapper--large" : ""}`}
+      data-icon-id={id}
+      {...pressHandlers}
+    >
       {editMode && onHide && (
         <button className="os-app-icon-hide-button" onClick={onHide} aria-label={`${label} ausblenden`}>
           ✕
+        </button>
+      )}
+      {editMode && onDelete && (
+        <button className="os-app-icon-delete-button" onClick={onDelete} aria-label={`${label} löschen`} title="Aus Overlay entfernen">
+          🗑
         </button>
       )}
       <button className={`os-app-icon ${selected ? "selected" : ""}`} onClick={handleClick} tabIndex={editMode ? -1 : 0}>

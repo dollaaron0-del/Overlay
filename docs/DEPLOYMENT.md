@@ -84,6 +84,71 @@ pm2 save
 pm2 startup   # richtet Autostart beim Boot ein
 ```
 
+### 4.1 Eine Code-Änderung an Overlay ausrollen
+
+Overlay verwaltet sich nicht über den "🚀 Deploy"-Button — der gilt nur für
+die *verwalteten* Projekte. Für Overlay selbst gibt es stattdessen den
+"Jetzt aktualisieren"-Knopf im Kontrollzentrum (Abschnitt 15). Der komplette
+Weg einer Änderung:
+
+1. Commit landet per Push auf einem `overlay-agent/<name>`-Branch (Agenten
+   pushen nie auf main, siehe AGENTS.md) — damit liegt sie erst auf GitHub,
+   **nicht** auf dem Server.
+2. PR öffnen, reviewen, auf den Upstream-Branch mergen. **Das ist das
+   eigentliche Sicherheits-Gate** — der Update-Knopf holt ausschließlich
+   `@{u}` per `--ff-only`, also nur bereits gemergten Code.
+3. Im Kontrollzentrum "Jetzt aktualisieren" drücken. Kein SSH nötig.
+
+**Häufigster Grund, warum "Jetzt aktualisieren" scheinbar nichts tut:** Es
+ist nichts zu holen. Der Knopf zieht nur den getrackten Upstream-Branch —
+Commits, die noch auf einem `overlay-agent/*`-Branch liegen und nie gemergt
+wurden, sind für ihn unsichtbar, und `--ff-only` macht dann korrekterweise
+nichts. Vor der Fehlersuche also erst prüfen, ob Schritt 2 wirklich passiert
+ist.
+
+**Manuell (nur wenn der Knopf ausfällt, z.B. weil Overlay gar nicht mehr
+startet):** siehe Abschnitt 11.2.
+
+**Zum Neuladen im Browser:** Overlay ist eine PWA mit Service Worker, der
+Navigationen aus seinem eigenen Cache beantwortet. Ein neuer Worker wird
+dadurch erst bemerkt, während die alte Seite schon angezeigt wird — früher
+zeigte deshalb erst der *zweite* Reload die neue Version, was aussah, als
+sei das Update nicht angekommen, obwohl der Server längst neu gebaut war.
+`web/src/pwa/sw-update.ts` lädt die Seite jetzt automatisch einmal nach,
+sobald der neue Worker übernimmt, und fragt zusätzlich regelmäßig nach
+Updates — ein Reload genügt, offene Tabs ziehen auch von selbst nach.
+
+### 4.2 Rechte härten (einmalig, als root)
+
+Nach `npm run build` und dem ersten PM2-Start einmal ausführen:
+
+```
+sudo deploy/harden-permissions.sh --dry-run   # zeigt nur, was passieren würde
+sudo deploy/harden-permissions.sh
+pm2 restart overlay
+```
+
+Das Skript macht den Code root-eigen und für den Dienst-User (Standard
+`overlay`, via `OVERLAY_USER` überschreibbar) nur lesbar, gibt ihm dafür
+`data/` zurück und repariert dort zu weite Alt-Modi. Es prüft sich am Ende
+selbst und bricht mit Exit-Code 1 ab, wenn eine Prüfung fehlschlägt.
+
+**Warum das nötig ist:** Ohne diesen Schritt gehört der komplette Checkout dem
+Dienst-User. Der "Jetzt aktualisieren"-Knopf (Abschnitt 15) rollt zwar
+ausschließlich per PR gemergten Code aus — aber wer als Dienst-User Code
+ausführt, kann `server/dist` einfach direkt überschreiben und dieses Gate
+komplett umgehen. Erst die Rechtetrennung macht das Review zu einer
+technischen Grenze statt einer Konvention. `update.sh` läuft als root über
+systemd und schreibt weiterhin problemlos.
+
+**Nebenwirkung:** Danach brauchen auch `npm install` und manuelle Builds im
+Checkout root. `update.sh` baut zwar selbst, installiert aber keine
+Dependencies — nach einer Änderung an `package.json` also einmal
+`sudo npm install` im Checkout nachziehen.
+
+**Nicht auf einem Entwicklungs-Klon ausführen** (z.B. `/opt/apps/overlay-dev`):
+dort soll der unprivilegierte Benutzer ja gerade committen und bauen können.
+
 ## 5. Projekte registrieren
 
 Jede verwaltete Web-App muss als direktes Unterverzeichnis von `APPS_ROOT`
@@ -847,7 +912,8 @@ ohne Rückkehr bittet er stattdessen, die Seite neu zu laden.
 
 **Warum systemd + sudoers?** Dieselbe Rechtetrennung wie beim
 Security-Scan-Trigger (Abschnitt 7.4): der unprivilegierte `overlay`-User
-kann sich nicht selbst neu bauen (root-eigene Dateien, siehe `SECURITY.md`)
+kann sich nicht selbst neu bauen (root-eigene Dateien — hergestellt von
+`deploy/harden-permissions.sh`, siehe Abschnitt 4.2 und `SECURITY.md`)
 und seinen eigenen PM2-Prozess nicht neu starten. Der Web-Server bittet
 daher systemd, die echte, root-privilegierte Unit über eine eng gefasste
 sudoers-Regel zu starten, die **nichts** außer genau diesem einen Befehl

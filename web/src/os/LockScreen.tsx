@@ -1,10 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { api, ApiError } from "../api/client";
+import { useAuth } from "../auth/AuthProvider";
 
 export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
+  const { logout } = useAuth();
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -16,12 +19,29 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
     } catch (err) {
       if (err instanceof ApiError && err.message === "too_many_attempts") {
         setError("Zu viele Versuche — kurz warten.");
-      } else {
+      } else if (err instanceof ApiError && err.message === "unauthenticated") {
+        // The underlying session died (expired, or the admin password changed
+        // elsewhere) — no password will ever unlock this, so drop straight
+        // back to the login screen instead of looping "wrong password".
+        setError("Sitzung abgelaufen — bitte neu anmelden.");
+        await logout();
+      } else if (err instanceof ApiError && err.message === "invalid_password") {
         setError("Falsches Passwort.");
+      } else {
+        setError("Verbindungsfehler — bitte erneut versuchen.");
       }
     } finally {
       setChecking(false);
       setPassword("");
+    }
+  };
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setLoggingOut(false);
     }
   };
 
@@ -44,6 +64,9 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
         {error && <p className="login-error">{error}</p>}
         <button type="submit" disabled={checking}>
           {checking ? "Prüfe…" : "Entsperren"}
+        </button>
+        <button type="button" className="lock-screen-logout" disabled={loggingOut} onClick={handleLogout}>
+          {loggingOut ? "Abmelden…" : "Abmelden"}
         </button>
       </form>
     </div>
