@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { WebSocket } from "ws";
 import type { PtyClientMessage, PtyServerMessage } from "@overlay/shared";
 import { getProject } from "../projects/projects.registry.js";
@@ -13,6 +14,10 @@ export async function handlePtyConnection(ws: WebSocket, projectId: string): Pro
   }
 
   const session = getOrCreateSession(project);
+  // Identifies this one browser tab for the duration of the connection, so
+  // its viewport can be dropped from the session's size arbitration when it
+  // goes away (see PtySession.setClientSize).
+  const clientId = randomUUID();
 
   const send = (msg: PtyServerMessage) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
@@ -40,7 +45,7 @@ export async function handlePtyConnection(ws: WebSocket, projectId: string): Pro
         session.write(msg.data);
         break;
       case "resize":
-        session.resize(msg.cols, msg.rows);
+        session.setClientSize(clientId, msg.cols, msg.rows);
         break;
       case "pong":
         break;
@@ -51,6 +56,9 @@ export async function handlePtyConnection(ws: WebSocket, projectId: string): Pro
     clearInterval(heartbeat);
     unsubData();
     unsubExit();
+    // Give the remaining clients their size back — without this the pty stays
+    // stuck at the smallest viewport that was ever attached.
+    session.removeClient(clientId);
     // Intentionally do NOT kill the pty session here — it stays alive so the
     // Claude Code session survives the iPad app being backgrounded/reopened.
   });
