@@ -1,0 +1,11 @@
+[Unit]
+Description=Overlay update (pull reviewed branch, rebuild, restart)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/overlay
+ExecStart=/bin/bash /opt/overlay/deploy/update.sh
+TimeoutStartSec=600
