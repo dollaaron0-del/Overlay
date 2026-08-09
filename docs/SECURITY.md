@@ -38,6 +38,22 @@ Gleichzeitig soll das Dashboard auch von unterwegs erreichbar sein.
    unterbrochen — es ist also kein Ersatz für Login/2FA, sondern eine
    zusätzliche Hürde gegen "kurz das Zimmer verlassen, Gerät lag entsperrt
    herum".
+5. **Dateisystem-Layer: Code gehört root, nicht dem Dienst-User.** Der
+   Checkout (inkl. `.git`, `.env`, `server/dist`) gehört root und ist für den
+   unprivilegierten Dienst-User nur lesbar; ihm gehört ausschließlich `data/`,
+   wohin der laufende Prozess schreibt. Hergestellt wird das von
+   `deploy/harden-permissions.sh` (einmalig als root, siehe
+   `docs/DEPLOYMENT.md` Abschnitt 4.2). Das ist die Schicht, die das
+   PR-Review vor dem Ausrollen von einer bloßen Konvention zu einer
+   technischen Grenze macht: ohne sie kann alles, was als Dienst-User läuft —
+   ein Agent, ein kompromittierter Prozess — `server/dist` direkt
+   überschreiben und das Gate vollständig umgehen, während der
+   "Jetzt aktualisieren"-Knopf (Abschnitt 15) nur bereits gemergten Code
+   ausrollt. Sie repariert außerdem Alt-Modi unter `data/`: `session.ts` legt
+   `sessions.json` bewusst mit `0600` an, weil die Session-IDs zusammen mit
+   `SESSION_SECRET` ein gültiges Cookie ergeben — ein Modus gilt aber nur
+   beim *Erstellen*, früher entstandene Dateien blieben lesbar für jeden
+   lokalen Account.
 
 Alle Schichten sind bewusst redundant: Tailscale schützt vor Netzwerk-
 Exposure, der App-Login vor unbefugtem Zugriff durch andere Tailnet-Mitglieder
