@@ -16,13 +16,13 @@ export class PtySession {
   private cols = INITIAL_COLS;
   private rows = INITIAL_ROWS;
 
-  constructor(command: string, args: string[], cwd: string) {
+  constructor(command: string, args: string[], cwd: string, env: Record<string, string> = {}) {
     this.proc = pty.spawn(command, args, {
       name: "xterm-256color",
       cols: INITIAL_COLS,
       rows: INITIAL_ROWS,
       cwd,
-      env: process.env as Record<string, string>,
+      env: { ...(process.env as Record<string, string>), ...env },
     });
 
     this.proc.onData((chunk) => {
