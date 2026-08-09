@@ -48,52 +48,58 @@ export class PtySession {
   }
 
   /**
-   * Records one client's viewport and resizes the pty to the smallest one
-   * currently attached.
+   * Records one client's viewport and sizes the pty to the most recently
+   * active one.
    *
-   * A pty has exactly one size, but several clients can be attached to the
-   * same session (iPad and desktop on the same project). Applying each
-   * client's size directly meant the last one to report won: opening a
-   * project on the iPad shrank the desktop terminal to the iPad's grid, so
-   * the TUI redrew into the top-left corner of a much larger window — and
-   * because nothing recomputed on disconnect, it stayed that way even after
-   * the iPad was gone.
+   * A pty has exactly one size, but several clients can attach to the same
+   * project session (iPad and desktop). Two approaches were tried before this
+   * one, and both are worth remembering:
    *
-   * Smallest-wins is what tmux does with several attached clients, and it is
-   * the only choice where the output fits on every screen showing it. The
-   * part that actually fixes the reported bug is that this is recomputed when
-   * a client leaves, so closing the iPad gives the desktop its full size back.
+   * Applying each incoming size directly, with no bookkeeping, meant a
+   * disconnecting client left its size behind forever — open a project once
+   * on the iPad and the desktop terminal stayed shrunk indefinitely.
+   *
+   * Taking the smallest of all attached clients (what tmux does) fixed that
+   * but was wrong for how this app is actually used: the devices here are
+   * rarely watched at the same time, one just sits in a background tab. A
+   * portrait iPad left open then capped the desktop's columns at its own
+   * while the rows still came from the desktop, so the output filled the full
+   * height but only part of the width.
+   *
+   * Most-recently-active wins instead. Clients re-report their size whenever
+   * they become visible (see useTerminalSocket), so the device actually being
+   * looked at is the one that decides, and a background tab stops mattering
+   * until it is brought forward again.
    */
   setClientSize(clientId: string, cols: number, rows: number): void {
     if (cols <= 0 || rows <= 0) return;
+    // Re-inserting moves this client to the end: Map iterates in insertion
+    // order, so "last entry" is the same as "most recently reported".
+    this.clientSizes.delete(clientId);
     this.clientSizes.set(clientId, { cols, rows });
-    this.applySmallestClientSize();
+    this.applyActiveClientSize();
   }
 
-  /** Drops a disconnected client's viewport and re-expands to the remaining ones. */
+  /** Drops a disconnected client and falls back to whoever reported last. */
   removeClient(clientId: string): void {
-    if (this.clientSizes.delete(clientId)) this.applySmallestClientSize();
+    if (this.clientSizes.delete(clientId)) this.applyActiveClientSize();
   }
 
-  private applySmallestClientSize(): void {
-    // With no client attached there is nothing meaningful to shrink to, so
-    // the last agreed size is kept until someone attaches again.
+  private applyActiveClientSize(): void {
+    // With no client attached there is nothing to resize to, so the last
+    // agreed size is kept until someone attaches again.
     if (this.exited || this.clientSizes.size === 0) return;
 
-    let cols = Infinity;
-    let rows = Infinity;
-    for (const size of this.clientSizes.values()) {
-      cols = Math.min(cols, size.cols);
-      rows = Math.min(rows, size.rows);
-    }
-    if (cols === this.cols && rows === this.rows) return;
+    let active: { cols: number; rows: number } | undefined;
+    for (const size of this.clientSizes.values()) active = size;
+    if (!active || (active.cols === this.cols && active.rows === this.rows)) return;
 
-    this.cols = cols;
-    this.rows = rows;
-    this.proc.resize(cols, rows);
+    this.cols = active.cols;
+    this.rows = active.rows;
+    this.proc.resize(active.cols, active.rows);
   }
 
-  /** Current pty grid, i.e. the smallest attached client. Exposed for tests. */
+  /** Current pty grid, i.e. the most recently active client. Exposed for tests. */
   get size(): { cols: number; rows: number } {
     return { cols: this.cols, rows: this.rows };
   }

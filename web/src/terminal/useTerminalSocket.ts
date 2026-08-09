@@ -48,7 +48,21 @@ export function useTerminalSocket(projectId: string | null, terminal: Terminal |
     const dataDisposable = terminal.onData((data) => socket.send({ type: "input", data }));
     const resizeDisposable = terminal.onResize(({ cols, rows }) => socket.send({ type: "resize", cols, rows }));
 
+    // The pty follows whichever client reported last (see PtySession), so
+    // coming back to a tab has to re-assert its grid: otherwise a second
+    // device that was opened in between keeps the pty at its size and this
+    // one silently renders into a mismatched grid.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        socket.send({ type: "resize", cols: terminal.cols, rows: terminal.rows });
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+
     return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
       unsubscribe();
       unsubOpen();
       unsubClose();
