@@ -11,6 +11,7 @@ import { SystemStatsWidget } from "./widgets/SystemStatsWidget";
 import { SecurityWidget } from "./widgets/SecurityWidget";
 import { BackupWidget } from "./widgets/BackupWidget";
 import { OllamaWidget } from "./widgets/OllamaWidget";
+import { defaultProjectIcon } from "./project-icon";
 
 interface IconItem {
   id: string;
@@ -43,7 +44,7 @@ export function HomeScreen({
     ...projects.map((p) => ({
       id: `project:${p.id}`,
       title: p.dirName,
-      icon: p.icon || "📁",
+      icon: p.icon || defaultProjectIcon(p.id),
       statusDot: p.status,
       kind: "project" as const,
     })),

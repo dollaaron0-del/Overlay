@@ -9,6 +9,7 @@ import { NotificationCenter } from "./NotificationCenter";
 import { ControlCenter } from "./ControlCenter";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 import { STATIC_APPS, getStaticApp } from "./apps";
+import { defaultProjectIcon } from "./project-icon";
 import { useAlertStatus } from "./useAlertStatus";
 
 type OpenTarget = { kind: "project"; projectId: string } | { kind: "static"; appId: string } | null;
@@ -42,7 +43,12 @@ export function OsShell() {
 
   const spotlightItems: SpotlightItem[] = useMemo(() => {
     const navItems: SpotlightItem[] = [
-      ...projects.map((p) => ({ id: `project:${p.id}`, title: p.dirName, icon: p.icon || "📁", kind: "navigate" as const })),
+      ...projects.map((p) => ({
+        id: `project:${p.id}`,
+        title: p.dirName,
+        icon: p.icon || defaultProjectIcon(p.id),
+        kind: "navigate" as const,
+      })),
       ...STATIC_APPS.map((a) => ({ id: `app:${a.id}`, title: a.title, icon: a.icon, kind: "navigate" as const })),
     ];
     const actionItems: SpotlightItem[] = [

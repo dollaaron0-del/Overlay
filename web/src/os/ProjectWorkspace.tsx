@@ -9,6 +9,7 @@ import { FileTree } from "../files/FileTree";
 import { FileViewer } from "../files/FileViewer";
 import { PlansTab } from "./PlansTab";
 import { ObsidianTab } from "./ObsidianTab";
+import { defaultProjectIcon } from "./project-icon";
 
 type Tab = "terminal" | "logs" | "files" | "plans" | "obsidian";
 
@@ -103,7 +104,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
             title="Icon ändern"
             aria-label="Icon ändern"
           >
-            {project.icon || "📁"}
+            {project.icon || defaultProjectIcon(project.id)}
           </button>
           <span className="project-workspace-name">{project.dirName}</span>
           <span className="project-status-label">{STATUS_LABEL[project.status]}</span>
