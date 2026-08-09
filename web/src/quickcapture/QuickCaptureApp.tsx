@@ -4,6 +4,7 @@ import { api, ApiError } from "../api/client";
 interface ProjectOption {
   id: string;
   dirName: string;
+  name?: string;
 }
 
 interface PendingImage {
@@ -119,7 +120,7 @@ export function QuickCaptureApp() {
           <div className="quick-capture-target-picker">
             {projects.map((p) => (
               <button key={p.id} onClick={() => chooseTarget(p.id)}>
-                {p.dirName}
+                {p.name || p.dirName}
               </button>
             ))}
           </div>
@@ -142,7 +143,7 @@ export function QuickCaptureApp() {
       <div className="quick-capture-header">
         <h2>Schnellnotiz</h2>
         <button className="quick-capture-target-button" onClick={() => setChoosingTarget(true)}>
-          Ziel: {targetProject?.dirName} ✎
+          Ziel: {targetProject?.name || targetProject?.dirName} ✎
         </button>
       </div>
 

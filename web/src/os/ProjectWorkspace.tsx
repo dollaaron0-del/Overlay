@@ -48,13 +48,23 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
 
   const runAction = (action: "start" | "stop" | "restart") => api.post(`/api/projects/${project.id}/${action}`);
 
+  const displayName = project.name || project.dirName;
+
   const setIcon = async (icon: string | null) => {
     await api.patch(`/api/projects/${project.id}`, { icon });
     setIconPickerOpen(false);
   };
 
+  const renameProject = async () => {
+    const next = window.prompt("Projekt umbenennen:", displayName);
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (!trimmed || trimmed === displayName) return;
+    await api.patch(`/api/projects/${project.id}`, { name: trimmed });
+  };
+
   const removeProject = async () => {
-    if (!confirm(`"${project.dirName}" aus Overlay entfernen? Die Dateien und der Prozess bleiben erhalten.`)) {
+    if (!confirm(`"${displayName}" aus Overlay entfernen? Die Dateien und der Prozess bleiben erhalten.`)) {
       return;
     }
     await api.delete(`/api/projects/${project.id}`);
@@ -106,7 +116,15 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
           >
             {project.icon || defaultProjectIcon(project.id)}
           </button>
-          <span className="project-workspace-name">{project.dirName}</span>
+          <span className="project-workspace-name">{displayName}</span>
+          <button
+            className="project-rename-button"
+            onClick={renameProject}
+            title="Projekt umbenennen"
+            aria-label="Projekt umbenennen"
+          >
+            ✎
+          </button>
           <span className="project-status-label">{STATUS_LABEL[project.status]}</span>
           {project.version && (
             <span

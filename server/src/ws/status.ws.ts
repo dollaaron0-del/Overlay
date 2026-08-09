@@ -25,6 +25,7 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
         cpuPercent: monit?.cpu ?? null,
         hasDeployScript: Boolean(p.deployScript),
         icon: p.icon,
+        name: p.name,
         version,
       } satisfies ProjectSummary;
     }),

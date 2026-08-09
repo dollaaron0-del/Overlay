@@ -9,6 +9,7 @@ import {
   removeProject,
   resolveProjectDir,
   updateProjectIcon,
+  updateProjectName,
 } from "./projects.registry.js";
 import { describeProcess, restartProcess, statusOf } from "../pm2/pm2.service.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
@@ -82,7 +83,8 @@ const updateProjectSchema = z.object({
   // sequences), so this caps on visual length loosely rather than exactly —
   // generous enough for any real emoji, tight enough to block someone
   // pasting a paragraph in here.
-  icon: z.string().max(16).nullable(),
+  icon: z.string().max(16).nullable().optional(),
+  name: z.string().trim().min(1).max(100).nullable().optional(),
 });
 
 projectsRouter.patch("/:id", async (req, res) => {
@@ -91,7 +93,18 @@ projectsRouter.patch("/:id", async (req, res) => {
     res.status(400).json({ error: "invalid_request", details: parsed.error.issues });
     return;
   }
-  const updated = await updateProjectIcon(req.params.id, parsed.data.icon);
+  if (parsed.data.icon === undefined && parsed.data.name === undefined) {
+    res.status(400).json({ error: "invalid_request", message: "Nothing to update" });
+    return;
+  }
+
+  let updated = await getProject(req.params.id);
+  if (!updated) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  if (parsed.data.icon !== undefined) updated = await updateProjectIcon(req.params.id, parsed.data.icon);
+  if (updated && parsed.data.name !== undefined) updated = await updateProjectName(req.params.id, parsed.data.name);
   if (!updated) {
     res.status(404).json({ error: "not_found" });
     return;

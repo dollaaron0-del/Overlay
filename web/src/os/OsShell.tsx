@@ -45,7 +45,7 @@ export function OsShell() {
     const navItems: SpotlightItem[] = [
       ...projects.map((p) => ({
         id: `project:${p.id}`,
-        title: p.dirName,
+        title: p.name || p.dirName,
         icon: p.icon || defaultProjectIcon(p.id),
         kind: "navigate" as const,
       })),
@@ -54,11 +54,14 @@ export function OsShell() {
     const actionItems: SpotlightItem[] = [
       { id: "action:scan", title: "Scan jetzt starten", icon: "🛡", kind: "action" },
       { id: "action:backup", title: "Backup jetzt starten", icon: "💾", kind: "action" },
-      ...projects.flatMap((p) => [
-        { id: `action:project:start:${p.id}`, title: `${p.dirName} starten`, icon: "▶️", kind: "action" as const },
-        { id: `action:project:stop:${p.id}`, title: `${p.dirName} stoppen`, icon: "⏹", kind: "action" as const },
-        { id: `action:project:restart:${p.id}`, title: `${p.dirName} neu starten`, icon: "🔁", kind: "action" as const },
-      ]),
+      ...projects.flatMap((p) => {
+        const name = p.name || p.dirName;
+        return [
+          { id: `action:project:start:${p.id}`, title: `${name} starten`, icon: "▶️", kind: "action" as const },
+          { id: `action:project:stop:${p.id}`, title: `${name} stoppen`, icon: "⏹", kind: "action" as const },
+          { id: `action:project:restart:${p.id}`, title: `${name} neu starten`, icon: "🔁", kind: "action" as const },
+        ];
+      }),
     ];
     return [...navItems, ...actionItems];
   }, [projects]);
@@ -113,7 +116,7 @@ export function OsShell() {
         </div>
       );
     } else {
-      title = project.dirName;
+      title = project.name || project.dirName;
       content = <ProjectWorkspace project={project} onRemoved={goHome} />;
     }
   } else {

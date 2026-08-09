@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ProjectSummary } from "@overlay/shared";
+import { api } from "../api/client";
 import { STATIC_APPS } from "./apps";
 import { AppIcon } from "./AppIcon";
 import { FolderIcon } from "./FolderIcon";
@@ -43,7 +44,7 @@ export function HomeScreen({
   const items: IconItem[] = [
     ...projects.map((p) => ({
       id: `project:${p.id}`,
-      title: p.dirName,
+      title: p.name || p.dirName,
       icon: p.icon || defaultProjectIcon(p.id),
       statusDot: p.status,
       kind: "project" as const,
@@ -76,6 +77,11 @@ export function HomeScreen({
       window.removeEventListener("pointercancel", onPointerUp);
     };
   }, [draggingId, reorder]);
+
+  const deleteProject = async (projectId: string, label: string) => {
+    if (!confirm(`"${label}" aus Overlay entfernen? Die Dateien und der Prozess bleiben erhalten.`)) return;
+    await api.delete(`/api/projects/${projectId}`);
+  };
 
   const openItem = (id: string) => {
     const item = itemsById.get(id);
@@ -166,10 +172,12 @@ export function HomeScreen({
               badge={badges[id]}
               editMode={editMode}
               selected={selectedIds.has(id)}
+              large={item.kind === "project"}
               onToggleSelect={() => toggleSelect(id)}
               onClick={() => openItem(id)}
               onLongPress={() => setEditMode(true)}
               onHide={() => hide(id)}
+              onDelete={item.kind === "project" ? () => deleteProject(id.slice("project:".length), item.title) : undefined}
               onDragStart={setDraggingId}
             />
           );

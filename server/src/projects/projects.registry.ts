@@ -130,6 +130,19 @@ export async function updateProjectIcon(id: string, icon: string | null): Promis
   return next[index];
 }
 
+/** Sets (or clears, with null) a project's custom display name. */
+export async function updateProjectName(id: string, name: string | null): Promise<Project | undefined> {
+  const projects = await ensureLoaded();
+  const index = projects.findIndex((p) => p.id === id);
+  if (index === -1) return undefined;
+
+  const next = [...projects];
+  next[index] = { ...next[index], name: name ?? undefined };
+  await writeToDisk(next);
+  cache = next;
+  return next[index];
+}
+
 /** Subdirectories of APPS_ROOT that aren't registered as a project yet. */
 export async function listAvailableDirs(): Promise<string[]> {
   const projects = await ensureLoaded();
