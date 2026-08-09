@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { api, ApiError } from "../api/client";
+import { api, ApiError, SsoExpiredError } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 
 export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
@@ -17,7 +17,12 @@ export function LockScreen({ onUnlock }: { onUnlock: () => void }) {
       await api.post("/api/verify-password", { password });
       onUnlock();
     } catch (err) {
-      if (err instanceof ApiError && err.message === "too_many_attempts") {
+      if (err instanceof SsoExpiredError) {
+        // Intercepted by the 2FA portal before Overlay saw the password —
+        // logging out here would be wrong (this session is probably still
+        // fine), and a reload to the portal is already on its way.
+        setError("2FA-Sitzung abgelaufen — Seite wird neu geladen.");
+      } else if (err instanceof ApiError && err.message === "too_many_attempts") {
         setError("Zu viele Versuche — kurz warten.");
       } else if (err instanceof ApiError && err.message === "unauthenticated") {
         // The underlying session died (expired, or the admin password changed

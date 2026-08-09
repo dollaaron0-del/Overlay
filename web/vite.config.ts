@@ -28,6 +28,20 @@ export default defineConfig({
         // This is a live dashboard, not an offline-first content app: never
         // let the service worker cache API calls or WebSocket upgrades.
         navigateFallbackDenylist: [/^\/api\//, /^\/ws\//],
+        // ...and never answer a *navigation* from the precache either.
+        //
+        // Overlay can sit behind an auth portal (Authelia, see
+        // docs/DEPLOYMENT.md section 9) whose session expires on its own
+        // schedule — `inactivity: 15m` in the shipped config. The portal
+        // signals that by redirecting a navigation to its login page, and a
+        // service worker that serves index.html from cache swallows exactly
+        // that redirect: the shell reappears offline-style, every API call is
+        // rejected by the portal, and no amount of reloading ever gets the
+        // user to the login form. Both keys matter — navigateFallback is the
+        // explicit fallback route, directoryIndex is what makes a navigation
+        // to "/" match the precached "/index.html" entry.
+        navigateFallback: undefined,
+        directoryIndex: null,
         runtimeCaching: [
           {
             urlPattern: /^\/api\//,
