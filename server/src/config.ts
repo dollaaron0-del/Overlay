@@ -95,6 +95,14 @@ const schema = z.object({
   // third-party sources) — see server/src/openclaw/openclaw-webhook.ts.
   OPENCLAW_WEBHOOK_URL: z.string().default(""),
   OPENCLAW_WEBHOOK_SECRET: z.string().default(""),
+  // OpenClaw Gateway `hooks` endpoint (POST /hooks/agent) used by the Emmy
+  // multi-chat app to drive one isolated agent turn per chat message, bound
+  // to a per-chat sessionKey. Separate from OPENCLAW_WEBHOOK_URL above (the
+  // legacy webhook-plugin path, which does not support per-chat sessions).
+  // Token is the Gateway's `hooks.token`. Empty = sending chat messages fails
+  // with a clear "nicht konfiguriert" error, but the message stays saved.
+  OPENCLAW_HOOK_URL: z.string().default(""),
+  OPENCLAW_HOOK_TOKEN: z.string().default(""),
   // Token-authenticated automation API (/api/automation/*) — lets OpenClaw
   // (or any other script) start/stop/restart/deploy projects and trigger a
   // backup/scan, e.g. from a chat command. Deliberately separate from the

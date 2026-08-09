@@ -2292,3 +2292,349 @@ button.active {
   font-size: 0.85rem;
   color: var(--c-text-2);
 }
+
+/* --- Emmy Multi-Chat --- */
+
+.emmy2-app {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+}
+
+.emmy2-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--c-border);
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.emmy2-sidebar-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+
+.emmy2-sidebar-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.emmy2-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--c-surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.emmy2-new-task {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0.4rem 0;
+}
+
+.emmy2-new-task input {
+  flex: 1;
+  min-width: 0;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  color: var(--c-text);
+  padding: 0.5rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.emmy2-new-task button {
+  flex-shrink: 0;
+  padding: 0.4rem 0.7rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.emmy2-group {
+  margin-top: 0.5rem;
+}
+
+.emmy2-group-head {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--c-text-3);
+  padding: 0.2rem 0.3rem;
+}
+
+.emmy2-group-count {
+  opacity: 0.6;
+}
+
+.emmy2-chat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.55rem 0.6rem;
+  color: var(--c-text);
+  font-size: 0.92rem;
+}
+
+.emmy2-chat-row:hover {
+  background: var(--c-surface-2);
+}
+
+.emmy2-chat-row.active {
+  background: var(--c-surface-2);
+  border-color: var(--c-border-strong);
+}
+
+.emmy2-chat-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emmy2-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.emmy2-status-open {
+  background: var(--c-text-3);
+}
+
+.emmy2-status-in_progress {
+  background: var(--c-accent);
+}
+
+.emmy2-status-done {
+  background: #3fb950;
+}
+
+.emmy2-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0.75rem 1rem;
+}
+
+.emmy2-conv-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 0.6rem;
+}
+
+.emmy2-conv-title {
+  margin: 0;
+  font-size: 1.05rem;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.emmy2-title-edit {
+  flex: 1;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+  border-radius: 8px;
+  color: var(--c-text);
+  padding: 0.4rem 0.6rem;
+  font-size: 1.05rem;
+  font-family: inherit;
+}
+
+.emmy2-conv-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.emmy2-conv-actions select {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  color: var(--c-text);
+  padding: 0.35rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+}
+
+.emmy2-delete {
+  padding: 0.35rem 0.5rem;
+}
+
+.emmy2-back {
+  display: none;
+  padding: 0.2rem 0.6rem;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.emmy2-messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 0;
+}
+
+.emmy2-bubble {
+  max-width: 85%;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  font-size: 0.98rem;
+}
+
+.emmy2-bubble p {
+  margin: 0 0 0.3rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.emmy2-bubble-time {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.7rem;
+  opacity: 0.65;
+}
+
+.emmy2-bubble-me {
+  align-self: flex-end;
+  background: var(--c-accent);
+  color: #fff;
+}
+
+.emmy2-bubble-emmy {
+  align-self: flex-start;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+}
+
+.emmy2-att-image img {
+  max-width: 220px;
+  max-height: 220px;
+  border-radius: 8px;
+  display: block;
+}
+
+.emmy2-att-doc {
+  display: inline-block;
+  margin-top: 0.2rem;
+  color: inherit;
+  text-decoration: underline;
+}
+
+.emmy2-pending {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.4rem 0;
+}
+
+.emmy2-pending-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.82rem;
+}
+
+.emmy2-pending-chip button {
+  background: transparent;
+  border: none;
+  color: var(--c-text-2);
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.emmy2-error {
+  color: var(--c-danger);
+  font-size: 0.85rem;
+  margin: 0.3rem 0;
+}
+
+.emmy2-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  padding-top: 0.5rem;
+}
+
+.emmy2-attach {
+  flex-shrink: 0;
+  padding: 0.7rem 0.8rem;
+  font-size: 1.1rem;
+}
+
+.emmy2-textarea {
+  flex: 1;
+  min-width: 0;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  color: var(--c-text);
+  font-size: 1.05rem;
+  font-family: inherit;
+  padding: 0.8rem 1rem;
+  resize: vertical;
+}
+
+.emmy2-send {
+  flex-shrink: 0;
+  padding: 0.8rem 1.1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  white-space: nowrap;
+}
+
+.emmy2-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Narrow screens (kiosk portrait, iPhone): one pane at a time. */
+@media (max-width: 720px) {
+  .emmy2-app[data-view="chat"] .emmy2-sidebar {
+    display: none;
+  }
+  .emmy2-app[data-view="list"] .emmy2-main {
+    display: none;
+  }
+  .emmy2-sidebar {
+    width: 100%;
+    border-right: none;
+  }
+  .emmy2-back {
+    display: inline-block;
+  }
+}

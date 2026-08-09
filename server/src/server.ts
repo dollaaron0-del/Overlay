@@ -17,7 +17,7 @@ import { ideaChatRouter, ideaChatAttachmentsRouter } from "./ideachat/ideachat.r
 import { obsidianRouter } from "./obsidian/obsidian.routes.js";
 import { automationRouter } from "./automation/automation.routes.js";
 import { requireAutomationToken } from "./automation/automation.middleware.js";
-import { emmyRouter } from "./emmy/emmy.routes.js";
+import { emmyRouter, emmySendRouter } from "./emmy/emmy.routes.js";
 import { emmyInboundRouter } from "./emmy/emmy-inbound.routes.js";
 import { requireEmmyInboundToken } from "./emmy/emmy-inbound.middleware.js";
 import { apiRateLimiter } from "./rate-limit.js";
@@ -31,6 +31,10 @@ const QUICK_CAPTURE_BODY_LIMIT = "15mb";
 // request can carry several files at once — same reasoning as quick-capture
 // above, just a bit more headroom for multi-file uploads.
 const IDEA_CHAT_ATTACHMENT_BODY_LIMIT = "40mb";
+
+// Emmy chat attachments (any file type, up to 25mb each, up to 10 per send) —
+// base64 JSON, same reasoning as the two limits above.
+const EMMY_ATTACHMENT_BODY_LIMIT = "60mb";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -95,6 +99,14 @@ export function createApp() {
   // POST /messages) simply fall through unmatched to the protectedApi mount
   // further down, body already parsed.
   app.use("/api/idea-chats", express.json({ limit: IDEA_CHAT_ATTACHMENT_BODY_LIMIT }), requireAuth, ideaChatAttachmentsRouter);
+
+  // Emmy chat message-send + attachment download. Mounted at the "/chats"
+  // subpath (not the "/api/emmy" prefix) so its session-auth middleware can't
+  // shadow the token-gated "/api/emmy/inbound" callback mounted below. Own
+  // larger body limit for attachments, before the default express.json — same
+  // reasoning as the idea-chats mount above; unmatched requests (e.g. GET
+  // /chats or CRUD) fall through to the protectedApi emmyRouter mount.
+  app.use("/api/emmy/chats", express.json({ limit: EMMY_ATTACHMENT_BODY_LIMIT }), requireAuth, emmySendRouter);
 
   app.use(express.json());
   app.use("/api", authRouter);
