@@ -5,6 +5,7 @@ import { SettingsApp } from "../settings/SettingsApp";
 import { QuickCaptureApp } from "../quickcapture/QuickCaptureApp";
 import { IdeaChatApp } from "../ideachat/IdeaChatApp";
 import { EmmyChatApp } from "../emmy/EmmyChatApp";
+import { CockpitApp } from "./CockpitApp";
 
 /**
  * Static, always-present apps (as opposed to project apps, which are
@@ -19,6 +20,7 @@ export const STATIC_APPS: AppDef[] = [
   { id: "quickcapture", title: "Schnellnotiz", icon: "📝", render: () => <QuickCaptureApp /> },
   { id: "ideachat", title: "Ideen", icon: "💡", render: () => <IdeaChatApp /> },
   { id: "emmy", title: "Emmy", icon: "💬", render: () => <EmmyChatApp /> },
+  { id: "cockpit", title: "Cockpit", icon: "🖥️", render: () => <CockpitApp /> },
   { id: "settings", title: "Einstellungen", icon: "⚙️", render: () => <SettingsApp /> },
 ];
 
