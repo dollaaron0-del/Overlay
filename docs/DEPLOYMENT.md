@@ -830,3 +830,65 @@ Backup-Trigger mit absichtlich falscher `RESTIC_REPOSITORY` laufen lassen
 die Automatisierungs-API: die vier `curl`-Aufrufe oben gegen ein
 Testprojekt ausführen und im "Aktivität"-Tab prüfen, dass die Einträge mit
 `actor: automation` erscheinen.
+
+## 15. "Jetzt aktualisieren"-Knopf (Self-Update)
+
+Das Kontrollzentrum hat einen "Jetzt aktualisieren"-Knopf, der Overlay auf
+den aktuellen Stand des Branches bringt, den `/opt/overlay` bereits als
+Upstream trackt: `git fetch` + `git merge --ff-only @{u}`, Neubau aller drei
+Workspaces, dann `pm2 restart overlay`. Der Branch ist auf GitHub
+geschützt (PR-Review Pflicht), es landet also nur bereits geprüfter Code.
+
+Nach dem Auslösen zeigt der Knopf "Warte auf Neustart…" und pollt
+`GET /api/health`, bis die `uptimeSeconds` des Servers zurückgesetzt sind
+(= der Prozess wurde neu gestartet und bedient wieder Requests). Erst dann
+meldet er "Alle Daten live — Overlay ist wieder online." Nach drei Minuten
+ohne Rückkehr bittet er stattdessen, die Seite neu zu laden.
+
+**Warum systemd + sudoers?** Dieselbe Rechtetrennung wie beim
+Security-Scan-Trigger (Abschnitt 7.4): der unprivilegierte `overlay`-User
+kann sich nicht selbst neu bauen (root-eigene Dateien, siehe `SECURITY.md`)
+und seinen eigenen PM2-Prozess nicht neu starten. Der Web-Server bittet
+daher systemd, die echte, root-privilegierte Unit über eine eng gefasste
+sudoers-Regel zu starten, die **nichts** außer genau diesem einen Befehl
+erlaubt.
+
+**15.1 Update-Skript und Unit.** Beide liegen im Repo unter
+`deploy/update.sh` und `deploy/systemd/overlay-update.service`. Die Unit
+installieren und aktivieren (als root):
+
+```
+install -m 0644 /opt/overlay/deploy/systemd/overlay-update.service \
+  /etc/systemd/system/overlay-update.service
+systemctl daemon-reload
+```
+
+`overlay-update.service` ist `Type=oneshot`, läuft als `root` in
+`/opt/overlay` und ruft `/bin/bash /opt/overlay/deploy/update.sh`
+(`TimeoutStartSec=600`). Das Skript nutzt `set -euo pipefail` und
+`git merge --ff-only`, bricht bei Konflikten also sichtbar ab, statt den
+Checkout in einen unklaren Zustand zu bringen.
+
+**15.2 sudoers-Regel.** Mit `visudo -f /etc/sudoers.d/overlay-update`
+anlegen (nicht direkt editieren!):
+
+```
+# /etc/sudoers.d/overlay-update
+overlay ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block overlay-update.service
+```
+
+Das `--no-block` ist hier — anders als beim Security-Scan-Trigger —
+zwingend: der letzte Schritt der Unit startet **diesen Server selbst** neu.
+Ohne `--no-block` würde `systemctl start` blockieren, bis die Unit fertig
+ist — was aus Sicht dieses Requests nie passiert, weil der bearbeitende
+Prozess vorher von seinem eigenen Neustart beendet wird. `--no-block`
+kehrt zurück, sobald der Job eingereiht ist, sodass der Client ein sauberes
+"ok" bekommt, bevor der Server für seinen eigenen Reload heruntergeht.
+
+**Verifikation:** Im Kontrollzentrum "Jetzt aktualisieren" drücken —
+der Knopf sollte auf "Warte auf Neustart…" wechseln und nach dem Rebuild
+und PM2-Restart "Alle Daten live" melden. Alternativ direkt
+`sudo systemctl start --no-block overlay-update.service` ausführen und
+`journalctl -u overlay-update.service -f` mitlesen; der Lauf sollte die
+drei Schritte (Fetch/Merge, Build, Restart) durchlaufen. Im "Aktivität"-Tab
+erscheint ein `overlay_update_triggered`-Eintrag.

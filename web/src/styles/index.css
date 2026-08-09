@@ -368,6 +368,12 @@ button.active {
   font-size: 0.85rem;
 }
 
+.overview-ollama-pending {
+  margin: 0;
+  color: var(--c-text-muted, #9aa4b2);
+  font-size: 0.85rem;
+}
+
 .tab-bar {
   display: flex;
   gap: 0.5rem;

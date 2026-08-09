@@ -13,7 +13,8 @@ export type AuditEventType =
   | "unlock_failed"
   | "quick_capture"
   | "idea_plan_saved"
-  | "idea_attachment_added";
+  | "idea_attachment_added"
+  | "overlay_update_triggered";
 
 export interface AuditEntry {
   timestamp: string; // ISO

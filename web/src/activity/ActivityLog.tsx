@@ -20,6 +20,7 @@ const EVENT_LABEL: Record<AuditEventType, string> = {
   quick_capture: "Schnellnotiz gespeichert",
   idea_plan_saved: "Ideen-Plan gespeichert",
   idea_attachment_added: "Anhang zu Idee hinzugefügt",
+  overlay_update_triggered: "Overlay-Update ausgelöst",
 };
 
 function eventClass(entry: AuditEntry): string {
