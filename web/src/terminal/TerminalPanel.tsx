@@ -30,6 +30,23 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     term.loadAddon(fitAddon);
     term.loadAddon(new WebLinksAddon());
 
+    // xterm's own internal scroll-area sync can throw ("Cannot read
+    // properties of undefined (reading 'dimensions')") if it fires before
+    // the renderer has fully initialized — observed in practice right after
+    // open(). An uncaught throw here would abort whichever fit() call hit
+    // it, which (if it's the very first one) skips every mitigation below
+    // it in this effect — fonts.ready/raf/timeout refits, and the
+    // ResizeObserver subscription itself — leaving the terminal stuck at
+    // its default 80x24 size for the lifetime of the mount, immune to any
+    // later resize. Swallow and retry on the next frame instead.
+    const safeFit = () => {
+      try {
+        fitAddon.fit();
+      } catch {
+        requestAnimationFrame(() => fitAddon.fit());
+      }
+    };
+
     // Two selections can be active in this panel: xterm's own cell-grid one
     // (mouse drag on desktop) and the browser's native one (iOS long-press,
     // enabled via the user-select override in index.css). Prefer the native
@@ -88,7 +105,7 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     container.addEventListener("copy", onCopy);
 
     term.open(container);
-    fitAddon.fit();
+    safeFit();
     setTerminal(term);
 
     // fit() right after open() can undersize the grid: the monospace font
@@ -96,28 +113,27 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     // first layout pass isn't guaranteed final. Re-fit once fonts are
     // actually ready and after the next paint, instead of trusting only
     // the synchronous call above.
-    document.fonts?.ready.then(() => fitAddon.fit());
-    const raf = requestAnimationFrame(() => fitAddon.fit());
+    document.fonts?.ready.then(safeFit);
+    const raf = requestAnimationFrame(safeFit);
 
     // iOS Safari finalizes flex layout a beat after mount; the raf/fonts.ready
     // refits can still land before the container has its real height. One more
     // delayed fit removes the "cursor row clipped until you rotate" bug.
-    const lateFit = setTimeout(() => fitAddon.fit(), 300);
+    const lateFit = setTimeout(safeFit, 300);
 
-    const resizeObserver = new ResizeObserver(() => fitAddon.fit());
+    const resizeObserver = new ResizeObserver(safeFit);
     resizeObserver.observe(container);
     // Covers iOS keyboard show/hide: the container's box size changes via
     // the --app-vh cascade (see useDynamicViewportHeight), which normally
     // reaches this ResizeObserver too, but re-fitting directly off
     // visualViewport as well costs nothing and removes that assumption.
-    const onViewportResize = () => fitAddon.fit();
-    window.visualViewport?.addEventListener("resize", onViewportResize);
+    window.visualViewport?.addEventListener("resize", safeFit);
 
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(lateFit);
       resizeObserver.disconnect();
-      window.visualViewport?.removeEventListener("resize", onViewportResize);
+      window.visualViewport?.removeEventListener("resize", safeFit);
       container.removeEventListener("copy", onCopy);
       term.dispose();
       setTerminal(null);

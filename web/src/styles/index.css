@@ -153,6 +153,14 @@ body {
   width: 100%;
 }
 
+.lock-screen-logout {
+  background: transparent;
+  border-color: transparent;
+  color: var(--c-text-3);
+  font-size: 0.8rem;
+  padding: 0.3rem 0.6rem;
+}
+
 .settings-hint {
   font-size: 0.8rem;
   color: var(--c-text-3);
