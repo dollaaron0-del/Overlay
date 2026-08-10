@@ -34,6 +34,14 @@ export interface SandboxTarget {
   appsRoot: string;
   /** The Overlay installation itself, hidden so a session cannot reach its secrets. */
   serverDir: string;
+  /**
+   * Directory holding the real Claude Code login (pty/claude-home.ts's
+   * SHARED_HOME) — read-only, so a session can use the shared login but
+   * never modify or replace it. Usually lives under /home, so like a project
+   * directory under /home it must be re-bound after the tmpfs that hides
+   * /home. Omitted when nothing has ever logged in yet.
+   */
+  sharedClaudeHome?: string;
 }
 
 export function isSandboxAvailable(bwrapPath = "/usr/bin/bwrap"): boolean {
@@ -74,6 +82,7 @@ export function buildSandboxCommand(
     // which also covers a project that physically lives under /home.
     "--bind", target.projectDir, target.projectDir,
     "--bind", target.claudeHome, target.claudeHome,
+    ...(target.sharedClaudeHome ? ["--ro-bind-try", target.sharedClaudeHome, target.sharedClaudeHome] : []),
 
     // Keep the network (the session talks to the API); drop every other
     // namespace. --die-with-parent ties the sandbox to the pty, so closing a
