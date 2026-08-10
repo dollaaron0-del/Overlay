@@ -80,6 +80,21 @@ Gerät.
   Endpunkt), nicht bei jedem Start neu vom Client geliefert. Der pty-Prozess
   (`claude`/`CLAUDE_COMMAND`) wird ohne von außen kontrollierbare Argumente
   gestartet.
+- **Projekt-Terminals sind gegeneinander sandboxed:** Alle Projekt-Terminals
+  laufen als derselbe unprivilegierte Service-User. Ohne weitere Maßnahme
+  könnte eine Session, die für Projekt A geöffnet wurde, jedes andere Projekt
+  sowie die Overlay-Installation selbst (inkl. `.env` mit `SESSION_SECRET`
+  und Admin-Passwort-Hash) lesen und schreiben. `pty/sandbox.ts` startet den
+  `claude`/`CLAUDE_COMMAND`-Prozess deshalb standardmäßig
+  (`TERMINAL_SANDBOX=true`) in einer bubblewrap-Sandbox, die per Mount-Reihenfolge
+  (zuerst alles verstecken, danach nur das eigene Projektverzeichnis und sein
+  `CLAUDE_CONFIG_DIR` zurückbinden) nur das jeweilige Projekt sichtbar macht.
+  Netzwerk bleibt erhalten (die Session muss die API erreichen), jeder andere
+  Namespace wird via `--unshare-all` abgetrennt. Fehlt bubblewrap, verweigert
+  die Session den Start mit einer klaren Fehlermeldung im Terminal statt
+  stillschweigend ungeschützt zu laufen — siehe `TERMINAL_SANDBOX` in
+  `docs/DEPLOYMENT.md` Abschnitt 1/3, falls bwrap auf einem Server nicht
+  installierbar ist.
 - **Kein Schreibzugriff über die Datei-API:** Die Files-API ist in v1
   bewusst nur lesend — Bearbeitung von Code passiert ausschließlich über die
   Claude-Code-CLI-Session selbst, nicht über einen zusätzlichen Web-Editor.

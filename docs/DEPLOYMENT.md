@@ -15,6 +15,11 @@ dieser Sandbox) und über Tailscale erreichbar gemacht wird.
   und nutzt damit automatisch das bestehende Abo/den Login
 - [Tailscale](https://tailscale.com/) installiert und dem eigenen Tailnet
   beigetreten (`tailscale up`)
+- [bubblewrap](https://github.com/containers/bubblewrap) installiert
+  (`apt install bubblewrap`): sandboxt jede Projekt-Terminalsession, sodass
+  sie nur ihr eigenes Projektverzeichnis sieht (siehe `TERMINAL_SANDBOX`
+  unten und `docs/SECURITY.md`). Ohne bwrap startet keine Terminalsession,
+  solange `TERMINAL_SANDBOX` nicht explizit auf `false` gesetzt ist.
 
 **Wichtig zur Privilegientrennung:** Overlay selbst (der Webserver, PM2, die
 `claude`-Sessions) läuft unter einem **normalen, unprivilegierten Benutzer**
@@ -67,6 +72,10 @@ Dann in `.env`:
 - `COOKIE_SECURE=true`, sobald HTTPS via `tailscale cert` läuft
 - `CLAUDE_COMMAND=claude` (Standard) — nur für lokale Tests ohne echten
   `claude`-Login auf z.B. `bash` ändern
+- `TERMINAL_SANDBOX=true` (Standard) belassen, sofern bubblewrap installiert
+  ist (siehe Abschnitt 1). Nur auf `false` setzen, wenn bwrap auf diesem
+  Server nicht installierbar ist — dann läuft die Terminalsession mit den
+  vollen Rechten des Service-Users, wie vor dieser Sandbox.
 
 ## 4. Start
 

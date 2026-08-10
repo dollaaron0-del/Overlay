@@ -1,0 +1,96 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+/**
+ * Wraps a project's terminal command in a bubblewrap sandbox that can only
+ * see that project.
+ *
+ * Every project terminal runs as the same unprivileged user, so without this
+ * a session opened for one project could read and write every other project,
+ * the Overlay installation itself (including the .env with SESSION_SECRET and
+ * the admin password hash) and the shared Claude Code home. Giving each
+ * project its own config directory separates the *data*, but nothing stopped
+ * a shell command from simply walking to a neighbour — this is what turns
+ * that separation into a boundary.
+ *
+ * The view is built by hiding first and re-exposing afterwards, because
+ * bubblewrap applies its arguments in order and a later mount wins: an empty
+ * tmpfs is laid over the projects root, the Overlay installation and /home,
+ * and only then are this project's directory and its Claude config bound back
+ * in. Everything else stays read-only, so the interpreters and the claude
+ * binary keep working. The network is deliberately kept — the whole point of
+ * the session is to talk to the API.
+ */
+
+export class SandboxUnavailableError extends Error {}
+
+export interface SandboxTarget {
+  /** The project directory, already resolved through any symlinks. */
+  projectDir: string;
+  /** CLAUDE_CONFIG_DIR for this project; must stay writable inside. */
+  claudeHome: string;
+  /** Root under which sibling projects live; hidden wholesale. */
+  appsRoot: string;
+  /** The Overlay installation itself, hidden so a session cannot reach its secrets. */
+  serverDir: string;
+}
+
+export function isSandboxAvailable(bwrapPath = "/usr/bin/bwrap"): boolean {
+  return fs.existsSync(bwrapPath);
+}
+
+export function buildSandboxCommand(
+  command: string,
+  args: string[],
+  target: SandboxTarget,
+  bwrapPath = "/usr/bin/bwrap",
+): { command: string; args: string[] } {
+  if (!isSandboxAvailable(bwrapPath)) {
+    throw new SandboxUnavailableError(
+      "bubblewrap (bwrap) ist nicht installiert, die Terminal-Sandbox kann nicht starten. " +
+        "Entweder 'apt install bubblewrap' ausführen oder TERMINAL_SANDBOX=false setzen.",
+    );
+  }
+
+  const home = os.homedir();
+  const sandboxArgs = [
+    // Base: the whole system read-only, so interpreters and the claude binary
+    // resolve exactly as they do outside.
+    "--ro-bind", "/", "/",
+    "--dev-bind", "/dev", "/dev",
+    "--proc", "/proc",
+    "--tmpfs", "/tmp",
+
+    // Hide, in this order, everything a project has no business seeing.
+    "--tmpfs", target.appsRoot,
+    "--tmpfs", target.serverDir,
+    "--tmpfs", "/home",
+    // HOME must still exist and be writable: shells and tools write into it
+    // even when Claude Code's own state lives in CLAUDE_CONFIG_DIR.
+    "--dir", home,
+
+    // Re-expose only this project. Listed after the tmpfs above so it wins,
+    // which also covers a project that physically lives under /home.
+    "--bind", target.projectDir, target.projectDir,
+    "--bind", target.claudeHome, target.claudeHome,
+
+    // Keep the network (the session talks to the API); drop every other
+    // namespace. --die-with-parent ties the sandbox to the pty, so closing a
+    // session cannot leave a stray process behind.
+    "--unshare-all",
+    "--share-net",
+    "--die-with-parent",
+    "--chdir", target.projectDir,
+    "--",
+    command,
+    ...args,
+  ];
+
+  return { command: bwrapPath, args: sandboxArgs };
+}
+
+/** Directories a sandboxed session must not be able to see, for tests and docs. */
+export function hiddenPathsFor(target: SandboxTarget): string[] {
+  return [target.appsRoot, target.serverDir, "/home"].map((p) => path.resolve(p));
+}
