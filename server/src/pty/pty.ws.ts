@@ -13,7 +13,24 @@ export async function handlePtyConnection(ws: WebSocket, projectId: string): Pro
     return;
   }
 
-  const session = getOrCreateSession(project);
+  // getOrCreateSession throws synchronously when the sandbox is required but
+  // bwrap is missing (see sandbox.ts). Since this function is async and its
+  // caller does `void handlePtyConnection(...)`, an uncaught throw here would
+  // become a silent unhandled rejection — logged server-side only, with the
+  // browser left connecting forever. Surface it as terminal output instead,
+  // the one place this connection can still put something in front of the user.
+  let session;
+  try {
+    session = getOrCreateSession(project);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (ws.readyState === ws.OPEN) {
+      const chunk: PtyServerMessage = { type: "data", chunk: `\r\n${message}\r\n` };
+      ws.send(JSON.stringify(chunk));
+    }
+    ws.close(4500, "session_start_failed");
+    return;
+  }
   // Identifies this one browser tab for the duration of the connection, so
   // its viewport can be dropped from the session's size arbitration when it
   // goes away (see PtySession.setClientSize).
