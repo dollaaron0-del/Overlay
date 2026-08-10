@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getSystemStats } from "./system-stats.js";
 import { runCommand } from "./security/run-tool.js";
 import { appendAuditEntry } from "./audit/audit-log.js";
+import { parseUpdateUnitStatus, describeUpdateFailure, UPDATE_UNIT_PROPERTIES } from "./update-status.js";
 
 export const systemRouter = Router();
 
@@ -47,5 +48,31 @@ systemRouter.post("/update", async (_req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: "trigger_failed", message: (err as Error).message });
+  }
+});
+
+// How the triggered run actually went. Needed because "queued" is all the
+// trigger above can ever report: an update that dies in its first second
+// (a checkout with local changes makes `git merge --ff-only` abort) used to
+// be indistinguishable from one still building. Reading a unit's properties
+// needs no privileges, so this one goes without sudo.
+const OVERLAY_UPDATE_STATUS_TIMEOUT_MS = 5_000;
+
+systemRouter.get("/update/status", async (_req, res) => {
+  try {
+    const result = await runCommand(
+      "systemctl",
+      ["show", OVERLAY_UPDATE_UNIT, `--property=${UPDATE_UNIT_PROPERTIES}`],
+      { timeoutMs: OVERLAY_UPDATE_STATUS_TIMEOUT_MS },
+    );
+    const status = parseUpdateUnitStatus(result.stdout);
+    res.json({
+      ...status,
+      ...(status.state === "failed" ? { message: describeUpdateFailure(status) } : {}),
+    });
+  } catch (err) {
+    // No systemd, unit not installed, systemctl missing: not knowing the state
+    // is its own answer — the client falls back to waiting for the restart.
+    res.status(503).json({ error: "status_unavailable", message: (err as Error).message });
   }
 });

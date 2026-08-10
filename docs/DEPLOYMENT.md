@@ -945,11 +945,36 @@ Upstream trackt: `git fetch` + `git merge --ff-only @{u}`, Neubau aller drei
 Workspaces, dann `pm2 restart overlay`. Der Branch ist auf GitHub
 geschützt (PR-Review Pflicht), es landet also nur bereits geprüfter Code.
 
-Nach dem Auslösen zeigt der Knopf "Warte auf Neustart…" und pollt
-`GET /api/health`, bis die `uptimeSeconds` des Servers zurückgesetzt sind
-(= der Prozess wurde neu gestartet und bedient wieder Requests). Erst dann
-meldet er "Alle Daten live — Overlay ist wieder online." Nach drei Minuten
-ohne Rückkehr bittet er stattdessen, die Seite neu zu laden.
+Nach dem Auslösen zeigt der Knopf "Warte auf Neustart…" und pollt zwei
+Dinge im Wechsel: `GET /api/health`, bis die `uptimeSeconds` des Servers
+zurückgesetzt sind (= der Prozess wurde neu gestartet und bedient wieder
+Requests), und `GET /api/system/update/status`, das den echten Zustand der
+systemd-Unit meldet. Läuft es durch, kommt "Alle Daten live — Overlay ist
+wieder online.", scheitert die Unit, kommt sofort "Update fehlgeschlagen
+(Exit N)" samt wahrscheinlicher Ursache. Nach drei Minuten ohne beides
+bittet er, die Seite neu zu laden.
+
+Die Statusabfrage ist nötig, weil `systemctl start --no-block` (siehe 15.2)
+nur meldet, dass der Job *eingereiht* wurde — ein Update, das in Schritt 1
+abbricht, sah vorher exakt aus wie eines, das noch baut, und lief in den
+Drei-Minuten-Timeout. `systemctl show` braucht keine Rechte, die Abfrage
+läuft also ohne sudo und ohne zusätzliche sudoers-Regel.
+
+**Wenn das Update fehlschlägt: fast immer lokale Änderungen im Checkout.**
+`git merge --ff-only` verweigert den Dienst, sobald eine geänderte, nie
+committete Datei in `/opt/overlay` von einem eingehenden Commit angefasst
+wird — absichtlich, damit nichts stillschweigend überschrieben wird. Das
+Skript bricht dann nach Sekunden mit Exit 1 ab:
+
+```
+cd /opt/overlay && git status --short    # zeigt die Änderungen
+journalctl -u overlay-update.service -n 50
+```
+
+Die Änderungen gehören dann per PR ins Repo (danach lässt sich die lokale
+Kopie mit `git checkout -- <datei>` verlustfrei wegwerfen) — oder, wenn sie
+nicht gebraucht werden, direkt verwerfen. Erst danach zieht der Knopf
+wieder durch.
 
 **Warum systemd + sudoers?** Dieselbe Rechtetrennung wie beim
 Security-Scan-Trigger (Abschnitt 7.4): der unprivilegierte `overlay`-User

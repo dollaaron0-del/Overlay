@@ -24,24 +24,56 @@ const UPDATE_POLL_INTERVAL_MS = 2_000;
 // restarted" rather than the old process still running.
 const FRESH_UPTIME_THRESHOLD_S = 60;
 
+interface UpdateUnitStatus {
+  state: "idle" | "running" | "failed";
+  invocationId: string | null;
+  message?: string;
+}
+
+/** Never throws: not knowing the unit's state is normal (mid-restart, no systemd). */
+async function readUpdateStatus(): Promise<UpdateUnitStatus | null> {
+  try {
+    return await api.get<UpdateUnitStatus>("/api/system/update/status");
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Resolves once the server is serving again on the new build. A restart resets
- * process.uptime(), so the first health reading below the uptime we saw at
- * trigger time is unambiguously the post-restart process (uptime only climbs
- * until the restart). While the server is mid-restart the health call throws
- * (connection refused) — we just keep polling. Rejects on timeout.
+ * Waits for the triggered update to either restart the server or fail.
+ *
+ * A restart resets process.uptime(), so the first health reading below the
+ * uptime we saw at trigger time is unambiguously the post-restart process
+ * (uptime only climbs until the restart). While the server is mid-restart the
+ * health call throws (connection refused) — we just keep polling.
+ *
+ * The unit's own verdict is checked first each round, because a failed run
+ * never restarts anything: without it, an update that died in its first second
+ * looked exactly like one still building, and burned the full timeout before
+ * blaming the restart. Only a failure from a *newer* invocation than the one
+ * present before the trigger counts — otherwise an old, never-cleared failure
+ * would fail every future update on sight. Rejects on timeout.
  */
-async function waitUntilLive(previousUptimeS: number | null): Promise<void> {
+async function waitForUpdateOutcome(
+  previousUptimeS: number | null,
+  previousInvocationId: string | null,
+): Promise<{ failed: false } | { failed: true; message: string }> {
   const deadline = Date.now() + UPDATE_LIVE_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, UPDATE_POLL_INTERVAL_MS));
+
+    const status = await readUpdateStatus();
+    if (status?.state === "failed" && status.invocationId !== previousInvocationId) {
+      return { failed: true, message: status.message ?? "Update fehlgeschlagen." };
+    }
+
     try {
       const health = await api.get<{ status: string; uptimeSeconds: number }>("/api/health");
       const restarted =
         previousUptimeS === null
           ? health.uptimeSeconds < FRESH_UPTIME_THRESHOLD_S
           : health.uptimeSeconds < previousUptimeS;
-      if (restarted) return;
+      if (restarted) return { failed: false };
     } catch {
       // Server is mid-restart — keep polling until it answers again.
     }
@@ -93,8 +125,11 @@ export function ControlCenter({ onClose }: { onClose: () => void }) {
       const health = await api.get<{ uptimeSeconds: number }>("/api/health");
       previousUptimeS = health.uptimeSeconds;
     } catch {
-      // Fall back to the fresh-uptime heuristic in waitUntilLive.
+      // Fall back to the fresh-uptime heuristic in waitForUpdateOutcome.
     }
+    // Which run systemd last recorded, so a failure left over from an earlier
+    // attempt isn't pinned on this one.
+    const previousInvocationId = (await readUpdateStatus())?.invocationId ?? null;
 
     try {
       // Returns as soon as the update is queued (the unit runs --no-block); the
@@ -110,12 +145,17 @@ export function ControlCenter({ onClose }: { onClose: () => void }) {
 
     setUpdateState({ status: "waiting", message: "Update läuft — warte, bis Overlay wieder online ist…" });
     try {
-      await waitUntilLive(previousUptimeS);
+      const outcome = await waitForUpdateOutcome(previousUptimeS, previousInvocationId);
+      if (outcome.failed) {
+        setUpdateState({ status: "error", message: outcome.message });
+        return;
+      }
       setUpdateState({ status: "ok", message: "Alle Daten live — Overlay ist wieder online." });
     } catch {
       setUpdateState({
         status: "error",
-        message: "Neustart dauert länger als erwartet. Bitte die Seite neu laden.",
+        message:
+          "Neustart dauert länger als erwartet. Bitte die Seite neu laden — falls Overlay nicht zurückkommt: journalctl -u overlay-update.service",
       });
     }
   };
