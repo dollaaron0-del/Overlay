@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { EmmyChat, EmmyMessage, EmmyServerMessage, EmmyTaskStatus } from "@overlay/shared";
+import type {
+  EmmyActivity,
+  EmmyArchiveEntry,
+  EmmyArchiveSummary,
+  EmmyCategory,
+  EmmyChat,
+  EmmyMessage,
+  EmmyServerMessage,
+  EmmyTaskStatus,
+} from "@overlay/shared";
 import { api, ApiError } from "../api/client";
 import { ReconnectingSocket, wsUrl } from "../api/ws";
 import { formatTimestamp } from "../format";
@@ -10,6 +19,60 @@ const STATUS_LABEL: Record<EmmyTaskStatus, string> = {
   done: "Erledigt",
 };
 const STATUS_ORDER: EmmyTaskStatus[] = ["in_progress", "open", "done"];
+
+// The three ways Aaron works with Emmy — task chats are grouped by these
+// instead of by status, because the category decides how a task is handled.
+const CATEGORY_LABEL: Record<EmmyCategory, string> = {
+  instant: "Sofort erledigen",
+  research: "Recherche im Zeitfenster",
+  recurring: "Wiederkehrender Check",
+};
+const CATEGORY_ICON: Record<EmmyCategory, string> = {
+  instant: "⚡",
+  research: "🔍",
+  recurring: "🔁",
+};
+const CATEGORY_ORDER: EmmyCategory[] = ["instant", "research", "recurring"];
+
+/** Chats stored before categories existed have none; they read as "sofort". */
+function categoryOf(chat: EmmyChat): EmmyCategory {
+  return chat.category ?? "instant";
+}
+
+function formatDue(iso: string): string {
+  return new Date(iso).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
+}
+
+function formatInterval(hours: number): string {
+  if (hours < 1) return `alle ${Math.round(hours * 60)} min`;
+  if (hours === 1) return "stündlich";
+  if (hours === 24) return "täglich";
+  if (hours === 24 * 7) return "wöchentlich";
+  if (hours === 24 * 30) return "monatlich";
+  if (hours % 24 === 0) return `alle ${hours / 24} Tage`;
+  return `alle ${hours} h`;
+}
+
+/** "seit 3 Min." — how long Emmy has been on this one. */
+function formatSince(iso: string, now: number): string {
+  const minutes = Math.floor((now - new Date(iso).getTime()) / 60_000);
+  if (minutes < 1) return "gerade eben";
+  if (minutes < 60) return `seit ${minutes} Min.`;
+  return `seit ${Math.floor(minutes / 60)} Std.`;
+}
+
+/** For <input type="date">, which wants YYYY-MM-DD in local time. */
+function toDateInput(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** A picked day means "by the end of that day". */
+function fromDateInput(value: string): string | null {
+  if (!value) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, month - 1, day, 23, 59, 59).toISOString();
+}
 
 interface PendingAttachment {
   dataBase64: string;
@@ -35,20 +98,27 @@ export function EmmyChatApp() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messagesByChat, setMessagesByChat] = useState<Record<string, EmmyMessage[]>>({});
   const [loadedChats, setLoadedChats] = useState<Set<string>>(new Set());
+  const [activities, setActivities] = useState<EmmyActivity[]>([]);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archive, setArchive] = useState<EmmyArchiveSummary[]>([]);
+  const [openArchiveEntry, setOpenArchiveEntry] = useState<EmmyArchiveEntry | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Live chat list + incoming messages over one socket.
+  // Live chat list, incoming messages and "what is Emmy doing" over one socket.
   useEffect(() => {
     const socket = new ReconnectingSocket<EmmyServerMessage, never>(wsUrl("/ws/emmy"));
     const unsubscribe = socket.onMessage((msg) => {
       if (msg.type === "chats") {
         setChats(msg.chats);
+      } else if (msg.type === "activity") {
+        setActivities(msg.activities);
       } else if (msg.type === "message") {
         const m = msg.message;
         setMessagesByChat((prev) => {
@@ -64,7 +134,7 @@ export function EmmyChatApp() {
     };
   }, []);
 
-  // Initial chat list (in case the socket is slow) + auto-select the general chat.
+  // Initial chat list + activity (in case the socket is slow) + auto-select the general chat.
   useEffect(() => {
     api
       .get<EmmyChat[]>("/api/emmy/chats")
@@ -72,6 +142,10 @@ export function EmmyChatApp() {
         setChats(list);
         setSelectedId((cur) => cur ?? list[0]?.id ?? null);
       })
+      .catch(() => {});
+    api
+      .get<EmmyActivity[]>("/api/emmy/activity")
+      .then(setActivities)
       .catch(() => {});
   }, []);
 
@@ -88,15 +162,45 @@ export function EmmyChatApp() {
       .catch(() => {});
   }, [selectedId, loadedChats]);
 
+  // Keeps the "seit …" on a running task honest without a render loop when idle.
+  useEffect(() => {
+    if (activities.length === 0) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [activities]);
+
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
   const messages = selectedId ? (messagesByChat[selectedId] ?? []) : [];
+  const activityByChat = useMemo(
+    () => Object.fromEntries(activities.map((a) => [a.chatId, a])) as Record<string, EmmyActivity>,
+    [activities],
+  );
+  const activeActivity = selectedId ? activityByChat[selectedId] : undefined;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, selectedId]);
+  }, [messages.length, selectedId, activeActivity?.note]);
 
   const taskChats = useMemo(() => chats.filter((c) => c.kind === "task"), [chats]);
   const generalChat = chats.find((c) => c.kind === "general") ?? null;
+
+  const loadArchive = async () => {
+    setArchiveOpen(true);
+    setSelectedId(null);
+    setOpenArchiveEntry(null);
+    try {
+      setArchive(await api.get<EmmyArchiveSummary[]>("/api/emmy/archive"));
+    } catch {
+      setError("Archiv konnte nicht geladen werden.");
+    }
+  };
+
+  const openChat = (id: string) => {
+    setArchiveOpen(false);
+    setOpenArchiveEntry(null);
+    setSelectedId(id);
+  };
 
   const addFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -154,42 +258,70 @@ export function EmmyChatApp() {
     setNewTaskTitle("");
     try {
       const chat = await api.post<EmmyChat>("/api/emmy/chats", { kind: "task", title: title || undefined });
-      setSelectedId(chat.id);
+      openChat(chat.id);
     } catch {
       setError("Aufgabe konnte nicht angelegt werden.");
     }
   };
 
-  const setStatus = async (id: string, status: EmmyTaskStatus) => {
+  const patchChat = async (id: string, patch: Record<string, unknown>, failure: string) => {
     try {
-      await api.patch(`/api/emmy/chats/${id}`, { status });
+      await api.patch(`/api/emmy/chats/${id}`, patch);
     } catch {
-      setError("Status konnte nicht geändert werden.");
+      setError(failure);
     }
   };
 
-  const renameChat = async (id: string, title: string) => {
+  const renameChat = (id: string, title: string) => {
     const trimmed = title.trim();
     if (!trimmed) return;
-    try {
-      await api.patch(`/api/emmy/chats/${id}`, { title: trimmed });
-    } catch {
-      setError("Umbenennen fehlgeschlagen.");
-    }
+    void patchChat(id, { title: trimmed }, "Umbenennen fehlgeschlagen.");
   };
 
-  const removeChat = async (id: string) => {
-    if (!window.confirm("Diese Aufgabe samt Chatverlauf löschen?")) return;
+  /** Deleting never destroys anything — both paths archive the history first. */
+  const removeChat = async (chat: EmmyChat) => {
+    const question =
+      chat.kind === "general"
+        ? "Allgemeinen Chat leeren? Der Verlauf bleibt im Archiv gespeichert."
+        : "Diese Unterhaltung löschen? Der Verlauf bleibt im Archiv gespeichert.";
+    if (!window.confirm(question)) return;
     try {
-      await api.delete(`/api/emmy/chats/${id}`);
-      setSelectedId(generalChat?.id ?? null);
+      await api.delete(`/api/emmy/chats/${chat.id}`);
+      if (chat.kind === "general") {
+        // The chat stays, only its history moved — drop the local copy too.
+        setMessagesByChat((prev) => ({ ...prev, [chat.id]: [] }));
+      } else {
+        setSelectedId(generalChat?.id ?? null);
+      }
+      if (archiveOpen) void loadArchive();
     } catch {
       setError("Löschen fehlgeschlagen.");
     }
   };
 
+  const purgeArchiveEntry = async (entry: EmmyArchiveSummary) => {
+    if (!window.confirm(`„${entry.title}" endgültig löschen? Das ist nicht rückgängig zu machen.`)) return;
+    try {
+      await api.delete(`/api/emmy/archive/${entry.id}`);
+      setArchive((prev) => prev.filter((e) => e.id !== entry.id));
+      setOpenArchiveEntry((cur) => (cur?.id === entry.id ? null : cur));
+    } catch {
+      setError("Endgültiges Löschen fehlgeschlagen.");
+    }
+  };
+
+  const showArchiveEntry = async (entry: EmmyArchiveSummary) => {
+    try {
+      setOpenArchiveEntry(await api.get<EmmyArchiveEntry>(`/api/emmy/archive/${entry.id}`));
+    } catch {
+      setError("Archivierte Unterhaltung konnte nicht geladen werden.");
+    }
+  };
+
+  const showList = !selectedId && !archiveOpen;
+
   return (
-    <div className="emmy2-app" data-view={selectedId ? "chat" : "list"}>
+    <div className="emmy2-app" data-view={showList ? "list" : "chat"}>
       <aside className="emmy2-sidebar">
         <div className="emmy2-sidebar-head">
           <div className="emmy2-avatar">🦊</div>
@@ -199,9 +331,10 @@ export function EmmyChatApp() {
         {generalChat && (
           <button
             className={`emmy2-chat-row${selectedId === generalChat.id ? " active" : ""}`}
-            onClick={() => setSelectedId(generalChat.id)}
+            onClick={() => openChat(generalChat.id)}
           >
             <span className="emmy2-chat-title">💬 {generalChat.title}</span>
+            {activityByChat[generalChat.id] && <span className="emmy2-working-dot" title="Emmy arbeitet gerade" />}
           </button>
         )}
 
@@ -217,31 +350,59 @@ export function EmmyChatApp() {
           </button>
         </div>
 
-        {STATUS_ORDER.map((status) => {
-          const group = taskChats.filter((c) => c.status === status);
+        {CATEGORY_ORDER.map((category) => {
+          const group = taskChats.filter((c) => categoryOf(c) === category);
           if (group.length === 0) return null;
           return (
-            <div key={status} className="emmy2-group">
+            <div key={category} className="emmy2-group">
               <div className="emmy2-group-head">
-                {STATUS_LABEL[status]} <span className="emmy2-group-count">{group.length}</span>
+                {CATEGORY_ICON[category]} {CATEGORY_LABEL[category]} <span className="emmy2-group-count">{group.length}</span>
               </div>
               {group.map((c) => (
                 <button
                   key={c.id}
                   className={`emmy2-chat-row${selectedId === c.id ? " active" : ""}`}
-                  onClick={() => setSelectedId(c.id)}
+                  onClick={() => openChat(c.id)}
                 >
-                  <span className="emmy2-chat-title">{c.title}</span>
-                  <span className={`emmy2-status-dot emmy2-status-${c.status}`} />
+                  <span className="emmy2-chat-lines">
+                    <span className="emmy2-chat-title">{c.title}</span>
+                    <span className="emmy2-chat-sub">
+                      {activityByChat[c.id]
+                        ? "arbeitet gerade daran…"
+                        : category === "research" && c.dueAt
+                          ? `bis ${formatDue(c.dueAt)}`
+                          : category === "recurring" && c.intervalHours
+                            ? formatInterval(c.intervalHours)
+                            : STATUS_LABEL[c.status]}
+                    </span>
+                  </span>
+                  {activityByChat[c.id] ? (
+                    <span className="emmy2-working-dot" title="Emmy arbeitet gerade" />
+                  ) : (
+                    <span className={`emmy2-status-dot emmy2-status-${c.status}`} />
+                  )}
                 </button>
               ))}
             </div>
           );
         })}
+
+        <button className={`emmy2-chat-row emmy2-archive-row${archiveOpen ? " active" : ""}`} onClick={() => void loadArchive()}>
+          <span className="emmy2-chat-title">🗄 Archiv</span>
+        </button>
       </aside>
 
       <section className="emmy2-main">
-        {!selectedChat ? (
+        {archiveOpen ? (
+          <ArchiveView
+            entries={archive}
+            openEntry={openArchiveEntry}
+            onBack={() => (openArchiveEntry ? setOpenArchiveEntry(null) : setArchiveOpen(false))}
+            onOpen={(entry) => void showArchiveEntry(entry)}
+            onPurge={(entry) => void purgeArchiveEntry(entry)}
+            error={error}
+          />
+        ) : !selectedChat ? (
           <p className="empty-hint">Wähle links einen Chat oder leg eine Aufgabe an.</p>
         ) : (
           <>
@@ -250,30 +411,101 @@ export function EmmyChatApp() {
                 ‹
               </button>
               <ChatTitle chat={selectedChat} onRename={renameChat} />
-              {selectedChat.kind === "task" && (
-                <div className="emmy2-conv-actions">
-                  <select
-                    value={selectedChat.status}
-                    onChange={(e) => void setStatus(selectedChat.id, e.target.value as EmmyTaskStatus)}
-                  >
-                    {STATUS_ORDER.map((s) => (
-                      <option key={s} value={s}>
-                        {STATUS_LABEL[s]}
-                      </option>
-                    ))}
-                  </select>
-                  <button className="emmy2-delete" onClick={() => void removeChat(selectedChat.id)} title="Löschen">
-                    🗑
-                  </button>
-                </div>
-              )}
+              <div className="emmy2-conv-actions">
+                {selectedChat.kind === "task" && (
+                  <>
+                    <select
+                      value={categoryOf(selectedChat)}
+                      title="Kategorie"
+                      onChange={(e) =>
+                        void patchChat(
+                          selectedChat.id,
+                          { category: e.target.value as EmmyCategory },
+                          "Kategorie konnte nicht geändert werden.",
+                        )
+                      }
+                    >
+                      {CATEGORY_ORDER.map((c) => (
+                        <option key={c} value={c}>
+                          {CATEGORY_ICON[c]} {CATEGORY_LABEL[c]}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={selectedChat.status}
+                      title="Status"
+                      onChange={(e) =>
+                        void patchChat(
+                          selectedChat.id,
+                          { status: e.target.value as EmmyTaskStatus },
+                          "Status konnte nicht geändert werden.",
+                        )
+                      }
+                    >
+                      {STATUS_ORDER.map((s) => (
+                        <option key={s} value={s}>
+                          {STATUS_LABEL[s]}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+                <button
+                  className="emmy2-delete"
+                  onClick={() => void removeChat(selectedChat)}
+                  title={selectedChat.kind === "general" ? "Chat leeren (Verlauf wird archiviert)" : "Löschen (Verlauf wird archiviert)"}
+                >
+                  🗑
+                </button>
+              </div>
             </header>
 
+            {selectedChat.kind === "task" && categoryOf(selectedChat) === "research" && (
+              <div className="emmy2-conv-meta">
+                <label>
+                  Zeitfenster bis
+                  <input
+                    type="date"
+                    value={selectedChat.dueAt ? toDateInput(selectedChat.dueAt) : ""}
+                    onChange={(e) =>
+                      void patchChat(
+                        selectedChat.id,
+                        { dueAt: fromDateInput(e.target.value) },
+                        "Zeitfenster konnte nicht gesetzt werden.",
+                      )
+                    }
+                  />
+                </label>
+              </div>
+            )}
+            {selectedChat.kind === "task" && categoryOf(selectedChat) === "recurring" && (
+              <div className="emmy2-conv-meta">
+                <label>
+                  Check alle
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={selectedChat.intervalHours ?? 24}
+                    onChange={(e) =>
+                      void patchChat(
+                        selectedChat.id,
+                        { intervalHours: Number(e.target.value) || null },
+                        "Intervall konnte nicht gesetzt werden.",
+                      )
+                    }
+                  />
+                  Stunden
+                </label>
+              </div>
+            )}
+
             <div className="emmy2-messages">
-              {messages.length === 0 && <p className="empty-hint">Noch keine Nachrichten.</p>}
+              {messages.length === 0 && !activeActivity && <p className="empty-hint">Noch keine Nachrichten.</p>}
               {messages.map((m) => (
                 <MessageBubble key={m.id} message={m} />
               ))}
+              {activeActivity && <ActivityBubble activity={activeActivity} now={now} />}
               <div ref={messagesEndRef} />
             </div>
 
@@ -355,6 +587,80 @@ function ChatTitle({ chat, onRename }: { chat: EmmyChat; onRename: (id: string, 
     <h3 className="emmy2-conv-title" onClick={() => setEditing(true)} title="Zum Umbenennen tippen">
       {chat.title}
     </h3>
+  );
+}
+
+/** Sits where Emmy's next bubble will be: what she's doing, and for how long. */
+function ActivityBubble({ activity, now }: { activity: EmmyActivity; now: number }) {
+  return (
+    <div className="emmy2-bubble emmy2-bubble-emmy emmy2-bubble-working">
+      <span className="emmy2-typing" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+      <p>{activity.note}</p>
+      <span className="emmy2-bubble-time">{formatSince(activity.since, now)}</span>
+    </div>
+  );
+}
+
+function ArchiveView({
+  entries,
+  openEntry,
+  onBack,
+  onOpen,
+  onPurge,
+  error,
+}: {
+  entries: EmmyArchiveSummary[];
+  openEntry: EmmyArchiveEntry | null;
+  onBack: () => void;
+  onOpen: (entry: EmmyArchiveSummary) => void;
+  onPurge: (entry: EmmyArchiveSummary) => void;
+  error: string | null;
+}) {
+  return (
+    <>
+      <header className="emmy2-conv-head">
+        <button className="emmy2-back" onClick={onBack} title="Zurück">
+          ‹
+        </button>
+        <h3 className="emmy2-conv-title">{openEntry ? openEntry.chat.title : "Archiv"}</h3>
+      </header>
+      {error && <p className="emmy2-error">{error}</p>}
+
+      {openEntry ? (
+        <div className="emmy2-messages">
+          <p className="empty-hint">
+            Archiviert am {formatTimestamp(openEntry.archivedAt)} — nur zum Nachlesen.
+          </p>
+          {openEntry.messages.map((m) => (
+            <MessageBubble key={m.id} message={m} />
+          ))}
+        </div>
+      ) : (
+        <div className="emmy2-messages">
+          {entries.length === 0 && <p className="empty-hint">Noch nichts archiviert.</p>}
+          {entries.map((entry) => (
+            <div key={entry.id} className="emmy2-archive-item">
+              <button className="emmy2-archive-open" onClick={() => onOpen(entry)}>
+                <span className="emmy2-chat-title">
+                  {entry.category ? `${CATEGORY_ICON[entry.category]} ` : entry.kind === "general" ? "💬 " : ""}
+                  {entry.title}
+                </span>
+                <span className="emmy2-chat-sub">
+                  {entry.messageCount} Nachrichten · {formatTimestamp(entry.archivedAt)}
+                </span>
+              </button>
+              <button className="emmy2-delete" onClick={() => onPurge(entry)} title="Endgültig löschen">
+                🗑
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

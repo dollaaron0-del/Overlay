@@ -449,9 +449,15 @@ separat betriebenes [OpenClaw](https://openclaw.ai/)-Gateway:
   eine dritte, ebenfalls token-basierte Authentifizierung
   (`Authorization: Bearer EMMY_INBOUND_TOKEN`), bewusst getrennt von
   `AUTOMATION_TOKEN` — die Automatisierungs-API kann Projekte starten/
-  stoppen/deployen, dieser Endpunkt kann ausschließlich eine Chat-
-  Nachricht anhängen, also eine deutlich kleinere Angriffsfläche bei einem
-  geleakten Token. Gleiches Muster wie oben: zeitkonstanter Vergleich,
+  stoppen/deployen, dieser Endpunkt kann ausschließlich in einen bereits
+  existierenden Chat schreiben: eine Nachricht anhängen, einen
+  Arbeitsstand-Hinweis setzen ("Emmy arbeitet gerade an …", nur im
+  Arbeitsspeicher, siehe `emmy-activity.ts`) oder die automatische
+  Kategorie einer Aufgabe korrigieren — Letzteres nur, solange Aaron sie
+  nicht selbst gesetzt hat (`categorySource: "manual"` gewinnt immer).
+  Chats anlegen, umbenennen oder löschen kann der Endpunkt nicht, also
+  eine deutlich kleinere Angriffsfläche bei einem geleakten Token.
+  Gleiches Muster wie oben: zeitkonstanter Vergleich,
   leerer Token lässt `/api/emmy/inbound` durchgehend 404 liefern. Nimmt
   Emmys Antworten entgegen und broadcastet sie live an offene Emmy-Chat-
   Fenster (`server/src/emmy/emmy-bus.ts`); der ausgehende Teil (Overlay →
