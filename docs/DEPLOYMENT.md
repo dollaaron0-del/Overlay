@@ -861,8 +861,7 @@ Endpunkte: `GET/POST /api/automation/projects/:id/{status,start,stop,restart,dep
 
 **14.3 Emmy-Chat: zweiseitige Unterhaltung mit dem OpenClaw-Agenten.**
 Das "Emmy"-App-Icon im Homescreen ist ein WhatsApp-artiges Chat-Fenster für
-eine einzelne, durchgehende Unterhaltung mit dem OpenClaw-Hauptagenten
-("Emmy"). Ausgehend (Overlay → Emmy) läuft das über denselben
+die Unterhaltungen mit dem OpenClaw-Hauptagenten ("Emmy"). Ausgehend (Overlay → Emmy) läuft das über denselben
 `OPENCLAW_WEBHOOK_URL`/`OPENCLAW_WEBHOOK_SECRET` wie 14.1, nur mit einer
 zusätzlichen `"thread": "emmy"`-Markierung im Payload, damit sich das vom
 reinen Notification-Text unterscheiden lässt
@@ -879,9 +878,42 @@ EMMY_INBOUND_TOKEN=<langer, zufälliger String>
 ```
 curl -X POST -H "Authorization: Bearer <EMMY_INBOUND_TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"text": "Antwort von Emmy"}' \
+  -d '{"chatId": "general", "text": "Antwort von Emmy"}' \
   https://<overlay-host>/api/emmy/inbound
 ```
+
+Die App ist mehrchattig (ein "Allgemein"-Chat plus beliebig viele
+Aufgaben-Chats, jeder mit eigener OpenClaw-Session
+`agent:main:overlay:<chatId>`), deshalb ist `chatId` Pflicht — der
+ausgehende Prompt enthält ihn bereits fertig, der Agent muss ihn nur
+zurückgeben. Derselbe Endpunkt nimmt zwei weitere, optionale Dinge
+entgegen:
+
+```
+# Zwischenstand, während sie arbeitet (kein "text"): erscheint live im
+# Chat als "arbeitet gerade daran" und verschwindet mit der echten Antwort
+-d '{"chatId": "<id>", "activity": "Lese die angehängte PDF"}'
+
+# Korrektur der automatischen Einordnung einer Aufgabe
+-d '{"chatId": "<id>", "category": "research", "dueAt": "2026-08-17T21:59:59.000Z"}'
+-d '{"chatId": "<id>", "category": "recurring", "intervalHours": 24}'
+```
+
+Overlay sortiert jeden neuen Aufgaben-Chat selbst in eine von drei
+Kategorien ein (`server/src/emmy/emmy-categorize.ts`, reine
+Stichwort-/Datums-Heuristik, kein LLM-Aufruf): `instant` (sofort
+erledigen), `research` (tiefere Recherche bis `dueAt`) und `recurring`
+(wiederkehrender Check alle `intervalHours`). Der Agent darf das über den
+Endpunkt oben korrigieren; eine im Dashboard von Hand gesetzte Kategorie
+gewinnt aber immer und wird nicht mehr überschrieben.
+
+Gelöschte Unterhaltungen sind nicht weg: Löschen verschiebt Chat und
+Verlauf ins Archiv (`GET /api/emmy/archive`, im Dashboard der
+"Archiv"-Eintrag unten in der Chat-Liste), Anhänge bleiben auf der Platte
+liegen und weiter abrufbar. Der Allgemein-Chat lässt sich genauso leeren,
+bleibt aber als Chat bestehen. Endgültig entfernt wird eine Unterhaltung
+nur über `DELETE /api/emmy/archive/:id` (im Dashboard das Papierkorb-Icon
+in der Archivliste) — das löscht dann auch ihre Anhang-Dateien.
 
 Leerer Wert lässt `/api/emmy/inbound` durchgehend mit 404 antworten, wie
 `AUTOMATION_TOKEN` in 14.2. In OpenClaw muss eine Antwort des Emmy-Agenten

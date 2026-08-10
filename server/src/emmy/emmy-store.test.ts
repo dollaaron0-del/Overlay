@@ -31,9 +31,8 @@ test("listChats lazily creates and pins the general chat", async () => {
   assert.equal(chats[0].status, "open");
 });
 
-test("the general chat starts empty and cannot be deleted", async () => {
+test("the general chat starts empty", async () => {
   assert.deepEqual(await store.listMessages(store.GENERAL_CHAT_ID), []);
-  assert.equal(await store.deleteChat(store.GENERAL_CHAT_ID), false);
   assert.ok(await store.getChat(store.GENERAL_CHAT_ID));
 });
 
@@ -104,13 +103,87 @@ test("updateChat patches title and status without touching other chats", async (
   assert.equal(await store.updateChat("does-not-exist", { status: "done" }), undefined);
 });
 
-test("deleteChat removes the chat and cascades to its messages", async () => {
+test("createChat stores the categorization it is given, and only for task chats", async () => {
+  const task = await store.createChat("task", "Wochenbericht", {
+    category: "research",
+    categorySource: "auto",
+    dueAt: "2026-08-17T21:59:59.000Z",
+  });
+  assert.equal(task.category, "research");
+  assert.equal(task.categorySource, "auto");
+  assert.equal(task.dueAt, "2026-08-17T21:59:59.000Z");
+  assert.equal(task.intervalHours, undefined);
+
+  const general = await store.createChat("general", "Zweitchat", { category: "research" });
+  assert.equal(general.category, undefined, "a general chat is never a task and carries no category");
+});
+
+test("updateChat patches category fields without clearing the others", async () => {
+  const chat = await store.createChat("task", "Preise prüfen", { category: "instant", categorySource: "auto" });
+  const recurring = await store.updateChat(chat.id, {
+    category: "recurring",
+    categorySource: "manual",
+    intervalHours: 12,
+  });
+  assert.equal(recurring?.category, "recurring");
+  assert.equal(recurring?.categorySource, "manual");
+  assert.equal(recurring?.intervalHours, 12);
+
+  const renamed = await store.updateChat(chat.id, { title: "Preise" });
+  assert.equal(renamed?.title, "Preise");
+  assert.equal(renamed?.category, "recurring", "an unrelated patch leaves the category alone");
+  assert.equal(renamed?.intervalHours, 12);
+});
+
+test("deleteChat removes the chat but keeps its messages in the archive", async () => {
   const chat = await store.createChat("task", "Wegwerf");
-  await store.appendMessage(chat.id, "me", "temporär");
+  const message = await store.appendMessage(chat.id, "me", "temporär");
   assert.equal(await store.deleteChat(chat.id), true);
   assert.equal(await store.getChat(chat.id), undefined);
   assert.deepEqual(await store.listMessages(chat.id), []);
   assert.equal(await store.deleteChat(chat.id), false);
+
+  const archived = (await store.listArchive()).find((e) => e.chatId === chat.id);
+  assert.ok(archived, "the deleted chat shows up in the archive");
+  assert.equal(archived.title, "Wegwerf");
+  assert.equal(archived.messageCount, 1);
+
+  const entry = await store.getArchiveEntry(archived.id);
+  assert.equal(entry?.messages[0].id, message.id);
+  assert.equal(entry?.messages[0].text, "temporär");
+  assert.deepEqual(await store.listArchivedMessages(chat.id), entry?.messages);
+});
+
+test("deleting the general chat empties it but keeps the chat itself", async () => {
+  await store.appendMessage(store.GENERAL_CHAT_ID, "me", "Plauderei");
+  await store.appendMessage(store.GENERAL_CHAT_ID, "emmy", "Antwort darauf");
+
+  assert.equal(await store.deleteChat(store.GENERAL_CHAT_ID), true);
+  const general = await store.getChat(store.GENERAL_CHAT_ID);
+  assert.ok(general, "the general chat survives being cleared");
+  assert.deepEqual(await store.listMessages(store.GENERAL_CHAT_ID), []);
+
+  const archived = (await store.listArchive()).find((e) => e.chatId === store.GENERAL_CHAT_ID);
+  assert.equal(archived?.messageCount, 2, "its history is archived, not thrown away");
+});
+
+test("clearing a chat with no messages archives nothing", async () => {
+  const before = (await store.listArchive()).length;
+  const chat = await store.createChat("task", "Nie benutzt");
+  assert.equal(await store.deleteChat(chat.id), true);
+  assert.equal((await store.listArchive()).length, before);
+});
+
+test("purgeArchiveEntry is the one call that really discards a conversation", async () => {
+  const chat = await store.createChat("task", "Endgültig weg");
+  await store.appendMessage(chat.id, "me", "geheim");
+  await store.deleteChat(chat.id);
+  const entry = (await store.listArchive()).find((e) => e.chatId === chat.id)!;
+
+  assert.equal(await store.purgeArchiveEntry(entry.id), true);
+  assert.equal(await store.getArchiveEntry(entry.id), undefined);
+  assert.deepEqual(await store.listArchivedMessages(chat.id), []);
+  assert.equal(await store.purgeArchiveEntry(entry.id), false);
 });
 
 test("survives a fresh module instance re-reading from disk", async () => {

@@ -2703,6 +2703,159 @@ button.active {
   cursor: default;
 }
 
+/* Two-line chat rows: title plus what the chat is currently up to. */
+.emmy2-chat-lines {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.1rem;
+}
+
+.emmy2-chat-sub {
+  font-size: 0.74rem;
+  color: var(--c-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Emmy is working in this chat right now — same slot as the status dot. */
+.emmy2-working-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--c-accent);
+  animation: emmy2-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes emmy2-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.75);
+  }
+}
+
+.emmy2-bubble-working {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  border-style: dashed;
+  color: var(--c-text-2);
+  font-style: italic;
+}
+
+.emmy2-bubble-working p {
+  margin: 0;
+  font-style: normal;
+}
+
+.emmy2-typing {
+  display: inline-flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.emmy2-typing i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  animation: emmy2-typing 1.2s ease-in-out infinite;
+}
+
+.emmy2-typing i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.emmy2-typing i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes emmy2-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .emmy2-working-dot,
+  .emmy2-typing i {
+    animation: none;
+  }
+}
+
+/* Zeitfenster / Intervall of the selected task, under its title. */
+.emmy2-conv-meta {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  padding-bottom: 0.6rem;
+  font-size: 0.82rem;
+  color: var(--c-text-2);
+}
+
+.emmy2-conv-meta label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.emmy2-conv-meta input {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  color: var(--c-text);
+  padding: 0.3rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+}
+
+.emmy2-conv-meta input[type="number"] {
+  width: 5rem;
+}
+
+.emmy2-archive-row {
+  margin-top: auto;
+  color: var(--c-text-2);
+}
+
+.emmy2-archive-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  padding: 0.2rem 0.5rem 0.2rem 0.2rem;
+}
+
+.emmy2-archive-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  color: var(--c-text);
+  padding: 0.5rem 0.6rem;
+}
+
 /* Narrow screens (kiosk portrait, iPhone): one pane at a time. */
 @media (max-width: 720px) {
   .emmy2-app[data-view="chat"] .emmy2-sidebar {
