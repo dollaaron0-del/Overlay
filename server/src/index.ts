@@ -26,6 +26,13 @@ attachWebSocketServer(server);
 
 server.listen(config.PORT, config.BIND_ADDRESS, () => {
   console.log(`Overlay server listening on http://${config.BIND_ADDRESS}:${config.PORT} (${config.NODE_ENV})`);
+  // Loud on every start, because the one way this flag turns dangerous is
+  // being forgotten: it is only safe while an auth proxy really is in front.
+  if (config.AUTH_DISABLED) {
+    console.warn(
+      "[auth] AUTH_DISABLED=1 — Overlay's own login is OFF. Every route is unauthenticated unless a proxy (Authelia) enforces auth in front of this process.",
+    );
+  }
 });
 
 function shutdown(): void {

@@ -87,6 +87,10 @@ authRouter.post("/logout", async (req, res) => {
 });
 
 authRouter.get("/session", (req, res) => {
+  if (config.AUTH_DISABLED) {
+    res.json({ authenticated: true });
+    return;
+  }
   const raw = req.headers.cookie ? cookie.parse(req.headers.cookie)[SESSION_COOKIE_NAME] : undefined;
   res.json({ authenticated: validateSessionCookie(raw) });
 });
@@ -100,6 +104,10 @@ const verifyPasswordSchema = z.object({ password: z.string().min(1) });
 // and shares the same brute-force backoff bucket since it's the same
 // credential being guessed from the same IP.
 authRouter.post("/verify-password", requireAuth, async (req, res) => {
+  if (config.AUTH_DISABLED) {
+    res.json({ ok: true });
+    return;
+  }
   const parsed = verifyPasswordSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "invalid_request" });

@@ -19,6 +19,19 @@ Gleichzeitig soll das Dashboard auch von unterwegs erreichbar sein.
    Session-Cookie. Dient als zweite Verteidigungslinie, falls die
    Netzwerkschicht versagt (z.B. Fehlkonfiguration), nicht als alleiniger
    Schutz.
+
+   Diese Schicht — und nur diese — lässt sich mit `AUTH_DISABLED=1` in der
+   `.env` abschalten: `requireAuth`, der WebSocket-Upgrade-Check und die
+   Antwort von `/api/session` werden dann zu No-Ops. Das ist ausschließlich
+   dann vertretbar, wenn Schicht 3 tatsächlich davorsteht und *jede* Route
+   abdeckt, denn sonst ist der Effekt: Dashboard, jedes Projekt-Terminal und
+   die `.env` dieses Servers ohne jede Anmeldung für jeden erreichbar, der
+   den Port erreicht. Standardmäßig aus; ist es an, sagt das der Server bei
+   jedem Start mit einer Warnung im Log (`[auth] AUTH_DISABLED=1 …`), damit
+   ein "nur mal kurz zum Debuggen" nicht unbemerkt liegen bleibt. Ein
+   abgeschaltetes Overlay-Login heißt außerdem, dass der Sperrbildschirm aus
+   Schicht 4 nichts mehr prüfen kann (`/api/verify-password` bestätigt dann
+   jede Eingabe).
 3. **2FA-Layer (optional, empfohlen): Authelia + Caddy.** Siehe
    `docs/DEPLOYMENT.md` Abschnitt 9. Schaltet einen TOTP-2FA-Login *vor*
    Overlays eigenem Login, über einen Caddy-Reverse-Proxy, der als einziger
