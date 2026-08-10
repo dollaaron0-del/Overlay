@@ -54,6 +54,18 @@ test("a project that lives under /home is still bound after /home is hidden", ()
   assert.ok(homeHidden >= 0 && projectBound > homeHidden);
 });
 
+test("the shared Claude login is re-bound read-only after /home is hidden", () => {
+  const { args } = buildSandboxCommand("claude", [], { ...target, sharedClaudeHome: "/home/aaron/.claude" }, "/usr/bin/bwrap");
+  const homeHidden = indexOfMount(args, "--tmpfs", "/home");
+  const sharedBound = indexOfMount(args, "--ro-bind-try", "/home/aaron/.claude");
+  assert.ok(homeHidden >= 0 && sharedBound > homeHidden);
+});
+
+test("no shared Claude login is bound when none is configured", () => {
+  const { args } = buildSandboxCommand("claude", [], target, "/usr/bin/bwrap");
+  assert.equal(indexOfMount(args, "--ro-bind-try", "/home/aaron/.claude"), -1);
+});
+
 test("the session starts in the project directory", () => {
   const { args } = buildSandboxCommand("claude", [], target, "/usr/bin/bwrap");
   assert.equal(args[indexOfMount(args, "--chdir", "/opt/apps/alpha") + 1], "/opt/apps/alpha");

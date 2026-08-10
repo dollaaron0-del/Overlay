@@ -12,6 +12,11 @@ const originalCwd = process.cwd();
 const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "claude-home-cwd-"));
 
 process.env.HOME = fakeHome;
+const originalSharedHome = process.env.CLAUDE_SHARED_HOME;
+// Without this, a real CLAUDE_SHARED_HOME set in .env for production would
+// leak into this test via config.ts's dotenv load and override the fake
+// HOME above, pointing the module at the real login instead of the fixture.
+process.env.CLAUDE_SHARED_HOME = path.join(fakeHome, ".claude");
 fs.mkdirSync(path.join(fakeHome, ".claude"), { recursive: true });
 fs.writeFileSync(path.join(fakeHome, ".claude", ".credentials.json"), '{"token":"shared"}');
 fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), '{"model":"opus"}');
@@ -23,6 +28,8 @@ after(() => {
   process.chdir(originalCwd);
   if (originalHome === undefined) delete process.env.HOME;
   else process.env.HOME = originalHome;
+  if (originalSharedHome === undefined) delete process.env.CLAUDE_SHARED_HOME;
+  else process.env.CLAUDE_SHARED_HOME = originalSharedHome;
   fs.rmSync(fakeHome, { recursive: true, force: true });
   fs.rmSync(workdir, { recursive: true, force: true });
 });

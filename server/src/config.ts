@@ -38,6 +38,15 @@ const schema = z.object({
   // Claude Code CLI; override to e.g. "bash" for local/sandbox testing of the
   // pty <-> WebSocket <-> xterm.js plumbing without a `claude` login available.
   CLAUDE_COMMAND: z.string().default("claude"),
+  // Where the *real* Claude Code login lives (the ".claude" dir containing
+  // .credentials.json), so every project's isolated terminal home can link
+  // against it (see pty/claude-home.ts). Defaults to this process's own home
+  // dir — fine when Overlay runs as the same Linux user that ran `claude
+  // login`, wrong when Overlay runs as its own service user (e.g. `overlay`)
+  // while the subscription login was done as a different user (e.g. `aaron`
+  // over SSH): os.homedir() then points at an empty .claude nobody ever
+  // logged into. Empty/unset = fall back to this process's own home dir.
+  CLAUDE_SHARED_HOME: z.string().default(""),
   // Runs every project terminal inside a bubblewrap sandbox that can only see
   // that project (see pty/sandbox.ts). On by default: without it, a session
   // opened for one project can read every other project and this

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { config } from "../config.js";
 
 /**
  * Gives every project its own Claude Code config directory, so a project's
@@ -21,13 +22,25 @@ import path from "node:path";
  * refresh visible to every project instead of leaving stale copies behind.
  */
 
-const SHARED_HOME = path.join(os.homedir(), ".claude");
+// config.CLAUDE_SHARED_HOME overrides this when the real login lives under a
+// different Linux user's home than the one this process runs as — see the
+// config.ts comment on that flag.
+const SHARED_HOME = config.CLAUDE_SHARED_HOME || path.join(os.homedir(), ".claude");
 const CREDENTIALS_FILE = ".credentials.json";
 const SETTINGS_FILE = "settings.json";
 
 /** Where per-project Claude state lives, alongside the rest of the server's data. */
 export function claudeHomesRoot(): string {
   return path.join(process.cwd(), "data", "claude-homes");
+}
+
+/**
+ * SHARED_HOME itself, for the sandbox to re-expose read-only (see
+ * pty/sandbox.ts) — otherwise the credentials symlink created below points at
+ * a path bubblewrap has already hidden as part of blanking out /home.
+ */
+export function sharedClaudeHomeDir(): string {
+  return SHARED_HOME;
 }
 
 /**

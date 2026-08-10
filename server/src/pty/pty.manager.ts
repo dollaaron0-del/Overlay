@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { config } from "../config.js";
 import { resolveProjectDir } from "../projects/projects.registry.js";
 import type { Project } from "../projects/projects.types.js";
-import { ensureProjectClaudeHome } from "./claude-home.js";
+import { ensureProjectClaudeHome, sharedClaudeHomeDir } from "./claude-home.js";
 import { buildSandboxCommand } from "./sandbox.js";
 import { PtySession } from "./pty.session.js";
 
@@ -30,6 +30,7 @@ export function getOrCreateSession(project: Project): PtySession {
         claudeHome,
         appsRoot: realPathOrSelf(config.APPS_ROOT),
         serverDir: process.cwd(),
+        sharedClaudeHome: sharedClaudeHomeDir(),
       })
     : { command: config.CLAUDE_COMMAND, args: [] };
 
