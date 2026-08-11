@@ -3,6 +3,7 @@ import { config } from "../config.js";
 import { resolveProjectDir } from "../projects/projects.registry.js";
 import type { Project } from "../projects/projects.types.js";
 import { ensureProjectClaudeHome, sharedClaudeHomeDir } from "./claude-home.js";
+import { ensureGitCredentialHelper } from "./git-credentials.js";
 import { buildSandboxCommand } from "./sandbox.js";
 import { PtySession } from "./pty.session.js";
 
@@ -18,6 +19,7 @@ export function getOrCreateSession(project: Project): PtySession {
   // depending on the path, splitting one project's history in two.
   const cwd = realPathOrSelf(resolveProjectDir(project));
   const claudeHome = ensureProjectClaudeHome(project.id, cwd);
+  ensureGitCredentialHelper(cwd);
 
   // Sandboxed by default, so a session cannot reach the neighbouring projects
   // or this installation's secrets. buildSandboxCommand throws with an
@@ -34,7 +36,10 @@ export function getOrCreateSession(project: Project): PtySession {
       })
     : { command: config.CLAUDE_COMMAND, args: [] };
 
-  const session = new PtySession(command, args, cwd, { CLAUDE_CONFIG_DIR: claudeHome });
+  const session = new PtySession(command, args, cwd, {
+    CLAUDE_CONFIG_DIR: claudeHome,
+    ...(config.GIT_SANDBOX_PUSH_TOKEN ? { GH_TOKEN: config.GIT_SANDBOX_PUSH_TOKEN } : {}),
+  });
   sessions.set(project.id, session);
   session.onExit(() => {
     if (sessions.get(project.id) === session) sessions.delete(project.id);

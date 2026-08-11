@@ -47,6 +47,16 @@ const schema = z.object({
   // over SSH): os.homedir() then points at an empty .claude nobody ever
   // logged into. Empty/unset = fall back to this process's own home dir.
   CLAUDE_SHARED_HOME: z.string().default(""),
+  // A fine-grained GitHub PAT (scope it to just "Contents: Read and write" on
+  // the repos Overlay should be able to push to) that every sandboxed project
+  // session can use to `git push` its own branches — same shared-across-all-
+  // projects trust model as CLAUDE_SHARED_HOME above, so keep it scoped to
+  // only the repos this Overlay instance is trusted to modify. Passed in as
+  // GH_TOKEN (see pty/git-credentials.ts); paired with git's credential
+  // helper pointing at `gh`, so no `gh auth login` state is ever needed inside
+  // a sandbox. Empty/unset = today's behaviour: a session can prepare commits,
+  // but pushing needs a manual step from outside any sandbox.
+  GIT_SANDBOX_PUSH_TOKEN: z.string().default(""),
   // Runs every project terminal inside a bubblewrap sandbox that can only see
   // that project (see pty/sandbox.ts). On by default: without it, a session
   // opened for one project can read every other project and this
