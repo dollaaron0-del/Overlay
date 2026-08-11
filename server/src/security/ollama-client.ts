@@ -10,6 +10,8 @@ export async function generateOllamaCompletion(
   prompt: string,
   timeoutMs: number,
   format?: "json",
+  /** Base64-encoded images (no data-URI prefix), for a vision-capable model. */
+  images?: string[],
 ): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -19,7 +21,13 @@ export async function generateOllamaCompletion(
     response = await fetch(new URL("/api/generate", baseUrl), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, prompt, stream: false, ...(format ? { format } : {}) }),
+      body: JSON.stringify({
+        model,
+        prompt,
+        stream: false,
+        ...(format ? { format } : {}),
+        ...(images && images.length > 0 ? { images } : {}),
+      }),
       signal: controller.signal,
     });
   } catch (err) {
@@ -42,6 +50,49 @@ export async function generateOllamaCompletion(
     throw new Error("Ollama response missing expected 'response' field");
   }
   return json.response;
+}
+
+/**
+ * Minimal client for Ollama's /api/embed endpoint (the current embeddings
+ * endpoint as of this writing — the older /api/embeddings is deprecated but
+ * still served for back-compat; this uses the current one).
+ */
+export async function generateOllamaEmbedding(
+  baseUrl: string,
+  model: string,
+  text: string,
+  timeoutMs: number,
+): Promise<number[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(new URL("/api/embed", baseUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, input: text }),
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      throw new Error(`Ollama request timed out after ${timeoutMs}ms`);
+    }
+    throw new OllamaUnavailableError(`Could not reach Ollama at ${baseUrl}: ${(err as Error).message}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Ollama returned ${response.status}: ${body.slice(0, 500)}`);
+  }
+
+  const json = (await response.json()) as { embeddings?: number[][] };
+  if (!Array.isArray(json.embeddings) || !Array.isArray(json.embeddings[0])) {
+    throw new Error("Ollama response missing expected 'embeddings' field");
+  }
+  return json.embeddings[0];
 }
 
 /**

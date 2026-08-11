@@ -20,10 +20,17 @@ import {
 import { publishEmmyMessage, publishEmmyChats } from "./emmy-bus.js";
 import { listActivities, markWorking, markIdle } from "./emmy-activity.js";
 import { classifyTask, DEFAULT_INTERVAL_HOURS, DEFAULT_RESEARCH_WINDOW_HOURS } from "./emmy-categorize.js";
-import type { EmmyCategory, EmmyChat } from "@overlay/shared";
+import type { EmmyCategory, EmmyChat, EmmyMessage } from "@overlay/shared";
 import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
 import { saveEmmyAttachments, attachmentsDir } from "./emmy-attachments.js";
 import { resolveSafePath, UnsafePathError } from "../files/safe-path.js";
+import {
+  indexMessageForMemory,
+  retrieveMemory,
+  purgeMessagesFromMemory,
+  truncateForPrompt,
+  type MemoryHit,
+} from "./emmy-memory.js";
 
 // CRUD + reads (normal JSON body limit, mounted under protectedApi).
 export const emmyRouter = Router();
@@ -186,6 +193,7 @@ emmyRouter.delete("/archive/:id", async (req, res) => {
   for (const attachment of entry.messages.flatMap((m) => m.attachments ?? [])) {
     await fs.rm(path.join(dir, attachment.filename), { force: true }).catch(() => {});
   }
+  await purgeMessagesFromMemory(entry.messages.map((m) => m.id));
   res.json({ ok: true });
 });
 
@@ -211,16 +219,41 @@ const sendSchema = z.object({
  * inbound token is included here because the agent process runs as `aaron`,
  * which cannot read Overlay's root-owned .env itself.
  */
+// Message text can run up to 20,000 chars (emmy-inbound.routes.ts's schema) —
+// without truncation, ten recent messages plus six memory hits could add well
+// over 100K chars to every single turn.
+const PROMPT_LINE_MAX_CHARS = 500;
+
 function buildPrompt(
   chatTitle: string,
   chatKind: string,
   chatId: string,
   userText: string,
   attachmentPaths: { abs: string; name: string }[],
+  recentMessages: EmmyMessage[],
+  memoryHits: MemoryHit[],
 ): string {
   const lines: string[] = [];
   const context = chatKind === "task" ? `zur Aufgabe „${chatTitle}"` : "im allgemeinen Chat";
   lines.push(`[Overlay] Nachricht von Aaron ${context}:`);
+
+  if (recentMessages.length > 0) {
+    lines.push("");
+    lines.push("--- Bisheriger Verlauf in diesem Chat ---");
+    for (const m of recentMessages) {
+      lines.push(`${m.role === "me" ? "Aaron" : "Emmy"}: ${truncateForPrompt(m.text, PROMPT_LINE_MAX_CHARS)}`);
+    }
+  }
+
+  if (memoryHits.length > 0) {
+    lines.push("");
+    lines.push("--- Möglicherweise relevante frühere Gespräche (auch aus anderen/gelöschten Chats) ---");
+    for (const hit of memoryHits) {
+      const when = new Date(hit.at).toLocaleString("de-DE");
+      lines.push(`[${hit.chatTitle}, ${when}] ${truncateForPrompt(hit.snippet, PROMPT_LINE_MAX_CHARS)}`);
+    }
+  }
+
   lines.push("");
   lines.push(userText || "(keine Textnachricht, siehe Anhänge)");
   if (attachmentPaths.length > 0) {
@@ -287,12 +320,21 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
     return;
   }
 
+  // Fetched once, before this turn's own message exists yet, and reused for
+  // both the classifier below and the recent-history/memory-exclusion context
+  // further down — otherwise the tier-1 window would include the message
+  // currently being sent.
+  const priorMessages = await listMessages(chat.id);
+
   // The title alone is often too terse to classify well ("Server"), so the
   // first message re-decides — but never against a category Aaron pinned.
-  const isFirstMessage = (await listMessages(chat.id)).length === 0;
+  const isFirstMessage = priorMessages.length === 0;
   if (chat.kind === "task" && isFirstMessage && chat.categorySource !== "manual" && text) {
     await updateChat(chat.id, { ...classifyTask(`${chat.title}\n${text}`), categorySource: "auto" });
   }
+
+  const recentMessages = priorMessages.slice(-config.EMMY_MEMORY_RECENT_MESSAGES);
+  const memoryHits = await retrieveMemory(text, new Set(recentMessages.map((m) => m.id)));
 
   // Saved + broadcast before the outbound turn is even attempted — a failed
   // hand-off to OpenClaw must not make the message vanish from the chat; it
@@ -301,12 +343,15 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
   const message = await appendMessage(chat.id, "me", displayText, saved);
   publishEmmyMessage(message);
   await broadcastChats();
+  // Best-effort and unawaited: a slow/absent Ollama must never delay this
+  // response, and this message doesn't need to retrieve itself.
+  void indexMessageForMemory(message, chat.title).catch(() => {});
 
   const attachmentPaths = saved.map((a) => ({
     abs: path.resolve(attachmentsDir(chat.id), a.filename),
     name: a.originalName,
   }));
-  const prompt = buildPrompt(chat.title, chat.kind, chat.id, text, attachmentPaths);
+  const prompt = buildPrompt(chat.title, chat.kind, chat.id, text, attachmentPaths, recentMessages, memoryHits);
   const name = chat.kind === "task" ? `Overlay-Aufgabe: ${chat.title}` : "Overlay-Chat";
 
   try {

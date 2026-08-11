@@ -150,6 +150,33 @@ const schema = z.object({
   // message* — narrower blast radius if it ever leaks. Empty = the whole
   // /api/emmy/inbound router 404s, same as AUTOMATION_TOKEN above.
   EMMY_INBOUND_TOKEN: z.string().default(""),
+  // Cross-conversation memory for Emmy (server/src/emmy/emmy-memory.ts): every
+  // message, in every chat — including deleted ones, which emmy-store.ts keeps
+  // in its archive — is embedded via a local Ollama model and cosine-matched
+  // against new messages, so Emmy can recall something discussed in a
+  // different chat without it being repasted. Same optional/best-effort
+  // pattern as OLLAMA_MODEL above: empty EMMY_MEMORY_EMBEDDING_MODEL disables
+  // this tier entirely (no network call is even attempted), leaving only the
+  // always-on same-chat recent-history context. Suggest a multilingual model
+  // (e.g. "bge-m3") since Emmy's own prompts are German.
+  EMMY_MEMORY_OLLAMA_URL: z.string().default("http://127.0.0.1:11434"),
+  EMMY_MEMORY_EMBEDDING_MODEL: z.string().default(""),
+  // Optional on top of the above: short image captions (via a vision model,
+  // e.g. "llava") folded into a message's indexed text, so a photo becomes
+  // findable by what's in it, not just its filename. Empty = attachments are
+  // still indexed by filename alone. Vision inference is much slower than
+  // embedding a short text, hence the separate, longer timeout.
+  EMMY_MEMORY_VISION_MODEL: z.string().default(""),
+  EMMY_MEMORY_EMBEDDING_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  EMMY_MEMORY_VISION_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  // How many cross-chat memory hits (top-K by cosine similarity) get added to
+  // a prompt, and the minimum similarity score for a hit to count at all.
+  EMMY_MEMORY_TOP_K: z.coerce.number().int().positive().default(6),
+  EMMY_MEMORY_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.55),
+  // How many of the current chat's own recent messages ride along on every
+  // turn, independent of the embedding tier above — this alone is what fixes
+  // Emmy forgetting mid-task even with no Ollama configured at all.
+  EMMY_MEMORY_RECENT_MESSAGES: z.coerce.number().int().positive().default(10),
   COOKIE_SECURE: z
     .string()
     .default("false")
