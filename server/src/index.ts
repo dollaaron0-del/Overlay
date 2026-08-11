@@ -3,6 +3,7 @@ import { config } from "./config.js";
 import { createApp } from "./server.js";
 import { attachWebSocketServer } from "./ws/ws.server.js";
 import { loadSessions } from "./auth/session.js";
+import { reconcileMemoryIndex } from "./emmy/emmy-memory.js";
 
 // Defense in depth: Express 4 does not catch a rejected promise thrown by an
 // async route handler on its own — without this, one unexpected rejection
@@ -19,6 +20,11 @@ process.on("uncaughtException", (err) => {
 });
 
 await loadSessions();
+
+// Best-effort, not awaited: backfills Emmy's memory index for any message
+// (live or archived) that predates this feature or was sent while Ollama was
+// unreachable. Never blocks server startup and can never take the process down.
+void reconcileMemoryIndex();
 
 const app = createApp();
 const server = http.createServer(app);

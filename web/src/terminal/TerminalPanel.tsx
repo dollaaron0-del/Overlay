@@ -104,6 +104,22 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     };
     container.addEventListener("copy", onCopy);
 
+    // The user-select:text override above (for native iOS selection) can stop
+    // xterm's own mousedown->focus() chain from firing reliably on a simple
+    // tap: WebKit sometimes treats a tap on selectable text as the start of a
+    // selection gesture rather than a click, so the hidden helper textarea
+    // never gets focus and neither an on-screen nor an external keyboard has
+    // anywhere to send keystrokes. Force focus explicitly on touch release,
+    // unless the tap actually produced a selection (so tapping to copy
+    // doesn't yank focus and pop the on-screen keyboard open).
+    const onTouchEnd = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) {
+        term.focus();
+      }
+    };
+    container.addEventListener("touchend", onTouchEnd);
+
     term.open(container);
     safeFit();
     setTerminal(term);
@@ -135,6 +151,7 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       resizeObserver.disconnect();
       window.visualViewport?.removeEventListener("resize", safeFit);
       container.removeEventListener("copy", onCopy);
+      container.removeEventListener("touchend", onTouchEnd);
       term.dispose();
       setTerminal(null);
     };

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getChat, updateChat, appendMessage, listChats } from "./emmy-store.js";
 import { publishEmmyMessage, publishEmmyChats } from "./emmy-bus.js";
 import { markWorking, markIdle } from "./emmy-activity.js";
+import { indexMessageForMemory } from "./emmy-memory.js";
 
 /**
  * Called by the Emmy agent turn when it replies to a chat message (see
@@ -62,6 +63,7 @@ emmyInboundRouter.post("/", async (req, res) => {
 
   const message = await appendMessage(chatId, "emmy", text);
   publishEmmyMessage(message);
+  void indexMessageForMemory(message, chat.title).catch(() => {});
   // The answer is here, so she is no longer working on this chat.
   markIdle(chatId);
   publishEmmyChats(await listChats());
