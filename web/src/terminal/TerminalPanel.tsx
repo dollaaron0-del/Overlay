@@ -61,6 +61,38 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       return term.hasSelection() ? term.getSelection() : "";
     };
 
+    // navigator.clipboard is only defined in a secure context (HTTPS). If
+    // Overlay is reached over plain HTTP (e.g. Tailscale cert not set up
+    // yet), writeText is missing entirely and would throw synchronously
+    // rather than reject a promise, so callers must not assume it exists.
+    // document.execCommand("copy") has no such restriction, so fall back to
+    // it via a throwaway off-screen textarea whenever the modern API can't
+    // be used or silently fails.
+    const execCommandCopy = (text: string) => {
+      const helper = document.createElement("textarea");
+      helper.value = text;
+      helper.style.position = "fixed";
+      helper.style.top = "0";
+      helper.style.left = "-9999px";
+      helper.style.opacity = "0";
+      document.body.appendChild(helper);
+      helper.focus();
+      helper.select();
+      try {
+        document.execCommand("copy");
+      } catch {
+        // ignore — nothing more we can do
+      }
+      document.body.removeChild(helper);
+    };
+    const writeClipboardText = (text: string) => {
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(text).catch(() => execCommandCopy(text));
+      } else {
+        execCommandCopy(text);
+      }
+    };
+
     // xterm.js otherwise always forwards Ctrl/Cmd+C as SIGINT (0x03) to the
     // pty, even with an active selection, and relies on the browser's native
     // paste event for Ctrl/Cmd+V, which doesn't reliably fire while focus sits
@@ -73,17 +105,36 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       if (mod && event.key.toLowerCase() === "c") {
         const text = selectedText();
         if (!text) return true;
-        navigator.clipboard.writeText(text).catch(() => {});
+        writeClipboardText(text);
         event.preventDefault();
         return false;
       }
       if (mod && event.key.toLowerCase() === "v") {
         navigator.clipboard
-          .readText()
+          ?.readText()
           .then((text) => term.paste(text))
           .catch(() => {});
         event.preventDefault();
         return false;
+      }
+      return true;
+    });
+
+    // Programs running inside the pty (e.g. the claude CLI's own "copy this
+    // login link" prompt) can ask the terminal to put text on the system
+    // clipboard via the OSC 52 escape sequence (`OSC 52 ; c ; <base64> ST`)
+    // instead of relying on the browser's own copy/paste. xterm.js parses
+    // the sequence but has no built-in handler for it, so without this it's
+    // silently dropped — the CLI shows its own "copied" confirmation while
+    // nothing actually reaches the clipboard.
+    const oscClipboardHandler = term.parser.registerOscHandler(52, (data) => {
+      const [, payload] = data.split(";");
+      if (!payload || payload === "?") return true;
+      try {
+        const bytes = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0));
+        writeClipboardText(new TextDecoder().decode(bytes));
+      } catch {
+        // malformed payload — nothing to copy
       }
       return true;
     });
@@ -148,6 +199,7 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(lateFit);
+      oscClipboardHandler.dispose();
       resizeObserver.disconnect();
       window.visualViewport?.removeEventListener("resize", safeFit);
       container.removeEventListener("copy", onCopy);
