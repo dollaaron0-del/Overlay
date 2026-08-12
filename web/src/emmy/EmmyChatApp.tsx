@@ -147,6 +147,10 @@ export function EmmyChatApp() {
   const [openDocument, setOpenDocument] = useState<{ message: EmmyMessage; chatTitle: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   // Live chat list, incoming messages and "what is Emmy doing" over one socket.
   useEffect(() => {
@@ -165,8 +169,22 @@ export function EmmyChatApp() {
         });
       }
     });
+    // A message that lands while the socket is reconnecting (sleep, network
+    // change, iOS backgrounding a research run that takes hours) is gone for
+    // good otherwise — messages only ever arrive live, never replayed. So on
+    // every reconnect, drop the "already loaded" mark for whatever chat is
+    // open and let the lazy-load effect below re-fetch it from REST.
+    const unsubOpen = socket.onOpen(() => {
+      setLoadedChats((prev) => {
+        if (!selectedIdRef.current || !prev.has(selectedIdRef.current)) return prev;
+        const next = new Set(prev);
+        next.delete(selectedIdRef.current);
+        return next;
+      });
+    });
     return () => {
       unsubscribe();
+      unsubOpen();
       socket.close();
     };
   }, []);
