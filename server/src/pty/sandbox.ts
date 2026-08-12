@@ -42,6 +42,17 @@ export interface SandboxTarget {
    * /home. Omitted when nothing has ever logged in yet.
    */
   sharedClaudeHome?: string;
+  /**
+   * The shared credentials file (pty/claude-home.ts's sharedCredentialsFile())
+   * inside sharedClaudeHome, re-bound read-write on top of that otherwise
+   * read-only directory. Claude Code refreshes its OAuth token by writing
+   * this file in place; without this narrow exception the write fails inside
+   * the sandbox and every project keeps reporting an expired session no
+   * matter how recently `/login` succeeded elsewhere. Only this one file
+   * loses the read-only protection — everything else under sharedClaudeHome
+   * (e.g. other projects' pre-migration history) stays untouchable.
+   */
+  sharedCredentialsFile?: string;
 }
 
 export function isSandboxAvailable(bwrapPath = "/usr/bin/bwrap"): boolean {
@@ -83,6 +94,11 @@ export function buildSandboxCommand(
     "--bind", target.projectDir, target.projectDir,
     "--bind", target.claudeHome, target.claudeHome,
     ...(target.sharedClaudeHome ? ["--ro-bind-try", target.sharedClaudeHome, target.sharedClaudeHome] : []),
+    // Re-bound again, read-write, so this one file wins over the read-only
+    // mount above (later mount at the same path wins) — see the field doc.
+    ...(target.sharedCredentialsFile
+      ? ["--bind-try", target.sharedCredentialsFile, target.sharedCredentialsFile]
+      : []),
 
     // Keep the network (the session talks to the API); drop every other
     // namespace. --die-with-parent ties the sandbox to the pty, so closing a

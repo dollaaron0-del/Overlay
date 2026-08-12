@@ -66,6 +66,23 @@ test("no shared Claude login is bound when none is configured", () => {
   assert.equal(indexOfMount(args, "--ro-bind-try", "/home/aaron/.claude"), -1);
 });
 
+test("the shared credentials file is re-bound read-write, after the read-only shared login", () => {
+  const { args } = buildSandboxCommand(
+    "claude",
+    [],
+    { ...target, sharedClaudeHome: "/home/aaron/.claude", sharedCredentialsFile: "/home/aaron/.claude/.credentials.json" },
+    "/usr/bin/bwrap",
+  );
+  const sharedBound = indexOfMount(args, "--ro-bind-try", "/home/aaron/.claude");
+  const credentialsBound = indexOfMount(args, "--bind-try", "/home/aaron/.claude/.credentials.json");
+  assert.ok(sharedBound >= 0 && credentialsBound > sharedBound, "the credentials file must win over the read-only mount");
+});
+
+test("no credentials file is bound when none is configured", () => {
+  const { args } = buildSandboxCommand("claude", [], target, "/usr/bin/bwrap");
+  assert.equal(indexOfMount(args, "--bind-try", "/home/aaron/.claude/.credentials.json"), -1);
+});
+
 test("the session starts in the project directory", () => {
   const { args } = buildSandboxCommand("claude", [], target, "/usr/bin/bwrap");
   assert.equal(args[indexOfMount(args, "--chdir", "/opt/apps/alpha") + 1], "/opt/apps/alpha");

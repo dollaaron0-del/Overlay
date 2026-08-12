@@ -44,6 +44,17 @@ export function sharedClaudeHomeDir(): string {
 }
 
 /**
+ * Path to the shared credentials file itself, for the sandbox to re-expose
+ * read-write on top of the otherwise read-only sharedClaudeHomeDir() (see
+ * pty/sandbox.ts) — without that, a token refresh inside the sandbox tries to
+ * write through the credentials symlink and fails silently, so the session
+ * keeps reporting an expired OAuth token even right after a fresh `/login`.
+ */
+export function sharedCredentialsFile(): string {
+  return path.join(SHARED_HOME, CREDENTIALS_FILE);
+}
+
+/**
  * Creates (once) and returns the config directory for a project, ready to be
  * passed as CLAUDE_CONFIG_DIR. Safe to call on every session start.
  */
