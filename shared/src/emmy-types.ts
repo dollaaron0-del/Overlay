@@ -55,6 +55,10 @@ export interface EmmyChat {
   dueAt?: string;
   /** Check cadence for "recurring" tasks. */
   intervalHours?: number;
+  /** Running count of sources Emmy has searched for this task, self-reported via /api/emmy/inbound. */
+  sourcesSearched?: number;
+  /** Emmy's own 0-100 estimate of how well she now knows the topic, self-reported via /api/emmy/inbound. */
+  knowledgeLevel?: number;
 }
 
 /**
@@ -71,6 +75,10 @@ export interface EmmyActivity {
   since: string;
   /** When the note was last refreshed (ISO); a stale note is dropped by the server. */
   updatedAt: string;
+  /** Latest self-reported source count, if Emmy included one in this progress ping. */
+  sourcesSearched?: number;
+  /** Latest self-reported 0-100 knowledge estimate, if Emmy included one in this progress ping. */
+  knowledgeLevel?: number;
 }
 
 /** A deleted conversation, kept verbatim so nothing is lost when a chat is cleared. */

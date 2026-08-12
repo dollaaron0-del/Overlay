@@ -137,7 +137,12 @@ function applyPatch(chat: EmmyChat, patch: object): EmmyChat {
 
 export async function updateChat(
   id: string,
-  patch: { title?: string; status?: EmmyTaskStatus } & EmmyCategoryPatch,
+  patch: {
+    title?: string;
+    status?: EmmyTaskStatus;
+    sourcesSearched?: number;
+    knowledgeLevel?: number;
+  } & EmmyCategoryPatch,
 ): Promise<EmmyChat | undefined> {
   const store = await ensureLoaded();
   const chat = store.chats.find((c) => c.id === id);

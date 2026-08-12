@@ -279,6 +279,15 @@ function buildPrompt(
   );
   lines.push(`  Body:   JSON {"chatId":"${chatId}","activity":"<woran du gerade arbeitest>"}`);
   lines.push(`Sobald du die eigentliche Antwort mit "text" schickst, verschwindet der Hinweis von selbst.`);
+  lines.push(
+    `Wenn du dabei recherchierst (Web-Suchen, Quellen lesen), häng optional deinen Fortschritt an dieselbe Zwischenstand-Meldung an — Aaron sieht das live als Quellenzähler und Wissensstand-Balken neben der Aufgabe:`,
+  );
+  lines.push(
+    `  Body:   JSON {"chatId":"${chatId}","activity":"...","sourcesSearched":<Anzahl bisher durchsuchter/gelesener Quellen>,"knowledgeLevel":<0-100, deine ehrliche Einschätzung wie gut du das Thema jetzt kennst>}`,
+  );
+  lines.push(
+    `Beide Felder sind kumulativ über den gesamten Task — schick bei jeder Meldung den aktuellen Gesamtstand, nicht nur das Delta. Lass sie weg, wenn eine Meldung keine Recherche betrifft.`,
+  );
   if (chatKind === "task") {
     lines.push("");
     lines.push("--- Einordnung (optional) ---");
