@@ -10,6 +10,7 @@ export function AppIcon({
   editMode,
   selected,
   large,
+  small,
   onToggleSelect,
   onLongPress,
   onHide,
@@ -25,6 +26,7 @@ export function AppIcon({
   editMode: boolean;
   selected?: boolean;
   large?: boolean;
+  small?: boolean;
   onToggleSelect?: () => void;
   onLongPress: () => void;
   onHide?: () => void;
@@ -43,7 +45,7 @@ export function AppIcon({
 
   return (
     <div
-      className={`os-app-icon-wrapper ${editMode ? "edit-mode" : ""} ${large ? "os-app-icon-wrapper--large" : ""}`}
+      className={`os-app-icon-wrapper ${editMode ? "edit-mode" : ""} ${large ? "os-app-icon-wrapper--large" : ""} ${small ? "os-app-icon-wrapper--small" : ""}`}
       data-icon-id={id}
       {...pressHandlers}
     >

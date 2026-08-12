@@ -969,10 +969,35 @@ button.active {
   gap: 1.5rem;
 }
 
-.home-widgets {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1rem;
+.home-status-toggle {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  color: var(--c-text-2);
+  font-size: 0.85rem;
+}
+
+.home-status-toggle-icon {
+  font-size: 1rem;
+}
+
+.home-status-panel {
+  width: min(420px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
 .os-widget {
@@ -1215,6 +1240,21 @@ button.active {
 .os-app-icon-wrapper--large .os-app-icon-label {
   max-width: 96px;
   font-size: 0.8rem;
+}
+
+/* Rarely-used apps get a smaller glyph so they visually recede behind the
+   projects and everyday apps a user actually reaches for. */
+.os-app-icon-wrapper--small .os-app-icon-glyph {
+  width: 42px;
+  height: 42px;
+  font-size: 1.5rem;
+  border-radius: 12px;
+}
+
+.os-app-icon-wrapper--small .os-app-icon-label {
+  font-size: 0.68rem;
+  color: var(--c-text-3);
+  opacity: 0.75;
 }
 
 .home-hidden-section {
@@ -2601,6 +2641,13 @@ button.active {
   margin-top: 0.3rem;
   font-size: 0.7rem;
   opacity: 0.65;
+  /* Selecting a message to copy it (e.g. to paste into a terminal) triple-
+     clicks or drags across the whole bubble, which otherwise scoops up this
+     timestamp too — pasting ends up with the real text and a trailing time
+     mashed together. It's not part of the message, so keep it out of
+     selection/copy entirely. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .emmy2-bubble-me {
@@ -2625,6 +2672,12 @@ button.active {
   justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.4rem;
+  /* Same reasoning as .emmy2-bubble-time: this badge + button sit in the same
+     bubble as the report text, so a selection spanning the whole message
+     would otherwise pull "📄 Ausführlicher Bericht Als Dokument öffnen" into
+     the copied text ahead of the actual content. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .emmy2-report-badge {

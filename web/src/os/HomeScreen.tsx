@@ -26,6 +26,10 @@ function isFolderId(id: string): boolean {
   return id.startsWith("folder:");
 }
 
+// Static apps that are used rarely enough to visually recede behind
+// projects and everyday apps, rather than competing for attention.
+const SMALL_APP_IDS = new Set(["activity", "ideachat", "settings"]);
+
 export function HomeScreen({
   projects,
   onOpenProject,
@@ -36,6 +40,7 @@ export function HomeScreen({
   onOpenApp: (id: string) => void;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showStatus, setShowStatus] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -116,11 +121,30 @@ export function HomeScreen({
   return (
     <div className="home-screen">
       {!editMode && (
-        <div className="home-widgets">
-          <SystemStatsWidget />
-          <SecurityWidget onOpen={() => onOpenApp("security")} />
-          <BackupWidget />
-          <OllamaWidget />
+        <button className="home-status-toggle" onClick={() => setShowStatus(true)}>
+          <span className="home-status-toggle-icon">📊</span> Status
+        </button>
+      )}
+
+      {showStatus && (
+        <div className="home-modal-backdrop" onClick={() => setShowStatus(false)}>
+          <div className="home-status-panel" onClick={(e) => e.stopPropagation()}>
+            <div className="notification-header">
+              <h3>Status</h3>
+              <button className="close-button" onClick={() => setShowStatus(false)}>
+                ✕
+              </button>
+            </div>
+            <SystemStatsWidget />
+            <SecurityWidget
+              onOpen={() => {
+                setShowStatus(false);
+                onOpenApp("security");
+              }}
+            />
+            <BackupWidget />
+            <OllamaWidget />
+          </div>
         </div>
       )}
 
@@ -173,6 +197,7 @@ export function HomeScreen({
               editMode={editMode}
               selected={selectedIds.has(id)}
               large={item.kind === "project"}
+              small={item.kind === "app" && SMALL_APP_IDS.has(id.slice("app:".length))}
               onToggleSelect={() => toggleSelect(id)}
               onClick={() => openItem(id)}
               onLongPress={() => setEditMode(true)}
