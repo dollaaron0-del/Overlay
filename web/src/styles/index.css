@@ -2641,6 +2641,13 @@ button.active {
   margin-top: 0.3rem;
   font-size: 0.7rem;
   opacity: 0.65;
+  /* Selecting a message to copy it (e.g. to paste into a terminal) triple-
+     clicks or drags across the whole bubble, which otherwise scoops up this
+     timestamp too — pasting ends up with the real text and a trailing time
+     mashed together. It's not part of the message, so keep it out of
+     selection/copy entirely. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .emmy2-bubble-me {
@@ -2665,6 +2672,12 @@ button.active {
   justify-content: space-between;
   gap: 0.5rem;
   margin-bottom: 0.4rem;
+  /* Same reasoning as .emmy2-bubble-time: this badge + button sit in the same
+     bubble as the report text, so a selection spanning the whole message
+     would otherwise pull "📄 Ausführlicher Bericht Als Dokument öffnen" into
+     the copied text ahead of the actual content. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .emmy2-report-badge {
