@@ -36,6 +36,11 @@ const IDEA_CHAT_ATTACHMENT_BODY_LIMIT = "40mb";
 // base64 JSON, same reasoning as the two limits above.
 const EMMY_ATTACHMENT_BODY_LIMIT = "60mb";
 
+// Emmy's reply text can run up to 300,000 chars (emmy-inbound.routes.ts's
+// schema) for a full research report — comfortably under this so the JSON
+// body parser never rejects a long report before Zod even sees it.
+const EMMY_INBOUND_BODY_LIMIT = "2mb";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function createApp() {
@@ -108,6 +113,20 @@ export function createApp() {
   // /chats or CRUD) fall through to the protectedApi emmyRouter mount.
   app.use("/api/emmy/chats", express.json({ limit: EMMY_ATTACHMENT_BODY_LIMIT }), requireAuth, emmySendRouter);
 
+  // Same reasoning as the emmy/chats mount above (must consume the body
+  // before the default-limit express.json() below) — OpenClaw calling in to
+  // deliver Emmy's reply has no browser session, so it authenticates with
+  // its own Bearer token (EMMY_INBOUND_TOKEN) instead of a session cookie.
+  // Mounted at the exact "/api/emmy/inbound" path (not the "/api/emmy"
+  // prefix) so this token-gated middleware can't shadow the session-
+  // authenticated "/api/emmy/messages" routes mounted below under protectedApi.
+  app.use(
+    "/api/emmy/inbound",
+    express.json({ limit: EMMY_INBOUND_BODY_LIMIT }),
+    requireEmmyInboundToken,
+    emmyInboundRouter,
+  );
+
   app.use(express.json());
   app.use("/api", authRouter);
 
@@ -115,14 +134,6 @@ export function createApp() {
   // automation.middleware.ts. Deliberately its own mount, outside
   // protectedApi/requireAuth below.
   app.use("/api/automation", requireAutomationToken, automationRouter);
-
-  // Same reasoning as /api/automation above: OpenClaw calling in to deliver
-  // Emmy's reply has no browser session, so it authenticates with its own
-  // Bearer token (EMMY_INBOUND_TOKEN) instead. Mounted at the exact
-  // "/api/emmy/inbound" path (not the "/api/emmy" prefix) so this
-  // token-gated middleware can't shadow the session-authenticated
-  // "/api/emmy/messages" routes mounted below under protectedApi.
-  app.use("/api/emmy/inbound", requireEmmyInboundToken, emmyInboundRouter);
 
   const protectedApi = express.Router();
   protectedApi.use(requireAuth);
