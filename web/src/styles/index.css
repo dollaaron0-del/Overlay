@@ -969,10 +969,35 @@ button.active {
   gap: 1.5rem;
 }
 
-.home-widgets {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1rem;
+.home-status-toggle {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  color: var(--c-text-2);
+  font-size: 0.85rem;
+}
+
+.home-status-toggle-icon {
+  font-size: 1rem;
+}
+
+.home-status-panel {
+  width: min(420px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
 .os-widget {
@@ -1215,6 +1240,21 @@ button.active {
 .os-app-icon-wrapper--large .os-app-icon-label {
   max-width: 96px;
   font-size: 0.8rem;
+}
+
+/* Rarely-used apps get a smaller glyph so they visually recede behind the
+   projects and everyday apps a user actually reaches for. */
+.os-app-icon-wrapper--small .os-app-icon-glyph {
+  width: 42px;
+  height: 42px;
+  font-size: 1.5rem;
+  border-radius: 12px;
+}
+
+.os-app-icon-wrapper--small .os-app-icon-label {
+  font-size: 0.68rem;
+  color: var(--c-text-3);
+  opacity: 0.75;
 }
 
 .home-hidden-section {
