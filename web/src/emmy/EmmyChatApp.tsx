@@ -61,6 +61,22 @@ function formatSince(iso: string, now: number): string {
   return `seit ${Math.floor(minutes / 60)} Std.`;
 }
 
+/**
+ * The live activity ping carries the freshest numbers while Emmy is working;
+ * once she goes idle those same numbers live on the chat record instead
+ * (persisted, so "wie gut kennt sie sich aus" survives a restart or a task
+ * being finished).
+ */
+function progressOf(
+  chat: EmmyChat,
+  activity: EmmyActivity | undefined,
+): { sourcesSearched?: number; knowledgeLevel?: number } {
+  return {
+    sourcesSearched: activity?.sourcesSearched ?? chat.sourcesSearched,
+    knowledgeLevel: activity?.knowledgeLevel ?? chat.knowledgeLevel,
+  };
+}
+
 /** For <input type="date">, which wants YYYY-MM-DD in local time. */
 function toDateInput(iso: string): string {
   const d = new Date(iso);
@@ -358,31 +374,35 @@ export function EmmyChatApp() {
               <div className="emmy2-group-head">
                 {CATEGORY_ICON[category]} {CATEGORY_LABEL[category]} <span className="emmy2-group-count">{group.length}</span>
               </div>
-              {group.map((c) => (
-                <button
-                  key={c.id}
-                  className={`emmy2-chat-row${selectedId === c.id ? " active" : ""}`}
-                  onClick={() => openChat(c.id)}
-                >
-                  <span className="emmy2-chat-lines">
-                    <span className="emmy2-chat-title">{c.title}</span>
-                    <span className="emmy2-chat-sub">
-                      {activityByChat[c.id]
-                        ? "arbeitet gerade daran…"
-                        : category === "research" && c.dueAt
-                          ? `bis ${formatDue(c.dueAt)}`
-                          : category === "recurring" && c.intervalHours
-                            ? formatInterval(c.intervalHours)
-                            : STATUS_LABEL[c.status]}
+              {group.map((c) => {
+                const progress = progressOf(c, activityByChat[c.id]);
+                return (
+                  <button
+                    key={c.id}
+                    className={`emmy2-chat-row${selectedId === c.id ? " active" : ""}`}
+                    onClick={() => openChat(c.id)}
+                  >
+                    <span className="emmy2-chat-lines">
+                      <span className="emmy2-chat-title">{c.title}</span>
+                      <span className="emmy2-chat-sub">
+                        {activityByChat[c.id]
+                          ? "arbeitet gerade daran…"
+                          : category === "research" && c.dueAt
+                            ? `bis ${formatDue(c.dueAt)}`
+                            : category === "recurring" && c.intervalHours
+                              ? formatInterval(c.intervalHours)
+                              : STATUS_LABEL[c.status]}
+                      </span>
+                      <ProgressMeta sourcesSearched={progress.sourcesSearched} knowledgeLevel={progress.knowledgeLevel} />
                     </span>
-                  </span>
-                  {activityByChat[c.id] ? (
-                    <span className="emmy2-working-dot" title="Emmy arbeitet gerade" />
-                  ) : (
-                    <span className={`emmy2-status-dot emmy2-status-${c.status}`} />
-                  )}
-                </button>
-              ))}
+                    {activityByChat[c.id] ? (
+                      <span className="emmy2-working-dot" title="Emmy arbeitet gerade" />
+                    ) : (
+                      <span className={`emmy2-status-dot emmy2-status-${c.status}`} />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           );
         })}
@@ -478,6 +498,14 @@ export function EmmyChatApp() {
                 </label>
               </div>
             )}
+            {selectedChat.kind === "task" &&
+              (selectedChat.sourcesSearched !== undefined || selectedChat.knowledgeLevel !== undefined) &&
+              !activeActivity && (
+                <div className="emmy2-conv-meta">
+                  <span>Rechercheeinblick:</span>
+                  <ProgressMeta sourcesSearched={selectedChat.sourcesSearched} knowledgeLevel={selectedChat.knowledgeLevel} />
+                </div>
+              )}
             {selectedChat.kind === "task" && categoryOf(selectedChat) === "recurring" && (
               <div className="emmy2-conv-meta">
                 <label>
@@ -590,6 +618,34 @@ function ChatTitle({ chat, onRename }: { chat: EmmyChat; onRename: (id: string, 
   );
 }
 
+/** How many sources she's been through, and how well she now knows the topic — both self-reported. */
+function ProgressMeta({
+  sourcesSearched,
+  knowledgeLevel,
+}: {
+  sourcesSearched?: number;
+  knowledgeLevel?: number;
+}) {
+  if (sourcesSearched === undefined && knowledgeLevel === undefined) return null;
+  return (
+    <span className="emmy2-progress-meta">
+      {sourcesSearched !== undefined && (
+        <span className="emmy2-source-badge" title="Bisher durchsuchte Quellen">
+          🔎 {sourcesSearched}
+        </span>
+      )}
+      {knowledgeLevel !== undefined && (
+        <span className="emmy2-knowledge" title={`Wissensstand: ${knowledgeLevel}%`}>
+          <span className="emmy2-knowledge-bar">
+            <span className="emmy2-knowledge-fill" style={{ width: `${knowledgeLevel}%` }} />
+          </span>
+          <span className="emmy2-knowledge-pct">{knowledgeLevel}%</span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** Sits where Emmy's next bubble will be: what she's doing, and for how long. */
 function ActivityBubble({ activity, now }: { activity: EmmyActivity; now: number }) {
   return (
@@ -600,6 +656,7 @@ function ActivityBubble({ activity, now }: { activity: EmmyActivity; now: number
         <i />
       </span>
       <p>{activity.note}</p>
+      <ProgressMeta sourcesSearched={activity.sourcesSearched} knowledgeLevel={activity.knowledgeLevel} />
       <span className="emmy2-bubble-time">{formatSince(activity.since, now)}</span>
     </div>
   );

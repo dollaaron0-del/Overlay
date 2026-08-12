@@ -72,8 +72,14 @@ export function getActivity(chatId: string): EmmyActivity | undefined {
  * Marks a chat as being worked on. Re-marking an already-busy chat keeps the
  * original `since` (the UI shows one continuous "seit …") and only refreshes
  * the note — that is how Emmy's own progress pings read as one running task.
+ * sourcesSearched/knowledgeLevel behave the same way: a ping that omits them
+ * keeps whatever was last reported instead of blanking the indicator.
  */
-export function markWorking(chatId: string, note?: string): EmmyActivity {
+export function markWorking(
+  chatId: string,
+  note?: string,
+  progress?: { sourcesSearched?: number; knowledgeLevel?: number },
+): EmmyActivity {
   const now = new Date().toISOString();
   const existing = activities.get(chatId);
   const activity: EmmyActivity = {
@@ -81,6 +87,8 @@ export function markWorking(chatId: string, note?: string): EmmyActivity {
     note: note?.trim() || existing?.note || DEFAULT_NOTE,
     since: existing?.since ?? now,
     updatedAt: now,
+    sourcesSearched: progress?.sourcesSearched ?? existing?.sourcesSearched,
+    knowledgeLevel: progress?.knowledgeLevel ?? existing?.knowledgeLevel,
   };
   activities.set(chatId, activity);
   startSweeper();

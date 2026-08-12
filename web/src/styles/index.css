@@ -2798,6 +2798,51 @@ button.active {
   }
 }
 
+/* Self-reported research progress: source count + how well Emmy now knows the topic. */
+.emmy2-progress-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--c-text-3);
+}
+
+.emmy2-source-badge {
+  white-space: nowrap;
+}
+
+.emmy2-knowledge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.emmy2-knowledge-bar {
+  display: inline-block;
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--c-border);
+  overflow: hidden;
+}
+
+.emmy2-knowledge-fill {
+  display: block;
+  height: 100%;
+  background: var(--c-accent);
+  border-radius: inherit;
+  transition: width 0.4s ease;
+}
+
+.emmy2-knowledge-pct {
+  white-space: nowrap;
+}
+
+.emmy2-bubble-working .emmy2-progress-meta {
+  flex-basis: 100%;
+  margin-top: -0.1rem;
+}
+
 /* Zeitfenster / Intervall of the selected task, under its title. */
 .emmy2-conv-meta {
   display: flex;

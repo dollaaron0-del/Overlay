@@ -30,10 +30,20 @@ const inboundSchema = z
     category: z.enum(["instant", "research", "recurring"]).optional(),
     dueAt: z.string().datetime().optional(),
     intervalHours: z.number().positive().max(24 * 365).optional(),
+    /** Running count of sources looked at so far this task. */
+    sourcesSearched: z.number().int().nonnegative().max(10_000).optional(),
+    /** Her own 0-100 estimate of how well she now knows the topic. */
+    knowledgeLevel: z.number().min(0).max(100).optional(),
   })
-  .refine((body) => body.text !== undefined || body.activity !== undefined || body.category !== undefined, {
-    message: "expected one of: text, activity, category",
-  });
+  .refine(
+    (body) =>
+      body.text !== undefined ||
+      body.activity !== undefined ||
+      body.category !== undefined ||
+      body.sourcesSearched !== undefined ||
+      body.knowledgeLevel !== undefined,
+    { message: "expected one of: text, activity, category, sourcesSearched, knowledgeLevel" },
+  );
 
 emmyInboundRouter.post("/", async (req, res) => {
   const parsed = inboundSchema.safeParse(req.body);
@@ -41,7 +51,7 @@ emmyInboundRouter.post("/", async (req, res) => {
     res.status(400).json({ error: "invalid_request", details: parsed.error.issues });
     return;
   }
-  const { chatId, text, activity, category, dueAt, intervalHours } = parsed.data;
+  const { chatId, text, activity, category, dueAt, intervalHours, sourcesSearched, knowledgeLevel } = parsed.data;
 
   const chat = await getChat(chatId);
   if (!chat) {
@@ -54,8 +64,15 @@ emmyInboundRouter.post("/", async (req, res) => {
     await updateChat(chatId, { category, categorySource: "auto", dueAt, intervalHours });
   }
 
+  // Persisted on the chat itself (not just the ephemeral activity) so the
+  // sidebar keeps showing "12 Quellen · 60% Wissensstand" after she goes idle
+  // or the server restarts, not just while a turn is in flight.
+  if (sourcesSearched !== undefined || knowledgeLevel !== undefined) {
+    await updateChat(chatId, { sourcesSearched, knowledgeLevel });
+  }
+
   if (!text) {
-    markWorking(chatId, activity);
+    markWorking(chatId, activity, { sourcesSearched, knowledgeLevel });
     publishEmmyChats(await listChats());
     res.status(202).json({ ok: true, working: true });
     return;
