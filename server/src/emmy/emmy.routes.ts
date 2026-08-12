@@ -219,9 +219,10 @@ const sendSchema = z.object({
  * inbound token is included here because the agent process runs as `aaron`,
  * which cannot read Overlay's root-owned .env itself.
  */
-// Message text can run up to 20,000 chars (emmy-inbound.routes.ts's schema) —
-// without truncation, ten recent messages plus six memory hits could add well
-// over 100K chars to every single turn.
+// Emmy's replies can run up to 300,000 chars for a full report
+// (emmy-inbound.routes.ts's schema) — without truncation, replaying ten
+// recent messages plus six memory hits verbatim into every new turn's prompt
+// could balloon far past what's reasonable to resend on each message.
 const PROMPT_LINE_MAX_CHARS = 500;
 
 function buildPrompt(
@@ -232,6 +233,7 @@ function buildPrompt(
   attachmentPaths: { abs: string; name: string }[],
   recentMessages: EmmyMessage[],
   memoryHits: MemoryHit[],
+  category: EmmyCategory | undefined,
 ): string {
   const lines: string[] = [];
   const context = chatKind === "task" ? `zur Aufgabe „${chatTitle}"` : "im allgemeinen Chat";
@@ -288,6 +290,24 @@ function buildPrompt(
   lines.push(
     `Beide Felder sind kumulativ über den gesamten Task — schick bei jeder Meldung den aktuellen Gesamtstand, nicht nur das Delta. Lass sie weg, wenn eine Meldung keine Recherche betrifft.`,
   );
+  lines.push("");
+  lines.push("--- Länge & Formatierung deiner Antwort ---");
+  lines.push(
+    `Kürz nicht künstlich ein. Wenn Aaron nach einem ausführlichen/vollständigen Bericht fragt oder das Thema es hergibt, schreib ein vollständiges, seitenlanges Dokument mit allen Erkenntnissen statt einer kurzen Zusammenfassung — lieber zu ausführlich als zu knapp. Eine kurze Nachfrage verdient trotzdem eine kurze Antwort; die Länge soll zur Frage passen, nicht immer maximal sein.`,
+  );
+  lines.push(
+    `Formatier lange Antworten mit Markdown (# Überschriften, **fett**, Listen, Tabellen, Codeblöcke) — Overlay stellt das im Chat entsprechend dar, und ab einer gewissen Länge bekommt Aaron zusätzlich einen "Als Dokument öffnen"-Button. Schick den ganzen Bericht als ein "text"-Feld in einem POST, nicht aufgeteilt in mehrere Nachrichten.`,
+  );
+  if (category === "research") {
+    lines.push("");
+    lines.push("--- Das hier ist eine Recherche-Aufgabe ---");
+    lines.push(
+      `Nimm dir dafür so viel Zeit wie nötig — mehrere Stunden oder über Nacht sind ausdrücklich erwünscht, nicht nur erlaubt. Arbeite dich wirklich tief ein: mehrere unabhängige Quellen statt nur der ersten Treffer, gegenläufige Positionen einholen, Zahlen/Fakten querchecken. Hör nicht auf, sobald du "genug" zu haben glaubst — schick stattdessen weitere Zwischenstand-Meldungen (activity/sourcesSearched/knowledgeLevel) und recherchiere weiter, bis dein knowledgeLevel wirklich hoch ist.`,
+    );
+    lines.push(
+      `Ziel ist eine belastbare Wissensgrundlage für diesen Chat, nicht nur eine schnelle Antwort auf die aktuelle Nachricht — spätere Nachrichten in diesem Chat bauen darauf auf, also lohnt sich die gründliche Einarbeitung jetzt.`,
+    );
+  }
   if (chatKind === "task") {
     lines.push("");
     lines.push("--- Einordnung (optional) ---");
@@ -338,8 +358,11 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
   // The title alone is often too terse to classify well ("Server"), so the
   // first message re-decides — but never against a category Aaron pinned.
   const isFirstMessage = priorMessages.length === 0;
+  let category = chat.category;
   if (chat.kind === "task" && isFirstMessage && chat.categorySource !== "manual" && text) {
-    await updateChat(chat.id, { ...classifyTask(`${chat.title}\n${text}`), categorySource: "auto" });
+    const classification = classifyTask(`${chat.title}\n${text}`);
+    await updateChat(chat.id, { ...classification, categorySource: "auto" });
+    category = classification.category;
   }
 
   const recentMessages = priorMessages.slice(-config.EMMY_MEMORY_RECENT_MESSAGES);
@@ -360,7 +383,7 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
     abs: path.resolve(attachmentsDir(chat.id), a.filename),
     name: a.originalName,
   }));
-  const prompt = buildPrompt(chat.title, chat.kind, chat.id, text, attachmentPaths, recentMessages, memoryHits);
+  const prompt = buildPrompt(chat.title, chat.kind, chat.id, text, attachmentPaths, recentMessages, memoryHits, category);
   const name = chat.kind === "task" ? `Overlay-Aufgabe: ${chat.title}` : "Overlay-Chat";
 
   try {
@@ -374,7 +397,7 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
 
   // The turn was accepted; from here the chat shows "arbeitet daran" until her
   // reply lands on /api/emmy/inbound (or the note goes stale).
-  markWorking(chat.id);
+  markWorking(chat.id, undefined, undefined, category);
   res.status(201).json(message);
 });
 

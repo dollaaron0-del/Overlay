@@ -12,6 +12,26 @@ import type {
 import { api, ApiError } from "../api/client";
 import { ReconnectingSocket, wsUrl } from "../api/ws";
 import { formatTimestamp } from "../format";
+import { renderMiniMarkdown } from "./miniMarkdown";
+
+/** Above this length a reply gets "open as document"/"download" actions instead of only living in the bubble. */
+const LONG_REPORT_CHARS = 1200;
+
+function downloadFilenameFor(chatTitle: string, at: string): string {
+  const safeTitle = chatTitle.trim().replace(/[^\p{L}\p{N} _-]/gu, "").replace(/\s+/g, "-").slice(0, 60) || "bericht";
+  return `emmy-${safeTitle}-${at.slice(0, 10)}.md`;
+}
+
+/** Client-side only: saves the raw markdown text as a .md file. No backend round-trip needed. */
+function downloadAsMarkdown(text: string, filename: string): void {
+  const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const STATUS_LABEL: Record<EmmyTaskStatus, string> = {
   open: "Offen",
@@ -124,6 +144,7 @@ export function EmmyChatApp() {
   const [archive, setArchive] = useState<EmmyArchiveSummary[]>([]);
   const [openArchiveEntry, setOpenArchiveEntry] = useState<EmmyArchiveEntry | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [openDocument, setOpenDocument] = useState<{ message: EmmyMessage; chatTitle: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -420,6 +441,9 @@ export function EmmyChatApp() {
             onBack={() => (openArchiveEntry ? setOpenArchiveEntry(null) : setArchiveOpen(false))}
             onOpen={(entry) => void showArchiveEntry(entry)}
             onPurge={(entry) => void purgeArchiveEntry(entry)}
+            onOpenDocument={(message) =>
+              openArchiveEntry && setOpenDocument({ message, chatTitle: openArchiveEntry.chat.title })
+            }
             error={error}
           />
         ) : !selectedChat ? (
@@ -531,7 +555,11 @@ export function EmmyChatApp() {
             <div className="emmy2-messages">
               {messages.length === 0 && !activeActivity && <p className="empty-hint">Noch keine Nachrichten.</p>}
               {messages.map((m) => (
-                <MessageBubble key={m.id} message={m} />
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  onOpenDocument={() => setOpenDocument({ message: m, chatTitle: selectedChat.title })}
+                />
               ))}
               {activeActivity && <ActivityBubble activity={activeActivity} now={now} />}
               <div ref={messagesEndRef} />
@@ -580,6 +608,13 @@ export function EmmyChatApp() {
           </>
         )}
       </section>
+      {openDocument && (
+        <EmmyDocumentViewer
+          message={openDocument.message}
+          chatTitle={openDocument.chatTitle}
+          onClose={() => setOpenDocument(null)}
+        />
+      )}
     </div>
   );
 }
@@ -668,6 +703,7 @@ function ArchiveView({
   onBack,
   onOpen,
   onPurge,
+  onOpenDocument,
   error,
 }: {
   entries: EmmyArchiveSummary[];
@@ -675,6 +711,7 @@ function ArchiveView({
   onBack: () => void;
   onOpen: (entry: EmmyArchiveSummary) => void;
   onPurge: (entry: EmmyArchiveSummary) => void;
+  onOpenDocument: (message: EmmyMessage) => void;
   error: string | null;
 }) {
   return (
@@ -693,7 +730,7 @@ function ArchiveView({
             Archiviert am {formatTimestamp(openEntry.archivedAt)} — nur zum Nachlesen.
           </p>
           {openEntry.messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
+            <MessageBubble key={m.id} message={m} onOpenDocument={() => onOpenDocument(m)} />
           ))}
         </div>
       ) : (
@@ -721,10 +758,22 @@ function ArchiveView({
   );
 }
 
-function MessageBubble({ message }: { message: EmmyMessage }) {
+function MessageBubble({ message, onOpenDocument }: { message: EmmyMessage; onOpenDocument: () => void }) {
+  const isLongReport = message.role === "emmy" && message.text.length > LONG_REPORT_CHARS;
   return (
-    <div className={`emmy2-bubble emmy2-bubble-${message.role}`}>
-      {message.text && <p>{message.text}</p>}
+    <div className={`emmy2-bubble emmy2-bubble-${message.role}${isLongReport ? " emmy2-bubble-report" : ""}`}>
+      {isLongReport && (
+        <div className="emmy2-report-actions">
+          <span className="emmy2-report-badge">📄 Ausführlicher Bericht</span>
+          <button onClick={onOpenDocument}>Als Dokument öffnen</button>
+        </div>
+      )}
+      {message.text &&
+        (message.role === "emmy" ? (
+          <div className={isLongReport ? "emmy2-report-preview" : "emmy2-markdown"}>{renderMiniMarkdown(message.text)}</div>
+        ) : (
+          <p>{message.text}</p>
+        ))}
       {message.attachments?.map((a) => {
         const url = `/api/emmy/chats/${message.chatId}/attachments/${a.filename}`;
         return a.kind === "image" ? (
@@ -738,6 +787,36 @@ function MessageBubble({ message }: { message: EmmyMessage }) {
         );
       })}
       <span className="emmy2-bubble-time">{formatTimestamp(message.at)}</span>
+    </div>
+  );
+}
+
+/** Full-page reader for a long report: the bubble only ever shows a capped preview of it. */
+function EmmyDocumentViewer({
+  message,
+  chatTitle,
+  onClose,
+}: {
+  message: EmmyMessage;
+  chatTitle: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="home-modal-backdrop" onClick={onClose}>
+      <div className="emmy2-doc-panel" onClick={(e) => e.stopPropagation()}>
+        <header className="emmy2-doc-head">
+          <h3>{chatTitle}</h3>
+          <div className="emmy2-doc-actions">
+            <button onClick={() => downloadAsMarkdown(message.text, downloadFilenameFor(chatTitle, message.at))}>
+              ⬇️ Herunterladen (.md)
+            </button>
+            <button onClick={onClose} title="Schließen">
+              ✕
+            </button>
+          </div>
+        </header>
+        <div className="emmy2-doc-body emmy2-markdown">{renderMiniMarkdown(message.text)}</div>
+      </div>
     </div>
   );
 }

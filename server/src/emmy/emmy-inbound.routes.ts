@@ -23,7 +23,11 @@ export const emmyInboundRouter = Router();
 const inboundSchema = z
   .object({
     chatId: z.string().min(1),
-    text: z.string().min(1).max(20_000).optional(),
+    // Generous enough for a full, multi-section research report (tens of
+    // thousands of words) instead of forcing Emmy to compress a thorough
+    // answer down to fit — see EMMY_INBOUND_BODY_LIMIT in server.ts, which
+    // must stay large enough for a JSON body built around a string this long.
+    text: z.string().min(1).max(300_000).optional(),
     /** One line on what she's doing right now. */
     activity: z.string().max(300).optional(),
     /** Her own correction of Overlay's automatic categorization; ignored once Aaron picked one. */
@@ -60,8 +64,10 @@ emmyInboundRouter.post("/", async (req, res) => {
   }
 
   // A manual category is Aaron's call and outranks hers.
+  let effectiveCategory = chat.category;
   if (category && chat.kind === "task" && chat.categorySource !== "manual") {
     await updateChat(chatId, { category, categorySource: "auto", dueAt, intervalHours });
+    effectiveCategory = category;
   }
 
   // Persisted on the chat itself (not just the ephemeral activity) so the
@@ -72,7 +78,7 @@ emmyInboundRouter.post("/", async (req, res) => {
   }
 
   if (!text) {
-    markWorking(chatId, activity, { sourcesSearched, knowledgeLevel });
+    markWorking(chatId, activity, { sourcesSearched, knowledgeLevel }, effectiveCategory);
     publishEmmyChats(await listChats());
     res.status(202).json({ ok: true, working: true });
     return;

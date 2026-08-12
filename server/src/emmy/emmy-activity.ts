@@ -1,4 +1,4 @@
-import type { EmmyActivity } from "@overlay/shared";
+import type { EmmyActivity, EmmyCategory } from "@overlay/shared";
 import { publishEmmyActivity } from "./emmy-bus.js";
 
 /**
@@ -15,21 +15,38 @@ import { publishEmmyActivity } from "./emmy-bus.js";
  * Two things clear a busy chat: her reply arriving, or the note going stale.
  * The stale timeout exists because a turn that dies in OpenClaw never calls
  * back — without it a chat would spin forever.
+ *
+ * The grace period before "stale" differs by category: "research" turns are
+ * expected to run for hours (deep, many-source research, sometimes
+ * overnight) with pings spaced far apart, so a short timeout would wrongly
+ * show a still-running research task as dead. instant/recurring turns are
+ * expected to finish quickly, so they keep the tight timeout that actually
+ * catches a dead turn promptly.
  */
-const STALE_MS = 15 * 60 * 1000;
+const DEFAULT_STALE_MS = 15 * 60 * 1000;
+const RESEARCH_STALE_MS = 12 * 60 * 60 * 1000;
 const SWEEP_MS = 30 * 1000;
+
+function staleMsFor(category?: EmmyCategory): number {
+  return category === "research" ? RESEARCH_STALE_MS : DEFAULT_STALE_MS;
+}
 
 /** Shown while a turn has been accepted but Emmy hasn't reported anything herself yet. */
 export const DEFAULT_NOTE = "Emmy hat die Nachricht bekommen und arbeitet daran…";
 
 const activities = new Map<string, EmmyActivity>();
+// Per-chat stale grace period, set alongside the activity itself so a
+// category correction mid-task (via /api/emmy/inbound) updates it too.
+const staleLimits = new Map<string, number>();
 let sweeper: NodeJS.Timeout | null = null;
 
 function dropStale(now: number): boolean {
   let changed = false;
   for (const [chatId, activity] of activities) {
-    if (now - new Date(activity.updatedAt).getTime() > STALE_MS) {
+    const limit = staleLimits.get(chatId) ?? DEFAULT_STALE_MS;
+    if (now - new Date(activity.updatedAt).getTime() > limit) {
       activities.delete(chatId);
+      staleLimits.delete(chatId);
       changed = true;
     }
   }
@@ -79,6 +96,7 @@ export function markWorking(
   chatId: string,
   note?: string,
   progress?: { sourcesSearched?: number; knowledgeLevel?: number },
+  category?: EmmyCategory,
 ): EmmyActivity {
   const now = new Date().toISOString();
   const existing = activities.get(chatId);
@@ -91,6 +109,7 @@ export function markWorking(
     knowledgeLevel: progress?.knowledgeLevel ?? existing?.knowledgeLevel,
   };
   activities.set(chatId, activity);
+  staleLimits.set(chatId, staleMsFor(category));
   startSweeper();
   publish();
   return activity;
@@ -99,6 +118,7 @@ export function markWorking(
 /** Clears a chat's activity. No-op (and no broadcast) if it wasn't busy. */
 export function markIdle(chatId: string): void {
   if (!activities.delete(chatId)) return;
+  staleLimits.delete(chatId);
   stopSweeperIfIdle();
   publish();
 }
@@ -106,5 +126,6 @@ export function markIdle(chatId: string): void {
 /** Test seam: forget everything without broadcasting. */
 export function resetActivityForTests(): void {
   activities.clear();
+  staleLimits.clear();
   stopSweeperIfIdle();
 }
