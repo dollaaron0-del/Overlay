@@ -84,11 +84,22 @@ emmyInboundRouter.post("/", async (req, res) => {
     return;
   }
 
-  const message = await appendMessage(chatId, "emmy", text);
+  const message = await appendMessage(chatId, "emmy", text, undefined, chat.pendingFinalDocument === true);
   publishEmmyMessage(message);
   void indexMessageForMemory(message, chat.title).catch(() => {});
   // The answer is here, so she is no longer working on this chat.
   markIdle(chatId);
+
+  // Her first full answer in a research chat is the summary that moves the
+  // conversation from the deep-research phase into Q&A/feedback — and any
+  // pending final-document request has now been fulfilled by this reply.
+  await updateChat(chatId, {
+    pendingFinalDocument: false,
+    ...(effectiveCategory === "research" && chat.researchPhase !== "discussion"
+      ? { researchPhase: "discussion" as const }
+      : {}),
+  });
+
   publishEmmyChats(await listChats());
   res.status(201).json({ ok: true });
 });

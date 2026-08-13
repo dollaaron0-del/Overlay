@@ -2607,6 +2607,21 @@ button.active {
   padding: 0.35rem 0.5rem;
 }
 
+.emmy2-final-doc {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  color: var(--c-text);
+  padding: 0.35rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.emmy2-final-doc:disabled {
+  opacity: 0.5;
+}
+
 .emmy2-back {
   display: none;
   padding: 0.2rem 0.6rem;

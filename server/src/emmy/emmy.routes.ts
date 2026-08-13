@@ -20,7 +20,7 @@ import {
 import { publishEmmyMessage, publishEmmyChats } from "./emmy-bus.js";
 import { listActivities, markWorking, markIdle } from "./emmy-activity.js";
 import { classifyTask, DEFAULT_INTERVAL_HOURS, DEFAULT_RESEARCH_WINDOW_HOURS } from "./emmy-categorize.js";
-import type { EmmyCategory, EmmyChat, EmmyMessage } from "@overlay/shared";
+import type { EmmyCategory, EmmyChat, EmmyMessage, EmmyResearchPhase } from "@overlay/shared";
 import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
 import { saveEmmyAttachments, attachmentsDir } from "./emmy-attachments.js";
 import { resolveSafePath, UnsafePathError } from "../files/safe-path.js";
@@ -201,6 +201,8 @@ emmyRouter.delete("/archive/:id", async (req, res) => {
 
 const sendSchema = z.object({
   text: z.string().max(8_000).optional(),
+  /** Set by the "Abschlussdokument erstellen" button — asks for a final, comprehensive write-up instead of a normal reply. */
+  requestFinalDocument: z.boolean().optional(),
   attachments: z
     .array(
       z.object({
@@ -234,6 +236,8 @@ function buildPrompt(
   recentMessages: EmmyMessage[],
   memoryHits: MemoryHit[],
   category: EmmyCategory | undefined,
+  researchPhase: EmmyResearchPhase | undefined,
+  requestFinalDocument: boolean,
 ): string {
   const lines: string[] = [];
   const context = chatKind === "task" ? `zur Aufgabe „${chatTitle}"` : "im allgemeinen Chat";
@@ -298,7 +302,16 @@ function buildPrompt(
   lines.push(
     `Formatier lange Antworten mit Markdown (# Überschriften, **fett**, Listen, Tabellen, Codeblöcke) — Overlay stellt das im Chat entsprechend dar, und ab einer gewissen Länge bekommt Aaron zusätzlich einen "Als Dokument öffnen"-Button. Schick den ganzen Bericht als ein "text"-Feld in einem POST, nicht aufgeteilt in mehrere Nachrichten.`,
   );
-  if (category === "research") {
+  if (requestFinalDocument) {
+    lines.push("");
+    lines.push("--- Abschlussdokument gewünscht ---");
+    lines.push(
+      `Aaron möchte jetzt das Abschlussdokument zu dieser Aufgabe. Erstell ein ausführliches, vollständig ausformuliertes Markdown-Dokument mit allen Informationen aus deiner Recherche und der bisherigen Unterhaltung, die für die Aufgabenstellung relevant sind.`,
+    );
+    lines.push(
+      `Leg dabei besonderen Fokus auf die Punkte, die im Gesprächsverlauf mit Aaron als wichtig hervorgingen — nicht nur auf deine ursprüngliche Recherche. Das ist der Abschluss dieser Aufgabe, also lieber zu vollständig als zu knapp.`,
+    );
+  } else if (category === "research" && researchPhase !== "discussion") {
     lines.push("");
     lines.push("--- Das hier ist eine Recherche-Aufgabe ---");
     lines.push(
@@ -306,6 +319,21 @@ function buildPrompt(
     );
     lines.push(
       `Ziel ist eine belastbare Wissensgrundlage für diesen Chat, nicht nur eine schnelle Antwort auf die aktuelle Nachricht — spätere Nachrichten in diesem Chat bauen darauf auf, also lohnt sich die gründliche Einarbeitung jetzt.`,
+    );
+    lines.push(
+      `Sobald du denkst, dass du alle wesentlichen Informationen zusammengetragen hast, präsentier sie mir als ausführliche Zusammenfassung inklusive deiner eigenen Einschätzung/Meinung — das ist deine erste Antwort in diesem Chat. Danach steigen wir ins Gespräch darüber ein, und du beantwortest Rückfragen auf Grundlage dessen, was du jetzt recherchierst.`,
+    );
+  } else if (category === "research" && researchPhase === "discussion") {
+    lines.push("");
+    lines.push("--- Du bist in der Feedback-/Nachfragephase ---");
+    lines.push(
+      `Du hast in diesem Chat bereits ausführlich recherchiert (siehe Verlauf). Beantworte Aarons Fragen und Feedback auf Grundlage der bereits gesammelten Informationen, ohne bei jeder Nachfrage von vorn zu recherchieren.`,
+    );
+    lines.push(
+      `Nur wenn eine Frage in eine Richtung geht, zu der deine bisherige Recherche dünn oder gar nicht vorhanden ist, mach vorher noch eine kurze, gezielte Nachrecherche (Minuten, keine Stunden) und beantworte dann die Frage.`,
+    );
+    lines.push(
+      `Wenn dir das Gespräch so vorkommt, als wäre eigentlich alles Wichtige besprochen, schlag Aaron proaktiv vor, das Abschlussdokument erstellen zu lassen (dafür gibt es auch einen Button bei ihm im Chat) — aber dräng nicht, wenn er weiter nachfragen will.`,
     );
   }
   if (chatKind === "task") {
@@ -383,8 +411,27 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
     abs: path.resolve(attachmentsDir(chat.id), a.filename),
     name: a.originalName,
   }));
-  const prompt = buildPrompt(chat.title, chat.kind, chat.id, text, attachmentPaths, recentMessages, memoryHits, category);
+  const requestFinalDocument = parsed.data.requestFinalDocument === true;
+  const prompt = buildPrompt(
+    chat.title,
+    chat.kind,
+    chat.id,
+    text,
+    attachmentPaths,
+    recentMessages,
+    memoryHits,
+    category,
+    chat.researchPhase,
+    requestFinalDocument,
+  );
   const name = chat.kind === "task" ? `Overlay-Aufgabe: ${chat.title}` : "Overlay-Chat";
+
+  // Remembered so the inbound reply that eventually lands can be tagged as
+  // the final document — the outbound prompt alone doesn't survive the round
+  // trip through the external agent turn.
+  if (requestFinalDocument) {
+    await updateChat(chat.id, { pendingFinalDocument: true });
+  }
 
   try {
     await sendEmmyHookTurn(sessionKeyFor(chat.id), name, prompt);
