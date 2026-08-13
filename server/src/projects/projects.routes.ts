@@ -16,6 +16,7 @@ import { appendAuditEntry } from "../audit/audit-log.js";
 import { runDeployScript } from "./deploy-runner.js";
 import { startDeployRun, recordDeployLine, endDeployRun } from "./deploy-log-bus.js";
 import { config } from "../config.js";
+import { getOrCreateSession } from "../pty/pty.manager.js";
 
 export const projectsRouter = Router();
 
@@ -110,6 +111,30 @@ projectsRouter.patch("/:id", async (req, res) => {
     return;
   }
   res.json(updated);
+});
+
+const terminalInputSchema = z.object({
+  text: z.string().min(1),
+});
+
+// Writes text straight into the project's persistent Claude terminal
+// session (spawning one if it isn't running yet) and submits it, so content
+// picked elsewhere in Overlay (e.g. an Emmy message) can be handed to that
+// project's terminal without the browser needing its own pty connection.
+projectsRouter.post("/:id/terminal-input", async (req, res) => {
+  const parsed = terminalInputSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_request", details: parsed.error.issues });
+    return;
+  }
+  const project = await getProject(req.params.id);
+  if (!project) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const session = getOrCreateSession(project);
+  session.write(`${parsed.data.text}\r`);
+  res.json({ ok: true });
 });
 
 projectsRouter.post("/:id/deploy", async (req, res) => {

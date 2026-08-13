@@ -122,7 +122,7 @@ export function OsShell() {
   } else {
     const app = getStaticApp(open.appId);
     title = app?.title ?? "Overlay";
-    content = app?.render() ?? null;
+    content = app?.render({ openProject }) ?? null;
   }
 
   return (
