@@ -2651,18 +2651,39 @@ button.active {
   word-break: break-word;
 }
 
-.emmy2-bubble-time {
-  display: block;
+.emmy2-bubble-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   margin-top: 0.3rem;
-  font-size: 0.7rem;
-  opacity: 0.65;
   /* Selecting a message to copy it (e.g. to paste into a terminal) triple-
      clicks or drags across the whole bubble, which otherwise scoops up this
-     timestamp too — pasting ends up with the real text and a trailing time
-     mashed together. It's not part of the message, so keep it out of
-     selection/copy entirely. */
+     footer too — pasting ends up with the real text and a trailing
+     time/button mashed together. Neither is part of the message, so keep
+     this whole row out of selection/copy entirely. */
   user-select: none;
   -webkit-user-select: none;
+}
+
+.emmy2-bubble-time {
+  font-size: 0.7rem;
+  opacity: 0.65;
+}
+
+.emmy2-bubble-to-project {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  opacity: 0.75;
+}
+
+.emmy2-bubble-to-project:hover {
+  opacity: 1;
 }
 
 .emmy2-bubble-me {
@@ -2838,6 +2859,55 @@ button.active {
 .emmy2-doc-body {
   padding: 1rem 1.2rem;
   overflow-y: auto;
+}
+
+/* --- Project picker: pushes one Emmy message into a project's terminal --- */
+
+.emmy2-project-picker {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  width: min(420px, 92vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.emmy2-project-picker-list {
+  padding: 0.5rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.emmy2-project-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+}
+
+.emmy2-project-picker-item:hover {
+  background: var(--c-surface-2);
+}
+
+.emmy2-project-picker-icon {
+  font-size: 1.2rem;
+}
+
+.emmy2-project-picker-name {
+  flex: 1;
+}
+
+.emmy2-project-picker-sending {
+  font-size: 0.75rem;
+  opacity: 0.7;
 }
 
 .emmy2-att-image img {

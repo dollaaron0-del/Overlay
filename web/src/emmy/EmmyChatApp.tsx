@@ -13,6 +13,7 @@ import { api, ApiError } from "../api/client";
 import { ReconnectingSocket, wsUrl } from "../api/ws";
 import { formatTimestamp } from "../format";
 import { renderMiniMarkdown } from "./miniMarkdown";
+import { defaultProjectIcon } from "../os/project-icon";
 
 /** Above this length a reply gets "open as document"/"download" actions instead of only living in the bubble. */
 const LONG_REPORT_CHARS = 1200;
@@ -129,7 +130,7 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export function EmmyChatApp() {
+export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: string) => void }) {
   const [chats, setChats] = useState<EmmyChat[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messagesByChat, setMessagesByChat] = useState<Record<string, EmmyMessage[]>>({});
@@ -145,6 +146,7 @@ export function EmmyChatApp() {
   const [openArchiveEntry, setOpenArchiveEntry] = useState<EmmyArchiveEntry | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [openDocument, setOpenDocument] = useState<{ message: EmmyMessage; chatTitle: string } | null>(null);
+  const [sendToProject, setSendToProject] = useState<EmmyMessage | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedIdRef = useRef<string | null>(null);
@@ -169,12 +171,24 @@ export function EmmyChatApp() {
         });
       }
     });
-    // A message that lands while the socket is reconnecting (sleep, network
+    // Anything that lands while the socket is reconnecting (sleep, network
     // change, iOS backgrounding a research run that takes hours) is gone for
-    // good otherwise — messages only ever arrive live, never replayed. So on
-    // every reconnect, drop the "already loaded" mark for whatever chat is
-    // open and let the lazy-load effect below re-fetch it from REST.
+    // good otherwise — updates only ever arrive live, never replayed. That
+    // includes "she went idle" / "sources found so far" broadcasts, so a
+    // research run that finishes (or dies) during a reconnect gap would
+    // otherwise leave the sidebar stuck showing it as still running with a
+    // stale source count forever. So on every reconnect, re-fetch chats and
+    // activity from REST (the server's current truth) and drop the "already
+    // loaded" mark for whatever chat is open so its messages get refetched too.
     const unsubOpen = socket.onOpen(() => {
+      api
+        .get<EmmyChat[]>("/api/emmy/chats")
+        .then(setChats)
+        .catch(() => {});
+      api
+        .get<EmmyActivity[]>("/api/emmy/activity")
+        .then(setActivities)
+        .catch(() => {});
       setLoadedChats((prev) => {
         if (!selectedIdRef.current || !prev.has(selectedIdRef.current)) return prev;
         const next = new Set(prev);
@@ -464,6 +478,7 @@ export function EmmyChatApp() {
             onOpenDocument={(message) =>
               openArchiveEntry && setOpenDocument({ message, chatTitle: openArchiveEntry.chat.title })
             }
+            onSendToProject={setSendToProject}
             error={error}
           />
         ) : !selectedChat ? (
@@ -591,6 +606,7 @@ export function EmmyChatApp() {
                   key={m.id}
                   message={m}
                   onOpenDocument={() => setOpenDocument({ message: m, chatTitle: selectedChat.title })}
+                  onSendToProject={() => setSendToProject(m)}
                 />
               ))}
               {activeActivity && <ActivityBubble activity={activeActivity} now={now} />}
@@ -645,6 +661,16 @@ export function EmmyChatApp() {
           message={openDocument.message}
           chatTitle={openDocument.chatTitle}
           onClose={() => setOpenDocument(null)}
+        />
+      )}
+      {sendToProject && (
+        <ProjectPickerModal
+          message={sendToProject}
+          onClose={() => setSendToProject(null)}
+          onSent={(projectId) => {
+            setSendToProject(null);
+            onOpenProject?.(projectId);
+          }}
         />
       )}
     </div>
@@ -736,6 +762,7 @@ function ArchiveView({
   onOpen,
   onPurge,
   onOpenDocument,
+  onSendToProject,
   error,
 }: {
   entries: EmmyArchiveSummary[];
@@ -744,6 +771,7 @@ function ArchiveView({
   onOpen: (entry: EmmyArchiveSummary) => void;
   onPurge: (entry: EmmyArchiveSummary) => void;
   onOpenDocument: (message: EmmyMessage) => void;
+  onSendToProject: (message: EmmyMessage) => void;
   error: string | null;
 }) {
   return (
@@ -762,7 +790,12 @@ function ArchiveView({
             Archiviert am {formatTimestamp(openEntry.archivedAt)} — nur zum Nachlesen.
           </p>
           {openEntry.messages.map((m) => (
-            <MessageBubble key={m.id} message={m} onOpenDocument={() => onOpenDocument(m)} />
+            <MessageBubble
+              key={m.id}
+              message={m}
+              onOpenDocument={() => onOpenDocument(m)}
+              onSendToProject={() => onSendToProject(m)}
+            />
           ))}
         </div>
       ) : (
@@ -790,7 +823,15 @@ function ArchiveView({
   );
 }
 
-function MessageBubble({ message, onOpenDocument }: { message: EmmyMessage; onOpenDocument: () => void }) {
+function MessageBubble({
+  message,
+  onOpenDocument,
+  onSendToProject,
+}: {
+  message: EmmyMessage;
+  onOpenDocument: () => void;
+  onSendToProject: () => void;
+}) {
   const isFinalDocument = message.role === "emmy" && message.isFinalDocument === true;
   const isLongReport = message.role === "emmy" && (isFinalDocument || message.text.length > LONG_REPORT_CHARS);
   return (
@@ -819,7 +860,78 @@ function MessageBubble({ message, onOpenDocument }: { message: EmmyMessage; onOp
           </a>
         );
       })}
-      <span className="emmy2-bubble-time">{formatTimestamp(message.at)}</span>
+      <div className="emmy2-bubble-footer">
+        <span className="emmy2-bubble-time">{formatTimestamp(message.at)}</span>
+        {message.text && (
+          <button className="emmy2-bubble-to-project" onClick={onSendToProject} title="In ein Projekt-Terminal senden">
+            → Projekt
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Lets the user pick a project to push one Emmy message's text into as a prompt in that project's terminal. */
+function ProjectPickerModal({
+  message,
+  onClose,
+  onSent,
+}: {
+  message: EmmyMessage;
+  onClose: () => void;
+  onSent: (projectId: string) => void;
+}) {
+  const [projects, setProjects] = useState<{ id: string; dirName: string; name?: string; icon?: string }[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .get<{ id: string; dirName: string; name?: string; icon?: string }[]>("/api/projects")
+      .then(setProjects)
+      .catch(() => setError("Projekte konnten nicht geladen werden."));
+  }, []);
+
+  const send = async (projectId: string) => {
+    setSendingId(projectId);
+    setError(null);
+    try {
+      await api.post(`/api/projects/${projectId}/terminal-input`, { text: message.text });
+      onSent(projectId);
+    } catch {
+      setError("Senden ans Terminal fehlgeschlagen.");
+      setSendingId(null);
+    }
+  };
+
+  return (
+    <div className="home-modal-backdrop" onClick={onClose}>
+      <div className="emmy2-project-picker" onClick={(e) => e.stopPropagation()}>
+        <header className="emmy2-doc-head">
+          <h3>An welches Projekt-Terminal?</h3>
+          <button onClick={onClose} title="Schließen">
+            ✕
+          </button>
+        </header>
+        {error && <p className="emmy2-error">{error}</p>}
+        <div className="emmy2-project-picker-list">
+          {projects === null && <p className="empty-hint">Lädt…</p>}
+          {projects?.length === 0 && <p className="empty-hint">Noch keine Projekte angelegt.</p>}
+          {projects?.map((p) => (
+            <button
+              key={p.id}
+              className="emmy2-project-picker-item"
+              disabled={sendingId !== null}
+              onClick={() => void send(p.id)}
+            >
+              <span className="emmy2-project-picker-icon">{p.icon || defaultProjectIcon(p.id)}</span>
+              <span className="emmy2-project-picker-name">{p.name || p.dirName}</span>
+              {sendingId === p.id && <span className="emmy2-project-picker-sending">sende…</span>}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

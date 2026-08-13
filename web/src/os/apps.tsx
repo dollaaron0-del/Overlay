@@ -19,7 +19,7 @@ export const STATIC_APPS: AppDef[] = [
   { id: "activity", title: "Aktivität", icon: "📋", render: () => <ActivityLog /> },
   { id: "quickcapture", title: "Schnellnotiz", icon: "📝", render: () => <QuickCaptureApp /> },
   { id: "ideachat", title: "Ideen", icon: "💡", render: () => <IdeaChatApp /> },
-  { id: "emmy", title: "Emmy", icon: "💬", render: () => <EmmyChatApp /> },
+  { id: "emmy", title: "Emmy", icon: "💬", render: (nav) => <EmmyChatApp onOpenProject={nav.openProject} /> },
   { id: "cockpit", title: "Cockpit", icon: "🖥️", render: () => <CockpitApp /> },
   { id: "settings", title: "Einstellungen", icon: "⚙️", render: () => <SettingsApp /> },
 ];
