@@ -169,12 +169,24 @@ export function EmmyChatApp() {
         });
       }
     });
-    // A message that lands while the socket is reconnecting (sleep, network
+    // Anything that lands while the socket is reconnecting (sleep, network
     // change, iOS backgrounding a research run that takes hours) is gone for
-    // good otherwise — messages only ever arrive live, never replayed. So on
-    // every reconnect, drop the "already loaded" mark for whatever chat is
-    // open and let the lazy-load effect below re-fetch it from REST.
+    // good otherwise — updates only ever arrive live, never replayed. That
+    // includes "she went idle" / "sources found so far" broadcasts, so a
+    // research run that finishes (or dies) during a reconnect gap would
+    // otherwise leave the sidebar stuck showing it as still running with a
+    // stale source count forever. So on every reconnect, re-fetch chats and
+    // activity from REST (the server's current truth) and drop the "already
+    // loaded" mark for whatever chat is open so its messages get refetched too.
     const unsubOpen = socket.onOpen(() => {
+      api
+        .get<EmmyChat[]>("/api/emmy/chats")
+        .then(setChats)
+        .catch(() => {});
+      api
+        .get<EmmyActivity[]>("/api/emmy/activity")
+        .then(setActivities)
+        .catch(() => {});
       setLoadedChats((prev) => {
         if (!selectedIdRef.current || !prev.has(selectedIdRef.current)) return prev;
         const next = new Set(prev);
