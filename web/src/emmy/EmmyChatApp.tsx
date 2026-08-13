@@ -276,9 +276,10 @@ export function EmmyChatApp() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const sendMessage = async () => {
+  const sendMessage = async (opts?: { requestFinalDocument?: boolean }) => {
     if (!selectedId) return;
-    const text = draft.trim();
+    const requestFinalDocument = opts?.requestFinalDocument === true;
+    const text = draft.trim() || (requestFinalDocument ? "Bitte erstelle das Abschlussdokument." : "");
     if (!text && pending.length === 0) return;
     setDraft("");
     const attachments = pending;
@@ -289,6 +290,7 @@ export function EmmyChatApp() {
       await api.post(`/api/emmy/chats/${selectedId}/messages`, {
         text: text || undefined,
         attachments: attachments.length > 0 ? attachments : undefined,
+        requestFinalDocument: requestFinalDocument || undefined,
       });
     } catch (err) {
       setError(
@@ -512,6 +514,18 @@ export function EmmyChatApp() {
                     </select>
                   </>
                 )}
+                {selectedChat.kind === "task" &&
+                  categoryOf(selectedChat) === "research" &&
+                  selectedChat.researchPhase === "discussion" && (
+                    <button
+                      className="emmy2-final-doc"
+                      disabled={sending || !!activeActivity}
+                      onClick={() => void sendMessage({ requestFinalDocument: true })}
+                      title="Fasst die gesamte Recherche und Unterhaltung in einem Abschlussdokument zusammen"
+                    >
+                      📘 Abschlussdokument erstellen
+                    </button>
+                  )}
                 <button
                   className="emmy2-delete"
                   onClick={() => void removeChat(selectedChat)}
@@ -777,12 +791,13 @@ function ArchiveView({
 }
 
 function MessageBubble({ message, onOpenDocument }: { message: EmmyMessage; onOpenDocument: () => void }) {
-  const isLongReport = message.role === "emmy" && message.text.length > LONG_REPORT_CHARS;
+  const isFinalDocument = message.role === "emmy" && message.isFinalDocument === true;
+  const isLongReport = message.role === "emmy" && (isFinalDocument || message.text.length > LONG_REPORT_CHARS);
   return (
     <div className={`emmy2-bubble emmy2-bubble-${message.role}${isLongReport ? " emmy2-bubble-report" : ""}`}>
       {isLongReport && (
         <div className="emmy2-report-actions">
-          <span className="emmy2-report-badge">📄 Ausführlicher Bericht</span>
+          <span className="emmy2-report-badge">{isFinalDocument ? "📘 Abschlussdokument" : "📄 Ausführlicher Bericht"}</span>
           <button onClick={onOpenDocument}>Als Dokument öffnen</button>
         </div>
       )}

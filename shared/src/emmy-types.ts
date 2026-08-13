@@ -23,6 +23,16 @@ export type EmmyCategory = "instant" | "research" | "recurring";
 /** "auto" = keyword classifier or Emmy herself; "manual" = Aaron picked it, never re-guessed. */
 export type EmmyCategorySource = "auto" | "manual";
 
+/**
+ * Only meaningful for `category === "research"`:
+ * - "deep_research" (or absent) — she hasn't sent her first full answer yet;
+ *   she is still digging in, potentially for hours.
+ * - "discussion" — her first answer landed. From here she answers from what
+ *   she already gathered, doing only short targeted follow-up research when a
+ *   question goes somewhere thin, until the final document is requested.
+ */
+export type EmmyResearchPhase = "deep_research" | "discussion";
+
 export interface EmmyAttachment {
   /** Sanitized on-disk filename (timestamp + random suffix + extension) — never the client-supplied name. */
   filename: string;
@@ -39,6 +49,8 @@ export interface EmmyMessage {
   text: string;
   at: string;
   attachments?: EmmyAttachment[];
+  /** Marks the one reply that is the requested end-of-conversation research document. */
+  isFinalDocument?: boolean;
 }
 
 export interface EmmyChat {
@@ -59,6 +71,10 @@ export interface EmmyChat {
   sourcesSearched?: number;
   /** Emmy's own 0-100 estimate of how well she now knows the topic, self-reported via /api/emmy/inbound. */
   knowledgeLevel?: number;
+  /** Research-only: where in the research → discussion flow this chat currently is. */
+  researchPhase?: EmmyResearchPhase;
+  /** Set when Aaron asked for the final document; consumed by the next reply, which gets tagged isFinalDocument. */
+  pendingFinalDocument?: boolean;
 }
 
 /**
