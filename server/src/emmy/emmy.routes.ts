@@ -272,6 +272,7 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
     attachmentPaths,
     memoryHits,
     requestFinalDocument,
+    dueAt: chat.dueAt,
   });
   const name = chat.kind === "task" ? `Overlay-Aufgabe: ${chat.title}` : "Overlay-Chat";
 
