@@ -4,6 +4,9 @@ import { getChat, updateChat, appendMessage, listChats } from "./emmy-store.js";
 import { publishEmmyMessage, publishEmmyChats } from "./emmy-bus.js";
 import { markWorking, markIdle } from "./emmy-activity.js";
 import { indexMessageForMemory } from "./emmy-memory.js";
+import { minResearchDurationMs, DEFAULT_RESEARCH_WINDOW_HOURS } from "./emmy-categorize.js";
+import { sessionKeyFor } from "./emmy.routes.js";
+import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
 
 /**
  * Called by the Emmy agent turn when it replies to a chat message (see
@@ -89,6 +92,50 @@ emmyInboundRouter.post("/", async (req, res) => {
   void indexMessageForMemory(message, chat.title).catch(() => {});
   // The answer is here, so she is no longer working on this chat.
   markIdle(chatId);
+
+  // Her first full answer in a research chat would normally end the deep-
+  // research phase — but the "take your time" instruction in the prompt is
+  // only advisory, so enforce a floor here: if it lands far too early inside
+  // the task's own stated time window (see minResearchDurationMs), keep it as
+  // an interim message and send her straight back in rather than accepting it
+  // as the researched summary. Final-document replies are exempt — those are
+  // an explicit wrap-up Aaron asked for, not the initial dig-in.
+  const isFirstResearchSummary =
+    effectiveCategory === "research" && chat.researchPhase !== "discussion" && chat.pendingFinalDocument !== true;
+  if (isFirstResearchSummary) {
+    const windowMs = chat.dueAt
+      ? new Date(chat.dueAt).getTime() - new Date(chat.createdAt).getTime()
+      : DEFAULT_RESEARCH_WINDOW_HOURS * 3_600_000;
+    const minRequiredMs = minResearchDurationMs(windowMs);
+    const elapsedMs = Date.now() - new Date(chat.createdAt).getTime();
+
+    if (elapsedMs < minRequiredMs) {
+      const nudge = [
+        `[Overlay] Automatische Rückmeldung zur Aufgabe „${chat.title}":`,
+        ``,
+        `Deine letzte Antwort kam nach nur ${Math.round(elapsedMs / 60_000)} Minuten — für diese Recherche-Aufgabe sind mindestens ${Math.round(minRequiredMs / 60_000)} Minuten vorgesehen (noch ca. ${Math.ceil((minRequiredMs - elapsedMs) / 60_000)} Minuten mehr).`,
+        `Deine bisherige Antwort wurde als Zwischenstand gespeichert und ist für Aaron im Chat sichtbar — sie zählt aber noch NICHT als deine Recherche-Zusammenfassung, die Phase bleibt offen.`,
+        `Recherchier weiter: erschließ neue, unabhängige Quellen, vertiefe Punkte, die noch dünn sind. Melde dich zwischendurch gern mit Zwischenstand-Meldungen (activity/sourcesSearched/knowledgeLevel) und schick danach über denselben Endpunkt eine vollständigere Zusammenfassung.`,
+      ].join("\n");
+
+      try {
+        await sendEmmyHookTurn(sessionKeyFor(chatId), `Overlay-Aufgabe: ${chat.title}`, nudge);
+        markWorking(
+          chatId,
+          "Recherchiert weiter (Mindestzeit für diese Aufgabe noch nicht erreicht)…",
+          { sourcesSearched, knowledgeLevel },
+          effectiveCategory,
+        );
+      } catch {
+        // Nothing will pick this back up on its own — leave the chat idle
+        // rather than showing "arbeitet daran" forever.
+      }
+
+      publishEmmyChats(await listChats());
+      res.status(201).json({ ok: true, tooEarly: true });
+      return;
+    }
+  }
 
   // Her first full answer in a research chat is the summary that moves the
   // conversation from the deep-research phase into Q&A/feedback — and any

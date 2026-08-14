@@ -40,7 +40,8 @@ export const emmyRouter = Router();
 // bigger than the raw file, same split ideachat uses).
 export const emmySendRouter = Router();
 
-function sessionKeyFor(chatId: string): string {
+/** Also used by emmy-inbound.routes.ts to send a follow-up turn into the same OpenClaw session. */
+export function sessionKeyFor(chatId: string): string {
   return `agent:main:overlay:${chatId}`;
 }
 
@@ -238,6 +239,7 @@ function buildPrompt(
   category: EmmyCategory | undefined,
   researchPhase: EmmyResearchPhase | undefined,
   requestFinalDocument: boolean,
+  dueAt: string | undefined,
 ): string {
   const lines: string[] = [];
   const context = chatKind === "task" ? `zur Aufgabe „${chatTitle}"` : "im allgemeinen Chat";
@@ -317,6 +319,14 @@ function buildPrompt(
     lines.push(
       `Nimm dir dafür so viel Zeit wie nötig — mehrere Stunden oder über Nacht sind ausdrücklich erwünscht, nicht nur erlaubt. Arbeite dich wirklich tief ein: mehrere unabhängige Quellen statt nur der ersten Treffer, gegenläufige Positionen einholen, Zahlen/Fakten querchecken. Hör nicht auf, sobald du "genug" zu haben glaubst — schick stattdessen weitere Zwischenstand-Meldungen (activity/sourcesSearched/knowledgeLevel) und recherchiere weiter, bis dein knowledgeLevel wirklich hoch ist.`,
     );
+    if (dueAt) {
+      lines.push(
+        `Zeitfenster für diese Aufgabe: bis ${new Date(dueAt).toLocaleString("de-DE", { dateStyle: "full", timeStyle: "short" })}. Das ist keine Deadline zum Draufloslegen kurz davor, sondern der Rahmen, den du ausnutzen sollst — schick deine erste vollständige Zusammenfassung nicht viel früher als nötig, sondern erst wenn du das Fenster für echte Tiefe genutzt hast.`,
+      );
+      lines.push(
+        `Kommt deine erste Zusammenfassung deutlich zu früh, wird sie NICHT als Abschluss gewertet: Overlay speichert sie als Zwischenstand und schickt dir automatisch einen neuen Auftrag, weiterzurecherchieren, bevor die Recherche-Phase endet.`,
+      );
+    }
     lines.push(
       `Ziel ist eine belastbare Wissensgrundlage für diesen Chat, nicht nur eine schnelle Antwort auf die aktuelle Nachricht — spätere Nachrichten in diesem Chat bauen darauf auf, also lohnt sich die gründliche Einarbeitung jetzt.`,
     );
@@ -423,6 +433,7 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
     category,
     chat.researchPhase,
     requestFinalDocument,
+    chat.dueAt,
   );
   const name = chat.kind === "task" ? `Overlay-Aufgabe: ${chat.title}` : "Overlay-Chat";
 
