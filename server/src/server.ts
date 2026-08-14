@@ -20,6 +20,7 @@ import { requireAutomationToken } from "./automation/automation.middleware.js";
 import { emmyRouter, emmySendRouter } from "./emmy/emmy.routes.js";
 import { emmyInboundRouter } from "./emmy/emmy-inbound.routes.js";
 import { requireEmmyInboundToken } from "./emmy/emmy-inbound.middleware.js";
+import { emmySchedulerRouter } from "./emmy/emmy-scheduler.routes.js";
 import { apiRateLimiter } from "./rate-limit.js";
 
 // Quick-capture photos arrive as base64 JSON (~33% larger than the raw
@@ -134,6 +135,11 @@ export function createApp() {
   // automation.middleware.ts. Deliberately its own mount, outside
   // protectedApi/requireAuth below.
   app.use("/api/automation", requireAutomationToken, automationRouter);
+
+  // Hit by the overlay-emmy-scheduler systemd timer (via emmy-scheduler.cli.ts),
+  // which has no browser session — same token/trust model as /api/automation
+  // above, deliberately reusing requireAutomationToken rather than a new token.
+  app.use("/api/emmy/scheduler", requireAutomationToken, emmySchedulerRouter);
 
   const protectedApi = express.Router();
   protectedApi.use(requireAuth);

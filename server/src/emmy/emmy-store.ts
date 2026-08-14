@@ -145,6 +145,8 @@ export async function updateChat(
     knowledgeLevel?: number;
     researchPhase?: EmmyResearchPhase;
     pendingFinalDocument?: boolean;
+    /** Only set by the recurring-tasks scheduler (emmy-scheduler.ts). */
+    lastRecurringCheckAt?: string;
   } & EmmyCategoryPatch,
 ): Promise<EmmyChat | undefined> {
   const store = await ensureLoaded();

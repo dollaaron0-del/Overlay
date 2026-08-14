@@ -1050,3 +1050,97 @@ und PM2-Restart "Alle Daten live" melden. Alternativ direkt
 `journalctl -u overlay-update.service -f` mitlesen; der Lauf sollte die
 drei Schritte (Fetch/Merge, Build, Restart) durchlaufen. Im "Aktivität"-Tab
 erscheint ein `overlay_update_triggered`-Eintrag.
+
+## 16. Emmy: Wiederkehrende Aufgaben (Recurring Tasks)
+
+Ein Emmy-Aufgaben-Chat mit `category: "recurring"` (Abschnitt 14.3 — von
+Emmy selbst gesetzt oder im Dashboard über die Kategorie-Auswahl im
+Chat-Kopf) soll sich von selbst alle `intervalHours` Stunden erneut melden,
+ohne dass Aaron jedes Mal manuell nachfragen muss. Dafür läuft, unabhängig
+vom Hauptprozess getaktet, ein eigener systemd-Timer — dasselbe Muster wie
+der nächtliche Backup-Timer (Abschnitt 8), nur alle 15 Minuten statt einmal
+täglich.
+
+**Wie es funktioniert:** Jeder Tick prüft alle `recurring`-Aufgaben-Chats,
+deren Intervall seit dem letzten Check (oder seit ihrer Erstellung, falls
+noch nie gelaufen) abgelaufen ist, und stößt für jeden fälligen Chat genau
+den Turn an, den auch eine manuelle Nachricht auslösen würde
+(`sendEmmyHookTurn`/`/api/emmy/inbound`) — mit einem automatisch generierten
+Hinweistext statt Aarons eigener Nachricht. Ein `status: "done"` gesetzter
+Chat wird dabei übersprungen; das ist der bestehende Aus-Schalter, ein
+gesondertes Pausieren gibt es in dieser Version nicht.
+
+**Wichtig — kein direkter Datei-Zugriff aus einem zweiten Prozess:** Anders
+als der Backup-Job liest/schreibt der Scheduler-Tick NICHT direkt die
+Emmy-Store-Datei. `emmy-store.ts` hält seinen Inhalt pro Prozess im
+Speicher gecacht und aktualisiert diesen Cache nur bei eigenen Schreib-
+zugriffen — ein zweiter Prozess, der direkt in die Datei schreibt, würde
+beim nächsten Schreibzugriff des echten (langlaufenden) Overlay-Servers
+stillschweigend wieder überschrieben. Der Tick läuft deshalb **innerhalb**
+des laufenden Servers, angestoßen über einen eigenen, token-
+authentifizierten Endpunkt; `emmy-scheduler.cli.ts` (das, was systemd
+tatsächlich ausführt) ist nur ein dünner HTTP-Client dafür. Das bedeutet:
+**der Overlay-Server muss laufen (PM2), damit der Timer etwas bewirkt** —
+ist er down, schlägt der Tick fehl, wird geloggt, und der nächste Tick
+15 Minuten später versucht es erneut (kein dauerhaft verlorener Check).
+
+### 16.1 Voraussetzung
+
+Der Scheduler nutzt denselben `AUTOMATION_TOKEN` wie die
+Automatisierungs-API (Abschnitt 14.2) — falls dort noch nicht gesetzt,
+zuerst dort einrichten. Ohne `AUTOMATION_TOKEN` bleibt der Endpunkt (wie
+`/api/automation/*`) mit 404 unerreichbar und `emmy-scheduler.cli.ts`
+bricht mit einer klaren Fehlermeldung ab, statt still nichts zu tun.
+
+### 16.2 systemd-Timer einrichten
+
+```
+cp deploy/systemd/overlay-emmy-scheduler.service /etc/systemd/system/
+cp deploy/systemd/overlay-emmy-scheduler.timer /etc/systemd/system/
+```
+
+In `overlay-emmy-scheduler.service` anpassen:
+- `WorkingDirectory` auf den echten Pfad zu `server/` setzen
+- `EnvironmentFile` auf den Pfad zur echten `.env` setzen
+- `User`/`Group` auf den Benutzer setzen, unter dem Overlay selbst läuft
+  (siehe Abschnitt 1) — standardmäßig `overlay`
+
+Dann aktivieren:
+```
+systemctl daemon-reload
+systemctl enable --now overlay-emmy-scheduler.timer
+```
+
+Takt ist alle 15 Minuten — grob genug, um Last/Log-Rauschen klein zu
+halten, aber fein genug für den kleinsten sinnvollen `intervalHours`-Wert
+(praktisch 1h).
+
+Manuell testen, ohne auf den nächsten Tick zu warten:
+```
+systemctl start overlay-emmy-scheduler.service
+journalctl -u overlay-emmy-scheduler.service -f
+```
+
+Alternativ direkt gegen den laufenden Server, ohne systemd:
+```
+curl -X POST -H "Authorization: Bearer <AUTOMATION_TOKEN>" \
+  https://<overlay-host>/api/emmy/scheduler/run-now
+```
+Antwort: `{"triggered": ["<chatId>", ...], "failed": [...]}`.
+
+### 16.3 Manuelle Verifikation
+
+- [ ] Einen Test-Aufgaben-Chat auf `category: "recurring"` mit
+      `intervalHours: 1` setzen (im Dashboard über die Kategorie-Auswahl im
+      Chat-Kopf, oder per `PATCH /api/emmy/chats/:id`)
+- [ ] `systemctl start overlay-emmy-scheduler.service` (oder der `curl`-Aufruf
+      oben) auslösen — direkt nach Anlegen ist der Chat sofort fällig
+      (`lastRecurringCheckAt` fehlt noch, `createdAt` liegt in der
+      Vergangenheit)
+- [ ] `journalctl -u overlay-emmy-scheduler.service -n 20` zeigt
+      `triggered=1 failed=0`
+- [ ] Im "Aktivität"-Tab erscheint ein `recurring_task_triggered`-Eintrag
+- [ ] Sobald Emmys Antwort über `/api/emmy/inbound` zurückkommt, erscheint
+      sie als neue Nachricht im Chat, ohne dass Aaron etwas geschickt hat
+- [ ] Ein zweiter Tick innerhalb derselben Stunde löst denselben Chat NICHT
+      erneut aus (`lastRecurringCheckAt` wurde nach dem ersten Tick gesetzt)

@@ -67,6 +67,8 @@ export interface EmmyChat {
   dueAt?: string;
   /** Check cadence for "recurring" tasks. */
   intervalHours?: number;
+  /** ISO timestamp of the last automatic recurring check. Only meaningful for category "recurring"; absent means it has never run. */
+  lastRecurringCheckAt?: string;
   /** Running count of sources Emmy has searched for this task, self-reported via /api/emmy/inbound. */
   sourcesSearched?: number;
   /** Emmy's own 0-100 estimate of how well she now knows the topic, self-reported via /api/emmy/inbound. */
