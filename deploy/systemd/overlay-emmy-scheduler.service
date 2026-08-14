@@ -1,0 +1,26 @@
+[Unit]
+Description=Overlay Emmy recurring-tasks scheduler (one tick)
+# Not part of the overlay.service (the web dashboard, managed by PM2 — see
+# docs/DEPLOYMENT.md) — a separate oneshot unit, same pattern as
+# overlay-backup.service. Unlike the backup job this does NOT touch Emmy's
+# store file directly: it only calls the running web server's own
+# token-authenticated /api/emmy/scheduler/run-now endpoint (see
+# emmy-scheduler.cli.ts for why), so it needs that server to already be up
+# and reachable on 127.0.0.1, not just the network.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=overlay
+Group=overlay
+
+# Adjust this to wherever the repo actually lives on the server.
+WorkingDirectory=/opt/overlay/server
+EnvironmentFile=/opt/overlay/.env
+Environment=NODE_ENV=production
+
+ExecStart=/usr/bin/node /opt/overlay/server/dist/emmy/emmy-scheduler.cli.js
+
+[Install]
+WantedBy=multi-user.target

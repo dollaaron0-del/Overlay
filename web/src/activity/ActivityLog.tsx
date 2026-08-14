@@ -21,6 +21,7 @@ const EVENT_LABEL: Record<AuditEventType, string> = {
   idea_plan_saved: "Ideen-Plan gespeichert",
   idea_attachment_added: "Anhang zu Idee hinzugefügt",
   overlay_update_triggered: "Overlay-Update ausgelöst",
+  recurring_task_triggered: "Wiederkehrender Emmy-Check ausgelöst",
 };
 
 function eventClass(entry: AuditEntry): string {

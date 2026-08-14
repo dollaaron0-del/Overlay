@@ -1,0 +1,16 @@
+[Unit]
+Description=Check every 15 minutes for due Emmy recurring tasks
+
+[Timer]
+OnCalendar=*:0/15
+# Short window (unlike the backup/scan timers' 300s): a tick is a single
+# lightweight HTTP call to the already-running server, not a multi-minute
+# job, so there's little to spread out — this just avoids exact collisions
+# with other timers on the box.
+RandomizedDelaySec=30
+# If the machine was off/asleep at a scheduled tick, run one as soon as it's
+# back instead of silently letting a whole interval slip.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

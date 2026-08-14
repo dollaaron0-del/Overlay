@@ -83,6 +83,24 @@ function formatSince(iso: string, now: number): string {
 }
 
 /**
+ * "nächster Check: in ca. 2 Std." — purely client-side, from
+ * lastRecurringCheckAt (or createdAt, if it has never run yet) + intervalHours.
+ * The scheduler itself decides when a check actually fires; this is only a
+ * display estimate.
+ */
+function nextCheckLabel(chat: EmmyChat, now: number): string {
+  if (!chat.intervalHours) return "";
+  const last = chat.lastRecurringCheckAt ?? chat.createdAt;
+  const dueAt = new Date(last).getTime() + chat.intervalHours * 3_600_000;
+  const minutesLeft = Math.round((dueAt - now) / 60_000);
+  if (minutesLeft <= 0) return "nächster Check: fällig";
+  if (minutesLeft < 60) return `nächster Check: in ${minutesLeft} Min.`;
+  const hoursLeft = Math.round(minutesLeft / 60);
+  if (hoursLeft < 24) return `nächster Check: in ${hoursLeft} Std.`;
+  return `nächster Check: in ${Math.round(hoursLeft / 24)} Tagen`;
+}
+
+/**
  * The live activity ping carries the freshest numbers while Emmy is working;
  * once she goes idle those same numbers live on the chat record instead
  * (persisted, so "wie gut kennt sie sich aus" survives a restart or a task
@@ -231,13 +249,15 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
       .catch(() => {});
   }, [selectedId, loadedChats]);
 
-  // Keeps the "seit …" on a running task honest without a render loop when idle.
+  // Keeps "seit …" and "nächster Check …" honest without a render loop when
+  // there's nothing time-based to show.
+  const hasRecurringChat = chats.some((c) => c.kind === "task" && c.category === "recurring");
   useEffect(() => {
-    if (activities.length === 0) return;
+    if (activities.length === 0 && !hasRecurringChat) return;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(timer);
-  }, [activities]);
+  }, [activities, hasRecurringChat]);
 
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
   const messages = selectedId ? (messagesByChat[selectedId] ?? []) : [];
@@ -445,7 +465,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                           : category === "research" && c.dueAt
                             ? `bis ${formatDue(c.dueAt)}`
                             : category === "recurring" && c.intervalHours
-                              ? formatInterval(c.intervalHours)
+                              ? `${formatInterval(c.intervalHours)} · ${nextCheckLabel(c, now)}`
                               : STATUS_LABEL[c.status]}
                       </span>
                       <ProgressMeta sourcesSearched={progress.sourcesSearched} knowledgeLevel={progress.knowledgeLevel} />
@@ -596,6 +616,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                   />
                   Stunden
                 </label>
+                <span className="emmy2-chat-sub">{nextCheckLabel(selectedChat, now)}</span>
               </div>
             )}
 
