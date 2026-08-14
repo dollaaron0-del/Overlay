@@ -591,7 +591,29 @@ systemctl enable --now caddy
 systemctl restart overlay   # bzw. `pm2 restart overlay`, je nachdem wie Overlay selbst läuft
 ```
 
-### 9.4 Manuelle Verifikation
+### 9.4 Zwei Sitzungen, zwei Timeouts
+
+Ab hier laufen **zwei** unabhängige Sitzungen nebeneinander:
+
+| | Läuft ab nach | Sperrt |
+|---|---|---|
+| Authelia (2FA-Portal) | `session.inactivity` (Standard `15m`), spätestens `session.expiration` (`1h`) | den kompletten Zugriff, schon vor Overlay |
+| Overlay-Login | 30 Tage (Cookie), plus optionaler Idle-Lock (Einstellungen, Standard 5 min) | nur die Oberfläche |
+
+Wenn Authelias Sitzung abläuft, beantwortet das Portal **jeden** Request —
+auch die `fetch`-Aufrufe der laufenden Overlay-Oberfläche. Overlay erkennt
+das (`web/src/api/client.ts`) und lädt die Seite neu, weil nur eine echte
+Navigation zum Portal weitergeleitet werden kann; danach erscheint wieder
+der Authelia-Login. Damit das funktioniert, darf der Service Worker
+Navigationen **nicht** aus dem Cache beantworten — siehe den Kommentar zu
+`navigateFallback`/`directoryIndex` in `web/vite.config.ts`.
+
+Wer nicht alle 15 Minuten neu durch 2FA will: `session.inactivity` und
+`session.expiration` in `/etc/authelia/configuration.yml` hochsetzen (im
+Tailnet mit einem einzigen Nutzer ein vertretbarer Kompromiss) und
+`systemctl restart authelia`.
+
+### 9.5 Manuelle Verifikation
 
 - [ ] `https://<tailscale-host>` zeigt zuerst die Authelia-Login-Seite
       (Passwort + TOTP-Code), erst danach den Overlay-Login
@@ -606,6 +628,10 @@ systemctl restart overlay   # bzw. `pm2 restart overlay`, je nachdem wie Overlay
       passt zur installierten Authelia-Version (siehe Hinweis in
       `deploy/caddy/Caddyfile`) — bei Fehlern in den Caddy-Logs
       (`journalctl -u caddy`) als Erstes hier nachsehen
+- [ ] Nach Ablauf von `session.inactivity` (zum Testen kurz auf `1m` setzen)
+      landet eine geöffnete Overlay-Oberfläche von selbst wieder im
+      Authelia-Portal — und **nicht** in einem Overlay-Login, der jedes
+      Passwort als falsch abweist
 
 ## 10. Manuelle Verifikation nach dem Deployment
 

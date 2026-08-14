@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "./AuthProvider";
-import { ApiError } from "../api/client";
+import { ApiError, SsoExpiredError } from "../api/client";
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -16,7 +16,12 @@ export function LoginPage() {
     try {
       await login(username, password);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 429) {
+      if (err instanceof SsoExpiredError) {
+        // The 2FA portal in front of Overlay intercepted the login, so the
+        // password was never checked — saying it's wrong would send the user
+        // chasing the wrong problem. A reload is already on its way.
+        setError("2FA-Sitzung abgelaufen — Seite wird neu geladen.");
+      } else if (err instanceof ApiError && err.status === 429) {
         setError("Zu viele Versuche. Bitte kurz warten.");
       } else {
         setError("Benutzername oder Passwort falsch.");
