@@ -133,7 +133,7 @@ projectsRouter.post("/:id/terminal-input", async (req, res) => {
     return;
   }
   const session = getOrCreateSession(project);
-  session.write(`${parsed.data.text}\r`);
+  session.paste(parsed.data.text);
   res.json({ ok: true });
 });
 
