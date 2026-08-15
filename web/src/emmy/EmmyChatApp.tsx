@@ -906,6 +906,9 @@ function ProjectPickerModal({
   const [projects, setProjects] = useState<{ id: string; dirName: string; name?: string; icon?: string }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [scaffolding, setScaffolding] = useState(false);
 
   useEffect(() => {
     api
@@ -926,6 +929,23 @@ function ProjectPickerModal({
     }
   };
 
+  const createAndSend = async () => {
+    const name = newProjectName.trim();
+    if (!name) return;
+    setScaffolding(true);
+    setError(null);
+    try {
+      const project = await api.post<{ id: string }>("/api/projects/scaffold", {
+        name,
+        initialPrompt: message.text,
+      });
+      onSent(project.id);
+    } catch {
+      setError("Neues Projekt konnte nicht angelegt werden.");
+      setScaffolding(false);
+    }
+  };
+
   return (
     <div className="home-modal-backdrop" onClick={onClose}>
       <div className="emmy2-project-picker" onClick={(e) => e.stopPropagation()}>
@@ -938,12 +958,12 @@ function ProjectPickerModal({
         {error && <p className="emmy2-error">{error}</p>}
         <div className="emmy2-project-picker-list">
           {projects === null && <p className="empty-hint">Lädt…</p>}
-          {projects?.length === 0 && <p className="empty-hint">Noch keine Projekte angelegt.</p>}
+          {projects?.length === 0 && !showNewProject && <p className="empty-hint">Noch keine Projekte angelegt.</p>}
           {projects?.map((p) => (
             <button
               key={p.id}
               className="emmy2-project-picker-item"
-              disabled={sendingId !== null}
+              disabled={sendingId !== null || scaffolding}
               onClick={() => void send(p.id)}
             >
               <span className="emmy2-project-picker-icon">{p.icon || defaultProjectIcon(p.id)}</span>
@@ -952,6 +972,29 @@ function ProjectPickerModal({
             </button>
           ))}
         </div>
+        {showNewProject ? (
+          <div className="emmy2-project-picker-new">
+            <input
+              type="text"
+              placeholder="Name des neuen Projekts"
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              disabled={scaffolding}
+              autoFocus
+            />
+            <button onClick={() => void createAndSend()} disabled={scaffolding || newProjectName.trim().length === 0}>
+              {scaffolding ? "Lege an…" : "Anlegen & umsetzen"}
+            </button>
+          </div>
+        ) : (
+          <button
+            className="emmy2-project-picker-new-toggle"
+            disabled={sendingId !== null}
+            onClick={() => setShowNewProject(true)}
+          >
+            + Neues Projekt anlegen
+          </button>
+        )}
       </div>
     </div>
   );

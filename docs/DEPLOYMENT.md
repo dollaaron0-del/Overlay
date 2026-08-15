@@ -236,6 +236,58 @@ gehosteten Oberfläche der App) sowie einen Logs-Tab live über `journalctl`.
    eigenen Caddy-Block hinter derselben Tailscale+Authelia-2FA-Schicht wie
    Overlay selbst (siehe Abschnitt 9), nicht auf einen offenen, unauthentifizierten Port.
 
+### 5.2 PM2-Prozesse unter fremdem User (pm2-root)
+
+Manche Apps laufen zwar über PM2, aber unter einer *anderen* PM2-Instanz als
+der, die Overlay selbst benutzt — z.B. unter `root` (`pm2-root.service`),
+während Overlay unter einem eigenen Service-User läuft. `pm2 restart <name>`
+als Overlay-User findet diesen Prozess dann nicht, weil jede PM2-Instanz nur
+die Prozesse ihres eigenen `PM2_HOME` kennt; Abschnitt 5.1s `systemd`-Kind
+greift hier ebenfalls nicht, weil es gar keinen eigenen systemd-Unit dafür
+gibt.
+
+Für genau diesen Fall gibt es einen dritten Projekt-"Kind": `kind:
+"pm2-root"`. Statt der eigenen PM2-Verbindung ruft Overlay `sudo pm2
+start/stop/restart <name>` bzw. `sudo pm2 jlist`/`sudo pm2 logs <name>` für
+einen einzelnen, beim Registrieren fest hinterlegten Prozessnamen auf — die
+eigentlichen Dateien/Rechte der fremden App bleiben dabei komplett
+unangetastet.
+
+**Was ein pm2-root-Projekt NICHT hat**, wie bei `systemd` (Abschnitt 5.1):
+kein Terminal-Tab, kein Dateien-Tab, keine Pläne, kein Obsidian-Tab, kein
+Deploy-Button. Was es stattdessen hat: ein "Dashboard öffnen"-Knopf zur
+`externalUrl` sowie einen Logs-Tab live über `sudo pm2 logs`.
+
+**Einrichtung auf dem echten Server, pro Prozessname:**
+
+1. Eine eng gefasste `sudoers`-Regel, exakt nach demselben Muster wie der
+   `systemd`-Kind in Abschnitt 5.1 — für *jeden* Prozessnamen, den Overlay
+   steuern soll, einzeln:
+   ```
+   # /etc/sudoers.d/overlay-<projekt-id> (mit `visudo -f` anlegen, nicht direkt editieren!)
+   overlay ALL=(root) NOPASSWD: /usr/bin/pm2 start <name>, /usr/bin/pm2 stop <name>, /usr/bin/pm2 restart <name>, /usr/bin/pm2 jlist, /usr/bin/pm2 logs <name> --lines 200 --nostream --raw, /usr/bin/pm2 logs <name> --raw --lines 0
+   ```
+   `overlay` durch den tatsächlichen Service-User ersetzen (Abschnitt 1),
+   `<name>` durch den echten PM2-Prozessnamen (z.B. aus `sudo pm2 list`).
+   Ohne passende Regel liefert jede Aktion — inklusive Status und Logs, denn
+   `pm2 jlist`/`pm2 logs` sind hier (anders als `systemctl is-active` beim
+   `systemd`-Kind) selbst schon privilegierte Lesevorgänge — einen klaren
+   Fehler statt eines stillen Fehlschlags.
+
+   Achtung: `/usr/bin/pm2 jlist` liefert den Status *aller* Prozesse der
+   fremden PM2-Instanz zurück, nicht nur des einen registrierten Namens —
+   Overlay filtert selbst auf den gesuchten Namen heraus, aber die
+   sudoers-Regel selbst kann diesen Lesezugriff nicht auf einen einzelnen
+   Prozess einschränken.
+2. Registrieren über die "Hinzufügen"-Kachel (Umschalter "PM2-Prozess unter
+   anderem User") oder per API:
+   ```
+   curl -b cookie.txt -X POST https://<tailscale-host>/api/projects \
+     -H "Content-Type: application/json" \
+     -d '{"kind":"pm2-root","id":"mein-dienst","dirName":"mein-dienst","pm2RootName":"mein-dienst","externalUrl":"https://<tailscale-host>:<port>/"}'
+   ```
+   `externalUrl` muss `https://` sein, gleiche Begründung wie in Abschnitt 5.1.
+
 ## 6. Log-Rotation und Monitoring
 
 PM2s eigene Logs (`~/.pm2/logs/`, sowohl für die verwalteten Web-Apps als auch

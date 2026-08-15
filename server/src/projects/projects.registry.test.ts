@@ -214,3 +214,47 @@ test("addProject with kind systemd rejects a non-https externalUrl", async () =>
     registry.InvalidExternalUrlError,
   );
 });
+
+test("addProject with kind pm2-root creates an empty stub dir instead of requiring one to pre-exist", async () => {
+  const project = await registry.addProject({
+    kind: "pm2-root",
+    id: "nachhilfe",
+    dirName: "nachhilfe",
+    pm2RootName: "nachhilfe",
+    externalUrl: "https://server.tail2388d0.ts.net:9093/",
+  });
+  assert.equal(project.pm2RootName, "nachhilfe");
+
+  const stat = await fs.stat(path.join(appsRoot, "nachhilfe"));
+  assert.ok(stat.isDirectory());
+  const marker = await fs.readFile(path.join(appsRoot, "nachhilfe", "README.md"), "utf8");
+  assert.match(marker, /Platzhalter/);
+});
+
+test("addProject with kind pm2-root rejects an invalid process name", async () => {
+  await assert.rejects(
+    () =>
+      registry.addProject({
+        kind: "pm2-root",
+        id: "evil-pm2-name",
+        dirName: "evil-pm2-name",
+        pm2RootName: "not a name; rm -rf /",
+        externalUrl: "https://server.tail2388d0.ts.net:9093/",
+      }),
+    registry.InvalidPm2RootNameError,
+  );
+});
+
+test("addProject with kind pm2-root rejects a non-https externalUrl", async () => {
+  await assert.rejects(
+    () =>
+      registry.addProject({
+        kind: "pm2-root",
+        id: "insecure-pm2-root-url",
+        dirName: "insecure-pm2-root-url",
+        pm2RootName: "insecure",
+        externalUrl: "http://server.tail2388d0.ts.net:9093/",
+      }),
+    registry.InvalidExternalUrlError,
+  );
+});

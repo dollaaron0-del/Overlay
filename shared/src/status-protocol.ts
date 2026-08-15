@@ -5,11 +5,11 @@ export type ProjectStatus = "online" | "stopped" | "errored" | "unknown";
 export interface ProjectSummary {
   id: string;
   dirName: string;
-  /** "systemd" = controlled via a pre-existing systemd unit instead of PM2. Undefined = "pm2", today's behavior. */
-  kind?: "pm2" | "systemd";
+  /** "systemd" = controlled via a pre-existing systemd unit instead of PM2. "pm2-root" = controlled via a PM2 process in a different Linux user's PM2 daemon, reached through sudo. Undefined = "pm2", today's behavior. */
+  kind?: "pm2" | "systemd" | "pm2-root";
   /** Present when kind is "pm2"/undefined. */
   pm2Name?: string;
-  /** Present when kind is "systemd": the app isn't served through Overlay, its tile links out here instead. */
+  /** Present when kind is "systemd" or "pm2-root": the app isn't served through Overlay, its tile links out here instead. */
   externalUrl?: string;
   status: ProjectStatus;
   uptimeMs: number | null;

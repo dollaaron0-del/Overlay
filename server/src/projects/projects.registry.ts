@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
@@ -79,6 +80,7 @@ export async function getProject(id: string): Promise<Project | undefined> {
 
 export class InvalidDirNameError extends Error {}
 export class InvalidSystemdUnitError extends Error {}
+export class InvalidPm2RootNameError extends Error {}
 export class InvalidExternalUrlError extends Error {}
 
 function assertValidDirName(dirName: string): void {
@@ -105,6 +107,16 @@ function assertValidSystemdUnit(unit: string): void {
   }
 }
 
+// Mirrors the name allowlist in server/src/pm2root/pm2root.service.ts — see
+// assertValidSystemdUnit above for why this is checked again here.
+const PM2_ROOT_NAME_PATTERN = /^[a-zA-Z0-9_.-]+$/;
+
+function assertValidPm2RootName(name: string): void {
+  if (!PM2_ROOT_NAME_PATTERN.test(name)) {
+    throw new InvalidPm2RootNameError(`Invalid pm2-root process name: ${name}`);
+  }
+}
+
 function assertValidExternalUrl(url: string): void {
   // https-only: this always links to a dashboard behind the same
   // Tailscale+Caddy(+Authelia) layer as Overlay itself, never a bare http
@@ -121,12 +133,12 @@ function assertValidExternalUrl(url: string): void {
 }
 
 /**
- * A systemd-kind project's dirName is an empty placeholder, not real app
- * code — Overlay creates it itself so every existing dirName-based feature
- * (security scan, files/obsidian tabs, quick-capture, idea-chat, terminal)
- * keeps working unchanged, just seeing an empty directory. Real app code for
- * these projects lives elsewhere (e.g. a different Linux user's home dir)
- * and stays untouched by Overlay.
+ * A systemd- or pm2-root-kind project's dirName is an empty placeholder, not
+ * real app code — Overlay creates it itself so every existing dirName-based
+ * feature (security scan, files/obsidian tabs, quick-capture, idea-chat,
+ * terminal) keeps working unchanged, just seeing an empty directory. Real app
+ * code for these projects lives elsewhere (e.g. a different Linux user's home
+ * dir) and stays untouched by Overlay.
  */
 async function ensureStubDir(dirName: string): Promise<void> {
   const dir = path.join(config.APPS_ROOT, dirName);
@@ -159,6 +171,13 @@ type AddProjectInput =
       dirName: string;
       systemdUnit: string;
       externalUrl: string;
+    }
+  | {
+      kind: "pm2-root";
+      id: string;
+      dirName: string;
+      pm2RootName: string;
+      externalUrl: string;
     };
 
 export async function addProject(input: AddProjectInput): Promise<Project> {
@@ -166,6 +185,10 @@ export async function addProject(input: AddProjectInput): Promise<Project> {
 
   if (input.kind === "systemd") {
     assertValidSystemdUnit(input.systemdUnit);
+    assertValidExternalUrl(input.externalUrl);
+    await ensureStubDir(input.dirName);
+  } else if (input.kind === "pm2-root") {
+    assertValidPm2RootName(input.pm2RootName);
     assertValidExternalUrl(input.externalUrl);
     await ensureStubDir(input.dirName);
   } else {
@@ -230,6 +253,60 @@ export async function listAvailableDirs(): Promise<string[]> {
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith(".") && !registered.has(entry.name))
     .map((entry) => entry.name)
     .sort();
+}
+
+function slugifyProjectName(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "") // strip accents (e.g. "e-acute" -> "e") after NFKD
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "projekt";
+}
+
+async function uniqueDirName(base: string): Promise<string> {
+  const projects = await ensureLoaded();
+  const registered = new Set(projects.map((p) => p.dirName));
+  const onDisk = new Set(
+    await fs
+      .readdir(config.APPS_ROOT)
+      .then((entries) => entries)
+      .catch(() => [] as string[]),
+  );
+
+  let candidate = base;
+  let suffix = 2;
+  while (registered.has(candidate) || onDisk.has(candidate)) {
+    candidate = `${base}-${suffix++}`;
+  }
+  return candidate;
+}
+
+/**
+ * Creates a brand-new PM2-kind project from scratch: a fresh, empty
+ * directory under APPS_ROOT registered as a project, so it's immediately
+ * usable with every dirName-based feature (terminal, files, deploy) even
+ * though no code exists yet. Used by Emmy's "Ergebnis in neues Projekt
+ * umsetzen" flow — the caller pastes the research result into the project's
+ * terminal session right after this resolves, so a Claude Code session
+ * starts working in the directory as its first act.
+ *
+ * pm2Name/startScript are placeholders: nothing runnable exists yet, so
+ * starting the PM2 process will fail until the terminal session (or the
+ * user) actually scaffolds an app here — same as if a user manually created
+ * an empty project and typed an arbitrary start script before writing code.
+ */
+export async function scaffoldProject(name: string): Promise<Project> {
+  const dirName = await uniqueDirName(slugifyProjectName(name));
+  const dir = path.join(config.APPS_ROOT, dirName);
+  await fs.mkdir(dir, { recursive: true });
+  return addProject({
+    id: crypto.randomUUID(),
+    dirName,
+    pm2Name: dirName,
+    startScript: "npm start",
+  });
 }
 
 export async function removeProject(id: string): Promise<boolean> {
