@@ -2,6 +2,7 @@ import type { WebSocket } from "ws";
 import type { ProjectSummary, StatusServerMessage } from "@overlay/shared";
 import { listProjects, resolveProjectDir } from "../projects/projects.registry.js";
 import { describeProcess, statusOf } from "../pm2/pm2.service.js";
+import { systemdStatus } from "../systemd/systemd.service.js";
 import { getGitVersion } from "../projects/git-version.js";
 
 const POLL_INTERVAL_MS = 3000;
@@ -10,10 +11,33 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
   const projects = await listProjects();
   return Promise.all(
     projects.map(async (p) => {
-      const desc = await describeProcess(p.pm2Name).catch(() => undefined);
+      // A systemd project's dirName is just an empty placeholder Overlay
+      // created (see ensureStubDir in projects.registry.ts) — getGitVersion
+      // harmlessly resolves to null for it (not a git repo), same as any
+      // other non-git project directory.
+      const version = await getGitVersion(resolveProjectDir(p)).catch(() => null);
+
+      if (p.kind === "systemd") {
+        return {
+          id: p.id,
+          dirName: p.dirName,
+          kind: "systemd",
+          externalUrl: p.externalUrl,
+          status: await systemdStatus(p.systemdUnit!),
+          uptimeMs: null,
+          restarts: null,
+          memoryBytes: null,
+          cpuPercent: null,
+          hasDeployScript: false,
+          icon: p.icon,
+          name: p.name,
+          version,
+        } satisfies ProjectSummary;
+      }
+
+      const desc = await describeProcess(p.pm2Name!).catch(() => undefined);
       const env = desc?.pm2_env as { pm_uptime?: number; restart_time?: number } | undefined;
       const monit = desc?.monit as { memory?: number; cpu?: number } | undefined;
-      const version = await getGitVersion(resolveProjectDir(p)).catch(() => null);
       return {
         id: p.id,
         dirName: p.dirName,

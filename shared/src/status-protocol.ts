@@ -5,7 +5,12 @@ export type ProjectStatus = "online" | "stopped" | "errored" | "unknown";
 export interface ProjectSummary {
   id: string;
   dirName: string;
-  pm2Name: string;
+  /** "systemd" = controlled via a pre-existing systemd unit instead of PM2. Undefined = "pm2", today's behavior. */
+  kind?: "pm2" | "systemd";
+  /** Present when kind is "pm2"/undefined. */
+  pm2Name?: string;
+  /** Present when kind is "systemd": the app isn't served through Overlay, its tile links out here instead. */
+  externalUrl?: string;
   status: ProjectStatus;
   uptimeMs: number | null;
   restarts: number | null;

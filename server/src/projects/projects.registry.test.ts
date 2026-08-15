@@ -170,3 +170,47 @@ test("updateProjectIcon on an unknown id returns undefined", async () => {
   const result = await registry.updateProjectIcon("does-not-exist", "🚀");
   assert.equal(result, undefined);
 });
+
+test("addProject with kind systemd creates an empty stub dir instead of requiring one to pre-exist", async () => {
+  const project = await registry.addProject({
+    kind: "systemd",
+    id: "aktien-bot",
+    dirName: "aktien-bot",
+    systemdUnit: "aktien_dashboard.service",
+    externalUrl: "https://server.tail2388d0.ts.net:9093/aktien/",
+  });
+  assert.equal(project.systemdUnit, "aktien_dashboard.service");
+
+  const stat = await fs.stat(path.join(appsRoot, "aktien-bot"));
+  assert.ok(stat.isDirectory());
+  const marker = await fs.readFile(path.join(appsRoot, "aktien-bot", "README.md"), "utf8");
+  assert.match(marker, /Platzhalter/);
+});
+
+test("addProject with kind systemd rejects an invalid unit name", async () => {
+  await assert.rejects(
+    () =>
+      registry.addProject({
+        kind: "systemd",
+        id: "evil-unit",
+        dirName: "evil-unit",
+        systemdUnit: "not a unit; rm -rf /",
+        externalUrl: "https://server.tail2388d0.ts.net:9093/",
+      }),
+    registry.InvalidSystemdUnitError,
+  );
+});
+
+test("addProject with kind systemd rejects a non-https externalUrl", async () => {
+  await assert.rejects(
+    () =>
+      registry.addProject({
+        kind: "systemd",
+        id: "insecure-url",
+        dirName: "insecure-url",
+        systemdUnit: "insecure.service",
+        externalUrl: "http://server.tail2388d0.ts.net:9093/",
+      }),
+    registry.InvalidExternalUrlError,
+  );
+});

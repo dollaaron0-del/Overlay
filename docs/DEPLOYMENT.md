@@ -179,6 +179,63 @@ PM2-Restart, damit der neue Build sofort aktiv wird. Ohne gesetztes
 Trigger (z.B. per Webhook) — der Button verlangt einen expliziten Klick im
 Dashboard, jede Ausführung landet im "Aktivität"-Tab.
 
+### 5.1 Extern verwaltete Projekte (systemd statt PM2)
+
+Für Apps, die bereits eigenständig über systemd laufen — typischerweise unter
+einem *anderen* Linux-User als dem, der Overlay selbst betreibt, und oft mit
+mehreren zusammenhängenden Units (Hauptprozess, Dashboard, ggf. eigene Timer
+für Backups/geplante Jobs) — eignet sich das normale PM2-Modell aus Abschnitt
+5 nicht: Overlays PM2 kennt nur "ein Prozess, Start/Stop/Restart/Logs", keine
+Timer, und PM2 läuft als der Overlay-Service-User, nicht als der Owner der
+fremden App.
+
+Für genau diesen Fall gibt es einen zweiten Projekt-"Kind": `kind: "systemd"`.
+Statt PM2 zu starten, ruft Overlay `systemctl start/stop/restart <unit>` für
+eine einzelne, beim Registrieren fest hinterlegte systemd-Unit auf — die
+eigentlichen Dateien/Rechte der fremden App bleiben dabei komplett
+unangetastet, es ändert sich kein Owner, keine Gruppe, kein Verzeichnis.
+
+**Was ein systemd-Projekt NICHT hat**, anders als ein normales PM2-Projekt:
+kein Terminal-Tab, kein Dateien-Tab, keine Pläne, kein Obsidian-Tab, kein
+Deploy-Button — all das setzt echten Lese-/Schreibzugriff auf den
+Projekt-Ordner unter `APPS_ROOT` voraus, den es hier bewusst nicht gibt
+(`dirName` ist nur ein leerer, von Overlay selbst angelegter Platzhalter,
+siehe `ensureStubDir` in `projects.registry.ts`). Was es stattdessen hat: ein
+"Dashboard öffnen"-Knopf zur `externalUrl` (der eigentlichen, extern
+gehosteten Oberfläche der App) sowie einen Logs-Tab live über `journalctl`.
+
+**Einrichtung auf dem echten Server, pro Unit:**
+
+1. Eine eng gefasste `sudoers`-Regel, exakt nach demselben Muster wie der
+   bestehende Security-Scan-Trigger (Abschnitt 7.5) — für *jede* Unit, die
+   Overlay steuern soll, einzeln:
+   ```
+   # /etc/sudoers.d/overlay-<projekt-id> (mit `visudo -f` anlegen, nicht direkt editieren!)
+   overlay ALL=(root) NOPASSWD: /usr/bin/systemctl start <unit>.service, /usr/bin/systemctl stop <unit>.service, /usr/bin/systemctl restart <unit>.service
+   ```
+   `overlay` durch den tatsächlichen Service-User ersetzen (Abschnitt 1).
+   Ohne passende Regel liefert Start/Stop/Restart im Dashboard einen klaren
+   Fehler statt eines stillen Fehlschlags — der reine Status (`systemctl
+   is-active`) funktioniert dagegen immer, unabhängig von dieser Regel, weil
+   das Lesen des Status keine Root-Rechte braucht.
+2. Für den Logs-Tab: den Overlay-Service-User in die `systemd-journal`-Gruppe
+   aufnehmen, sonst sieht `journalctl` nur die eigenen Units:
+   ```
+   usermod -aG systemd-journal overlay
+   ```
+   Danach den Overlay-Prozess einmal neu starten (`pm2 restart overlay`),
+   damit die neue Gruppenmitgliedschaft greift.
+3. Registrieren über die "Hinzufügen"-Kachel (Umschalter "Extern") oder per
+   API:
+   ```
+   curl -b cookie.txt -X POST https://<tailscale-host>/api/projects \
+     -H "Content-Type: application/json" \
+     -d '{"kind":"systemd","id":"mein-dienst","dirName":"mein-dienst","systemdUnit":"mein-dienst.service","externalUrl":"https://<tailscale-host>:<port>/"}'
+   ```
+   `externalUrl` muss `https://` sein — sie zeigt typischerweise auf einen
+   eigenen Caddy-Block hinter derselben Tailscale+Authelia-2FA-Schicht wie
+   Overlay selbst (siehe Abschnitt 9), nicht auf einen offenen, unauthentifizierten Port.
+
 ## 6. Log-Rotation und Monitoring
 
 PM2s eigene Logs (`~/.pm2/logs/`, sowohl für die verwalteten Web-Apps als auch
