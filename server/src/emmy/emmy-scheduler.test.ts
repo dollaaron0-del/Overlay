@@ -20,22 +20,31 @@ let scheduler: typeof import("./emmy-scheduler.js");
 let auditLog: typeof import("../audit/audit-log.js");
 let mockServer: http.Server;
 let receivedSessionKeys: string[];
+let receivedMessagesByChatId: Record<string, string>;
 
 // A designated sessionKey the mock OpenClaw gateway rejects with 500, to
 // exercise the "gateway down" path without needing a second process/env.
 const FAILING_CHAT_ID = "gateway-down-recurring";
+const RESEARCH_FAILING_CHAT_ID = "gateway-down-research-due";
 
 const HOUR_MS = 3_600_000;
 
 before(async () => {
   receivedSessionKeys = [];
+  receivedMessagesByChatId = {};
   mockServer = http.createServer((req, res) => {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {
-      const parsed = JSON.parse(body) as { sessionKey: string };
+      const parsed = JSON.parse(body) as { sessionKey: string; message: string };
       receivedSessionKeys.push(parsed.sessionKey);
-      if (parsed.sessionKey === `agent:main:overlay:${FAILING_CHAT_ID}`) {
+      // sessionKey is "agent:main:overlay:<chatId>" (see sessionKeyFor in emmy-turn-message.ts).
+      const chatId = parsed.sessionKey.replace("agent:main:overlay:", "");
+      receivedMessagesByChatId[chatId] = parsed.message;
+      if (
+        parsed.sessionKey === `agent:main:overlay:${FAILING_CHAT_ID}` ||
+        parsed.sessionKey === `agent:main:overlay:${RESEARCH_FAILING_CHAT_ID}`
+      ) {
         res.writeHead(500);
         res.end("gateway unreachable");
         return;
@@ -92,6 +101,30 @@ before(async () => {
     chat({ id: "instant-task", category: "instant", intervalHours: undefined }),
     // Due, but the mock gateway rejects this one's sessionKey with 500.
     chat({ id: FAILING_CHAT_ID, lastRecurringCheckAt: iso(-7 * HOUR_MS) }),
+
+    // --- research-due-check fixtures ---
+    // dueAt already passed, still pre-discussion -> due for a status-check nudge.
+    chat({ id: "research-due", category: "research", intervalHours: undefined, dueAt: iso(-1 * HOUR_MS) }),
+    // dueAt still in the future -> not due yet.
+    chat({ id: "research-not-due", category: "research", intervalHours: undefined, dueAt: iso(1 * HOUR_MS) }),
+    // dueAt passed, but she already delivered her first summary -> no nudge needed.
+    chat({
+      id: "research-in-discussion",
+      category: "research",
+      intervalHours: undefined,
+      dueAt: iso(-1 * HOUR_MS),
+      researchPhase: "discussion",
+    }),
+    // dueAt passed, but already nudged once before -> not re-triggered every tick.
+    chat({
+      id: "research-already-nudged",
+      category: "research",
+      intervalHours: undefined,
+      dueAt: iso(-1 * HOUR_MS),
+      dueCheckSentAt: iso(-10 * 60_000),
+    }),
+    // Due, but the mock gateway rejects this one's sessionKey with 500.
+    chat({ id: RESEARCH_FAILING_CHAT_ID, category: "research", intervalHours: undefined, dueAt: iso(-1 * HOUR_MS) }),
   ];
 
   await fs.mkdir(path.join(tmpCwd, "data"), { recursive: true });
@@ -178,4 +211,63 @@ test("sent exactly one turn per due chat, addressed to its own isolated session"
   assert.ok(receivedSessionKeys.includes("agent:main:overlay:first-run-recurring"));
   assert.ok(receivedSessionKeys.includes(`agent:main:overlay:${FAILING_CHAT_ID}`));
   assert.ok(!receivedSessionKeys.includes("agent:main:overlay:not-due-recurring"));
+});
+
+// ---- research due-check tick -------------------------------------------------
+
+let researchResult: { triggered: string[]; failed: string[] };
+test("run the research due-check tick every scenario below asserts against", async () => {
+  researchResult = await scheduler.runResearchDueChecksTick();
+});
+
+test("triggers a research task whose dueAt has passed and is still pre-discussion", async () => {
+  assert.ok(researchResult.triggered.includes("research-due"));
+  const updated = await store.getChat("research-due");
+  assert.ok(updated?.dueCheckSentAt);
+  assert.ok(new Date(updated!.dueCheckSentAt!).getTime() > Date.now() - 60_000, "should be stamped to ~now");
+});
+
+test("the turn sent to a due research task asks for a status, not another open-ended 'take your time'", async () => {
+  const prompt = receivedMessagesByChatId["research-due"];
+  assert.ok(prompt, "expected a turn to have been sent for research-due");
+  assert.match(prompt, /Status-Check/);
+  assert.match(prompt, /noch mehr Zeit/);
+  assert.match(prompt, /vollständige, ausführliche Zusammenfassung/);
+  assert.doesNotMatch(prompt, /über Nacht sind ausdrücklich erwünscht/);
+});
+
+test("does not trigger a research task whose dueAt is still in the future", async () => {
+  assert.ok(!researchResult.triggered.includes("research-not-due"));
+  const untouched = await store.getChat("research-not-due");
+  assert.ok(!untouched?.dueCheckSentAt);
+});
+
+test("does not trigger a research task that already delivered its first summary", async () => {
+  assert.ok(!researchResult.triggered.includes("research-in-discussion"));
+  const untouched = await store.getChat("research-in-discussion");
+  assert.ok(!untouched?.dueCheckSentAt);
+});
+
+test("does not re-trigger a research task already nudged once", async () => {
+  assert.ok(!researchResult.triggered.includes("research-already-nudged"));
+  const untouched = await store.getChat("research-already-nudged");
+  assert.ok(new Date(untouched!.dueCheckSentAt!).getTime() < Date.now() - 60_000, "unchanged, still the original nudge timestamp");
+});
+
+test("a failed sendEmmyHookTurn leaves dueCheckSentAt unset so the next tick retries", async () => {
+  assert.ok(researchResult.failed.includes(RESEARCH_FAILING_CHAT_ID));
+  assert.ok(!researchResult.triggered.includes(RESEARCH_FAILING_CHAT_ID));
+  const untouched = await store.getChat(RESEARCH_FAILING_CHAT_ID);
+  assert.ok(!untouched?.dueCheckSentAt);
+});
+
+test("summarizes the research due-check tick in one audit log entry", async () => {
+  const entries = await auditLog.listAuditEntries();
+  const entry = entries.find((e) => e.type === "research_due_check_triggered");
+  assert.ok(entry, "expected a research_due_check_triggered audit entry");
+  assert.equal(entry?.actor, "emmy-scheduler");
+  // triggered=2: "research-due" plus the pre-existing "research-task" fixture
+  // (used above only to assert the *recurring* tick ignores it) — it's also a
+  // past-dueAt, pre-discussion research chat, so this tick picks it up too.
+  assert.match(entry?.detail ?? "", /triggered=2 failed=1/);
 });

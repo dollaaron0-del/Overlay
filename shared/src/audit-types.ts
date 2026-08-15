@@ -15,7 +15,8 @@ export type AuditEventType =
   | "idea_plan_saved"
   | "idea_attachment_added"
   | "overlay_update_triggered"
-  | "recurring_task_triggered";
+  | "recurring_task_triggered"
+  | "research_due_check_triggered";
 
 export interface AuditEntry {
   timestamp: string; // ISO

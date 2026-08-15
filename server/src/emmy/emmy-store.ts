@@ -147,6 +147,8 @@ export async function updateChat(
     pendingFinalDocument?: boolean;
     /** Only set by the recurring-tasks scheduler (emmy-scheduler.ts). */
     lastRecurringCheckAt?: string;
+    /** Only set by the research-due-check scheduler tick (emmy-scheduler.ts). */
+    dueCheckSentAt?: string;
   } & EmmyCategoryPatch,
 ): Promise<EmmyChat | undefined> {
   const store = await ensureLoaded();
