@@ -30,7 +30,8 @@ interface DeployResult {
 }
 
 export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSummary; onRemoved: () => void }) {
-  const [tab, setTab] = useState<Tab>("terminal");
+  const isExternal = project.kind === "systemd";
+  const [tab, setTab] = useState<Tab>(isExternal ? "logs" : "terminal");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
@@ -163,6 +164,11 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
               {deploying ? "Deployt…" : "🚀 Deploy"}
             </button>
           )}
+          {isExternal && project.externalUrl && (
+            <a className="project-open-external-button" href={project.externalUrl} target="_blank" rel="noreferrer">
+              Dashboard öffnen ↗
+            </a>
+          )}
           <button className="project-remove-button-inline" onClick={removeProject}>
             Entfernen
           </button>
@@ -194,33 +200,41 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
       </div>
 
       <nav className="tab-bar">
-        <button className={tab === "terminal" ? "active" : ""} onClick={() => setTab("terminal")}>
-          Terminal
-        </button>
+        {!isExternal && (
+          <button className={tab === "terminal" ? "active" : ""} onClick={() => setTab("terminal")}>
+            Terminal
+          </button>
+        )}
         <button className={tab === "logs" ? "active" : ""} onClick={() => setTab("logs")}>
           Logs
         </button>
-        <button className={tab === "files" ? "active" : ""} onClick={() => setTab("files")}>
-          Dateien
-        </button>
-        <button className={tab === "plans" ? "active" : ""} onClick={() => setTab("plans")}>
-          Pläne
-        </button>
-        <button className={tab === "obsidian" ? "active" : ""} onClick={() => setTab("obsidian")}>
-          Obsidian
-        </button>
+        {!isExternal && (
+          <>
+            <button className={tab === "files" ? "active" : ""} onClick={() => setTab("files")}>
+              Dateien
+            </button>
+            <button className={tab === "plans" ? "active" : ""} onClick={() => setTab("plans")}>
+              Pläne
+            </button>
+            <button className={tab === "obsidian" ? "active" : ""} onClick={() => setTab("obsidian")}>
+              Obsidian
+            </button>
+          </>
+        )}
       </nav>
       <div className="tab-content">
-        {tab === "terminal" && <TerminalPanel key={project.id} projectId={project.id} />}
+        {!isExternal && tab === "terminal" && <TerminalPanel key={project.id} projectId={project.id} />}
         {tab === "logs" && <LogPanel key={project.id} projectId={project.id} />}
-        {tab === "files" && (
+        {!isExternal && tab === "files" && (
           <div className="files-tab">
             <FileTree projectId={project.id} onSelectFile={setSelectedFile} />
             <FileViewer projectId={project.id} path={selectedFile} />
           </div>
         )}
-        {tab === "plans" && <PlansTab key={project.id} projectId={project.id} />}
-        {tab === "obsidian" && <ObsidianTab key={project.id} projectId={project.id} projectDirName={project.dirName} />}
+        {!isExternal && tab === "plans" && <PlansTab key={project.id} projectId={project.id} />}
+        {!isExternal && tab === "obsidian" && (
+          <ObsidianTab key={project.id} projectId={project.id} projectDirName={project.dirName} />
+        )}
       </div>
     </div>
   );

@@ -1607,6 +1607,36 @@ button.active {
   font-size: 0.85rem;
 }
 
+.project-open-external-button {
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  background: var(--c-surface-2);
+  color: var(--c-text-1);
+  text-decoration: none;
+}
+
+.project-open-external-button:hover {
+  background: var(--c-surface-2-hover);
+}
+
+.add-project-kind-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.add-project-kind-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: normal;
+}
+
 /* --- Settings --- */
 
 .settings-app {

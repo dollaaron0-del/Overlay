@@ -78,6 +78,8 @@ export async function getProject(id: string): Promise<Project | undefined> {
 }
 
 export class InvalidDirNameError extends Error {}
+export class InvalidSystemdUnitError extends Error {}
+export class InvalidExternalUrlError extends Error {}
 
 function assertValidDirName(dirName: string): void {
   // Must be a single path segment directly under APPS_ROOT — no traversal, no absolute paths.
@@ -92,18 +94,86 @@ function assertValidDirName(dirName: string): void {
   }
 }
 
-export async function addProject(input: {
-  id: string;
-  dirName: string;
-  pm2Name: string;
-  startScript: string;
-  deployScript?: string;
-}): Promise<Project> {
+// Mirrors the unit-name allowlist in server/src/systemd/systemd.service.ts —
+// checked again here so a bad unit name is rejected at registration time
+// with a clear error, not just later when someone taps Start/Stop.
+const SYSTEMD_UNIT_PATTERN = /^[a-zA-Z0-9_.-]+\.service$/;
+
+function assertValidSystemdUnit(unit: string): void {
+  if (!SYSTEMD_UNIT_PATTERN.test(unit)) {
+    throw new InvalidSystemdUnitError(`Invalid systemd unit name: ${unit}`);
+  }
+}
+
+function assertValidExternalUrl(url: string): void {
+  // https-only: this always links to a dashboard behind the same
+  // Tailscale+Caddy(+Authelia) layer as Overlay itself, never a bare http
+  // origin — see docs/DEPLOYMENT.md's "Extern verwaltete Projekte" section.
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new InvalidExternalUrlError(`Invalid external URL: ${url}`);
+  }
+  if (parsed.protocol !== "https:") {
+    throw new InvalidExternalUrlError(`External URL must be https: ${url}`);
+  }
+}
+
+/**
+ * A systemd-kind project's dirName is an empty placeholder, not real app
+ * code — Overlay creates it itself so every existing dirName-based feature
+ * (security scan, files/obsidian tabs, quick-capture, idea-chat, terminal)
+ * keeps working unchanged, just seeing an empty directory. Real app code for
+ * these projects lives elsewhere (e.g. a different Linux user's home dir)
+ * and stays untouched by Overlay.
+ */
+async function ensureStubDir(dirName: string): Promise<void> {
+  const dir = path.join(config.APPS_ROOT, dirName);
+  await fs.mkdir(dir, { recursive: true });
+  const marker = path.join(dir, "README.md");
+  const exists = await fs.stat(marker).catch(() => null);
+  if (!exists) {
+    await fs.writeFile(
+      marker,
+      "Dieser Ordner ist ein leerer Platzhalter, von Overlay selbst angelegt.\n" +
+        "Das eigentliche Projekt läuft extern über einen systemd-Unit, nicht über PM2/APPS_ROOT " +
+        "— siehe docs/DEPLOYMENT.md, Abschnitt \"Extern verwaltete Projekte\".\n",
+      "utf8",
+    );
+  }
+}
+
+type AddProjectInput =
+  | {
+      kind?: "pm2";
+      id: string;
+      dirName: string;
+      pm2Name: string;
+      startScript: string;
+      deployScript?: string;
+    }
+  | {
+      kind: "systemd";
+      id: string;
+      dirName: string;
+      systemdUnit: string;
+      externalUrl: string;
+    };
+
+export async function addProject(input: AddProjectInput): Promise<Project> {
   assertValidDirName(input.dirName);
-  const dir = path.join(config.APPS_ROOT, input.dirName);
-  const stat = await fs.stat(dir).catch(() => null);
-  if (!stat || !stat.isDirectory()) {
-    throw new Error(`Directory does not exist under APPS_ROOT: ${input.dirName}`);
+
+  if (input.kind === "systemd") {
+    assertValidSystemdUnit(input.systemdUnit);
+    assertValidExternalUrl(input.externalUrl);
+    await ensureStubDir(input.dirName);
+  } else {
+    const dir = path.join(config.APPS_ROOT, input.dirName);
+    const stat = await fs.stat(dir).catch(() => null);
+    if (!stat || !stat.isDirectory()) {
+      throw new Error(`Directory does not exist under APPS_ROOT: ${input.dirName}`);
+    }
   }
 
   const projects = await ensureLoaded();

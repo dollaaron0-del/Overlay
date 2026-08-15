@@ -4,6 +4,8 @@ import {
   addProject,
   getProject,
   InvalidDirNameError,
+  InvalidExternalUrlError,
+  InvalidSystemdUnitError,
   listAvailableDirs,
   listProjects,
   removeProject,
@@ -12,6 +14,7 @@ import {
   updateProjectName,
 } from "./projects.registry.js";
 import { describeProcess, restartProcess, statusOf } from "../pm2/pm2.service.js";
+import { systemdStatus } from "../systemd/systemd.service.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
 import { runDeployScript } from "./deploy-runner.js";
 import { startDeployRun, recordDeployLine, endDeployRun } from "./deploy-log-bus.js";
@@ -32,20 +35,38 @@ projectsRouter.get("/", async (_req, res) => {
   const projects = await listProjects();
   const withStatus = await Promise.all(
     projects.map(async (project) => {
-      const desc = await describeProcess(project.pm2Name).catch(() => undefined);
+      if (project.kind === "systemd") {
+        return { ...project, status: await systemdStatus(project.systemdUnit!) };
+      }
+      const desc = await describeProcess(project.pm2Name!).catch(() => undefined);
       return { ...project, status: statusOf(desc) };
     }),
   );
   res.json(withStatus);
 });
 
-const addProjectSchema = z.object({
+const addPm2ProjectSchema = z.object({
+  kind: z.literal("pm2").optional(),
   id: z.string().min(1),
   dirName: z.string().min(1),
   pm2Name: z.string().min(1),
   startScript: z.string().min(1),
   deployScript: z.string().optional(),
 });
+
+// A systemd-kind project's dirName is client-supplied here as a suggestion —
+// the registry treats it as a placeholder it creates/owns itself (see
+// ensureStubDir in projects.registry.ts), not a real APPS_ROOT directory
+// the client is claiming already exists.
+const addSystemdProjectSchema = z.object({
+  kind: z.literal("systemd"),
+  id: z.string().min(1),
+  dirName: z.string().min(1),
+  systemdUnit: z.string().min(1),
+  externalUrl: z.string().min(1),
+});
+
+const addProjectSchema = z.union([addPm2ProjectSchema, addSystemdProjectSchema]);
 
 projectsRouter.post("/", async (req, res) => {
   const parsed = addProjectSchema.safeParse(req.body);
@@ -54,15 +75,23 @@ projectsRouter.post("/", async (req, res) => {
     return;
   }
   try {
-    const project = await addProject({
-      ...parsed.data,
-      deployScript: parsed.data.deployScript?.trim() || undefined,
-    });
+    const project =
+      parsed.data.kind === "systemd"
+        ? await addProject(parsed.data)
+        : await addProject({ ...parsed.data, deployScript: parsed.data.deployScript?.trim() || undefined });
     await appendAuditEntry({ type: "project_added", detail: project.id });
     res.status(201).json(project);
   } catch (err) {
     if (err instanceof InvalidDirNameError) {
       res.status(400).json({ error: "invalid_dir_name", message: err.message });
+      return;
+    }
+    if (err instanceof InvalidSystemdUnitError) {
+      res.status(400).json({ error: "invalid_systemd_unit", message: err.message });
+      return;
+    }
+    if (err instanceof InvalidExternalUrlError) {
+      res.status(400).json({ error: "invalid_external_url", message: err.message });
       return;
     }
     res.status(400).json({ error: "add_failed", message: (err as Error).message });
@@ -132,6 +161,14 @@ projectsRouter.post("/:id/terminal-input", async (req, res) => {
     res.status(404).json({ error: "not_found" });
     return;
   }
+  // A systemd-kind project's dirName is an empty Overlay-owned placeholder,
+  // not the app's real code — a terminal there would be pointless, and the
+  // frontend never shows this tab for that kind, so this guard only ever
+  // fires for a stale/hand-crafted request.
+  if (project.kind === "systemd") {
+    res.status(400).json({ error: "not_supported_for_kind" });
+    return;
+  }
   const session = getOrCreateSession(project);
   session.paste(parsed.data.text);
   res.json({ ok: true });
@@ -166,7 +203,9 @@ projectsRouter.post("/:id/deploy", async (req, res) => {
   if (success) {
     // Best-effort: pick up the newly deployed build. Not fatal if the
     // process isn't running yet — the deploy itself already succeeded.
-    await restartProcess(project.pm2Name).catch(() => undefined);
+    // deployScript is never set on a systemd-kind project, so pm2Name is
+    // guaranteed here even though the type is optional.
+    await restartProcess(project.pm2Name!).catch(() => undefined);
   }
 
   await appendAuditEntry({ type: "project_deployed", detail: `${project.id} (${success ? "ok" : "failed"})` });
