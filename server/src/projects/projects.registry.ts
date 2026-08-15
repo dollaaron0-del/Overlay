@@ -80,6 +80,7 @@ export async function getProject(id: string): Promise<Project | undefined> {
 
 export class InvalidDirNameError extends Error {}
 export class InvalidSystemdUnitError extends Error {}
+export class InvalidPm2RootNameError extends Error {}
 export class InvalidExternalUrlError extends Error {}
 
 function assertValidDirName(dirName: string): void {
@@ -106,6 +107,16 @@ function assertValidSystemdUnit(unit: string): void {
   }
 }
 
+// Mirrors the name allowlist in server/src/pm2root/pm2root.service.ts — see
+// assertValidSystemdUnit above for why this is checked again here.
+const PM2_ROOT_NAME_PATTERN = /^[a-zA-Z0-9_.-]+$/;
+
+function assertValidPm2RootName(name: string): void {
+  if (!PM2_ROOT_NAME_PATTERN.test(name)) {
+    throw new InvalidPm2RootNameError(`Invalid pm2-root process name: ${name}`);
+  }
+}
+
 function assertValidExternalUrl(url: string): void {
   // https-only: this always links to a dashboard behind the same
   // Tailscale+Caddy(+Authelia) layer as Overlay itself, never a bare http
@@ -122,12 +133,12 @@ function assertValidExternalUrl(url: string): void {
 }
 
 /**
- * A systemd-kind project's dirName is an empty placeholder, not real app
- * code — Overlay creates it itself so every existing dirName-based feature
- * (security scan, files/obsidian tabs, quick-capture, idea-chat, terminal)
- * keeps working unchanged, just seeing an empty directory. Real app code for
- * these projects lives elsewhere (e.g. a different Linux user's home dir)
- * and stays untouched by Overlay.
+ * A systemd- or pm2-root-kind project's dirName is an empty placeholder, not
+ * real app code — Overlay creates it itself so every existing dirName-based
+ * feature (security scan, files/obsidian tabs, quick-capture, idea-chat,
+ * terminal) keeps working unchanged, just seeing an empty directory. Real app
+ * code for these projects lives elsewhere (e.g. a different Linux user's home
+ * dir) and stays untouched by Overlay.
  */
 async function ensureStubDir(dirName: string): Promise<void> {
   const dir = path.join(config.APPS_ROOT, dirName);
@@ -160,6 +171,13 @@ type AddProjectInput =
       dirName: string;
       systemdUnit: string;
       externalUrl: string;
+    }
+  | {
+      kind: "pm2-root";
+      id: string;
+      dirName: string;
+      pm2RootName: string;
+      externalUrl: string;
     };
 
 export async function addProject(input: AddProjectInput): Promise<Project> {
@@ -167,6 +185,10 @@ export async function addProject(input: AddProjectInput): Promise<Project> {
 
   if (input.kind === "systemd") {
     assertValidSystemdUnit(input.systemdUnit);
+    assertValidExternalUrl(input.externalUrl);
+    await ensureStubDir(input.dirName);
+  } else if (input.kind === "pm2-root") {
+    assertValidPm2RootName(input.pm2RootName);
     assertValidExternalUrl(input.externalUrl);
     await ensureStubDir(input.dirName);
   } else {

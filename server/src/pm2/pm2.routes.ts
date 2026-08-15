@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getProject, resolveProjectDir } from "../projects/projects.registry.js";
 import { describeProcess, restartProcess, startProcess, statusOf, stopProcess } from "./pm2.service.js";
 import { systemdAction, systemdStatus } from "../systemd/systemd.service.js";
+import { pm2RootAction, pm2RootStatus } from "../pm2root/pm2root.service.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
 
 export const pm2Router = Router();
@@ -17,6 +18,13 @@ pm2Router.get("/:id/status", async (req, res) => {
     // `systemctl is-active` — PM2's richer stats just don't have a systemd
     // equivalent worth shelling out separately for here.
     const status = await systemdStatus(project.systemdUnit!);
+    res.json({ status, uptimeMs: null, restarts: null, memoryBytes: null, cpuPercent: null });
+    return;
+  }
+  if (project.kind === "pm2-root") {
+    // Same reasoning as the systemd branch above: no per-process
+    // uptime/restart/resource numbers worth shelling out separately for.
+    const status = await pm2RootStatus(project.pm2RootName!);
     res.json({ status, uptimeMs: null, restarts: null, memoryBytes: null, cpuPercent: null });
     return;
   }
@@ -41,6 +49,8 @@ pm2Router.post("/:id/start", async (req, res) => {
   try {
     if (project.kind === "systemd") {
       await systemdAction(project.systemdUnit!, "start");
+    } else if (project.kind === "pm2-root") {
+      await pm2RootAction(project.pm2RootName!, "start");
     } else {
       const [script, ...args] = project.startScript!.split(" ");
       await startProcess({
@@ -71,6 +81,8 @@ pm2Router.post("/:id/stop", async (req, res) => {
   try {
     if (project.kind === "systemd") {
       await systemdAction(project.systemdUnit!, "stop");
+    } else if (project.kind === "pm2-root") {
+      await pm2RootAction(project.pm2RootName!, "stop");
     } else {
       await stopProcess(project.pm2Name!);
     }
@@ -90,6 +102,8 @@ pm2Router.post("/:id/restart", async (req, res) => {
   try {
     if (project.kind === "systemd") {
       await systemdAction(project.systemdUnit!, "restart");
+    } else if (project.kind === "pm2-root") {
+      await pm2RootAction(project.pm2RootName!, "restart");
     } else {
       await restartProcess(project.pm2Name!);
     }

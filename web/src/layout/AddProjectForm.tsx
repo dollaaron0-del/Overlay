@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 
 export function AddProjectForm({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
-  const [kind, setKind] = useState<"pm2" | "systemd">("pm2");
+  const [kind, setKind] = useState<"pm2" | "systemd" | "pm2-root">("pm2");
   const [availableDirs, setAvailableDirs] = useState<string[]>([]);
   const [dirName, setDirName] = useState("");
   const [id, setId] = useState("");
@@ -10,6 +10,7 @@ export function AddProjectForm({ onClose, onAdded }: { onClose: () => void; onAd
   const [startScript, setStartScript] = useState("npm start");
   const [deployScript, setDeployScript] = useState("");
   const [systemdUnit, setSystemdUnit] = useState("");
+  const [pm2RootName, setPm2RootName] = useState("");
   const [externalUrl, setExternalUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -46,6 +47,11 @@ export function AddProjectForm({ onClose, onAdded }: { onClose: () => void; onAd
         // elsewhere and Overlay never touches it. Reusing the id keeps this
         // invisible to the person filling out the form.
         await api.post("/api/projects", { kind: "systemd", id, dirName: id, systemdUnit, externalUrl });
+      } else if (kind === "pm2-root") {
+        // Same reasoning as the systemd branch above — dirName is just a
+        // placeholder, the real process lives in another Linux user's PM2
+        // daemon.
+        await api.post("/api/projects", { kind: "pm2-root", id, dirName: id, pm2RootName, externalUrl });
       } else {
         await api.post("/api/projects", { id, dirName, pm2Name, startScript, deployScript: deployScript || undefined });
       }
@@ -76,6 +82,10 @@ export function AddProjectForm({ onClose, onAdded }: { onClose: () => void; onAd
           <input type="radio" checked={kind === "systemd"} onChange={() => setKind("systemd")} />
           Extern (bereits laufender systemd-Dienst)
         </label>
+        <label>
+          <input type="radio" checked={kind === "pm2-root"} onChange={() => setKind("pm2-root")} />
+          Extern (PM2-Prozess unter anderem User)
+        </label>
       </div>
 
       {kind === "systemd" ? (
@@ -95,6 +105,43 @@ export function AddProjectForm({ onClose, onAdded }: { onClose: () => void; onAd
               value={systemdUnit}
               onChange={(e) => setSystemdUnit(e.target.value)}
               placeholder="mein-dienst.service"
+              required
+            />
+          </label>
+          <label>
+            Dashboard-URL
+            <input
+              type="url"
+              value={externalUrl}
+              onChange={(e) => setExternalUrl(e.target.value)}
+              placeholder="https://server.tailnet.ts.net:9093/"
+              required
+            />
+          </label>
+          {error && <p className="login-error">{error}</p>}
+          <button type="submit" disabled={submitting}>
+            {submitting ? "Wird hinzugefügt…" : "Hinzufügen"}
+          </button>
+        </>
+      ) : kind === "pm2-root" ? (
+        <>
+          <p className="empty-hint">
+            Für eine App, die schon eigenständig unter einer <em>anderen</em> PM2-Instanz läuft (z.B. unter
+            root, während Overlay selbst unter einem eigenen Service-User läuft) — Overlay steuert sie über
+            eine eng gefasste sudoers-Regel ("sudo pm2 …") statt der eigenen PM2-Verbindung. Siehe
+            docs/DEPLOYMENT.md, Abschnitt "PM2-Prozesse unter fremdem User", für die nötige
+            Server-Einrichtung.
+          </p>
+          <label>
+            Projekt-ID
+            <input value={id} onChange={(e) => setId(e.target.value)} required />
+          </label>
+          <label>
+            PM2-Prozessname (in der fremden PM2-Instanz)
+            <input
+              value={pm2RootName}
+              onChange={(e) => setPm2RootName(e.target.value)}
+              placeholder="nachhilfe"
               required
             />
           </label>

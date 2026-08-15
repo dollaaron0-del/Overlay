@@ -3,6 +3,7 @@ import type { ProjectSummary, StatusServerMessage } from "@overlay/shared";
 import { listProjects, resolveProjectDir } from "../projects/projects.registry.js";
 import { describeProcess, statusOf } from "../pm2/pm2.service.js";
 import { systemdStatus } from "../systemd/systemd.service.js";
+import { pm2RootStatus } from "../pm2root/pm2root.service.js";
 import { getGitVersion } from "../projects/git-version.js";
 
 const POLL_INTERVAL_MS = 3000;
@@ -24,6 +25,24 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
           kind: "systemd",
           externalUrl: p.externalUrl,
           status: await systemdStatus(p.systemdUnit!),
+          uptimeMs: null,
+          restarts: null,
+          memoryBytes: null,
+          cpuPercent: null,
+          hasDeployScript: false,
+          icon: p.icon,
+          name: p.name,
+          version,
+        } satisfies ProjectSummary;
+      }
+
+      if (p.kind === "pm2-root") {
+        return {
+          id: p.id,
+          dirName: p.dirName,
+          kind: "pm2-root",
+          externalUrl: p.externalUrl,
+          status: await pm2RootStatus(p.pm2RootName!),
           uptimeMs: null,
           restarts: null,
           memoryBytes: null,

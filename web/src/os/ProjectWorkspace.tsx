@@ -30,7 +30,7 @@ interface DeployResult {
 }
 
 export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSummary; onRemoved: () => void }) {
-  const isExternal = project.kind === "systemd";
+  const isExternal = project.kind === "systemd" || project.kind === "pm2-root";
   const [tab, setTab] = useState<Tab>(isExternal ? "logs" : "terminal");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [deploying, setDeploying] = useState(false);

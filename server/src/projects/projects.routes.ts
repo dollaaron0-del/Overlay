@@ -5,6 +5,7 @@ import {
   getProject,
   InvalidDirNameError,
   InvalidExternalUrlError,
+  InvalidPm2RootNameError,
   InvalidSystemdUnitError,
   listAvailableDirs,
   listProjects,
@@ -16,6 +17,7 @@ import {
 } from "./projects.registry.js";
 import { describeProcess, restartProcess, statusOf } from "../pm2/pm2.service.js";
 import { systemdStatus } from "../systemd/systemd.service.js";
+import { pm2RootStatus } from "../pm2root/pm2root.service.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
 import { runDeployScript } from "./deploy-runner.js";
 import { startDeployRun, recordDeployLine, endDeployRun } from "./deploy-log-bus.js";
@@ -38,6 +40,9 @@ projectsRouter.get("/", async (_req, res) => {
     projects.map(async (project) => {
       if (project.kind === "systemd") {
         return { ...project, status: await systemdStatus(project.systemdUnit!) };
+      }
+      if (project.kind === "pm2-root") {
+        return { ...project, status: await pm2RootStatus(project.pm2RootName!) };
       }
       const desc = await describeProcess(project.pm2Name!).catch(() => undefined);
       return { ...project, status: statusOf(desc) };
@@ -67,7 +72,19 @@ const addSystemdProjectSchema = z.object({
   externalUrl: z.string().min(1),
 });
 
-const addProjectSchema = z.union([addPm2ProjectSchema, addSystemdProjectSchema]);
+// A pm2-root-kind project's dirName is client-supplied here as a suggestion,
+// same reasoning as addSystemdProjectSchema above — the process itself lives
+// in a different Linux user's PM2 daemon, reached via sudo, not under
+// APPS_ROOT.
+const addPm2RootProjectSchema = z.object({
+  kind: z.literal("pm2-root"),
+  id: z.string().min(1),
+  dirName: z.string().min(1),
+  pm2RootName: z.string().min(1),
+  externalUrl: z.string().min(1),
+});
+
+const addProjectSchema = z.union([addPm2ProjectSchema, addSystemdProjectSchema, addPm2RootProjectSchema]);
 
 projectsRouter.post("/", async (req, res) => {
   const parsed = addProjectSchema.safeParse(req.body);
@@ -77,7 +94,7 @@ projectsRouter.post("/", async (req, res) => {
   }
   try {
     const project =
-      parsed.data.kind === "systemd"
+      parsed.data.kind === "systemd" || parsed.data.kind === "pm2-root"
         ? await addProject(parsed.data)
         : await addProject({ ...parsed.data, deployScript: parsed.data.deployScript?.trim() || undefined });
     await appendAuditEntry({ type: "project_added", detail: project.id });
@@ -89,6 +106,10 @@ projectsRouter.post("/", async (req, res) => {
     }
     if (err instanceof InvalidSystemdUnitError) {
       res.status(400).json({ error: "invalid_systemd_unit", message: err.message });
+      return;
+    }
+    if (err instanceof InvalidPm2RootNameError) {
+      res.status(400).json({ error: "invalid_pm2_root_name", message: err.message });
       return;
     }
     if (err instanceof InvalidExternalUrlError) {
@@ -184,11 +205,11 @@ projectsRouter.post("/:id/terminal-input", async (req, res) => {
     res.status(404).json({ error: "not_found" });
     return;
   }
-  // A systemd-kind project's dirName is an empty Overlay-owned placeholder,
-  // not the app's real code — a terminal there would be pointless, and the
-  // frontend never shows this tab for that kind, so this guard only ever
-  // fires for a stale/hand-crafted request.
-  if (project.kind === "systemd") {
+  // A systemd- or pm2-root-kind project's dirName is an empty Overlay-owned
+  // placeholder, not the app's real code — a terminal there would be
+  // pointless, and the frontend never shows this tab for either kind, so
+  // this guard only ever fires for a stale/hand-crafted request.
+  if (project.kind === "systemd" || project.kind === "pm2-root") {
     res.status(400).json({ error: "not_supported_for_kind" });
     return;
   }
@@ -226,8 +247,8 @@ projectsRouter.post("/:id/deploy", async (req, res) => {
   if (success) {
     // Best-effort: pick up the newly deployed build. Not fatal if the
     // process isn't running yet — the deploy itself already succeeded.
-    // deployScript is never set on a systemd-kind project, so pm2Name is
-    // guaranteed here even though the type is optional.
+    // deployScript is never set on a systemd- or pm2-root-kind project, so
+    // pm2Name is guaranteed here even though the type is optional.
     await restartProcess(project.pm2Name!).catch(() => undefined);
   }
 
