@@ -105,10 +105,10 @@ export function buildEmmyTurnMessage(
   lines.push("");
   lines.push("--- Länge & Formatierung deiner Antwort ---");
   lines.push(
-    `Kürz nicht künstlich ein. Wenn Aaron nach einem ausführlichen/vollständigen Bericht fragt oder das Thema es hergibt, schreib ein vollständiges, seitenlanges Dokument mit allen Erkenntnissen statt einer kurzen Zusammenfassung — lieber zu ausführlich als zu knapp. Eine kurze Nachfrage verdient trotzdem eine kurze Antwort; die Länge soll zur Frage passen, nicht immer maximal sein.`,
+    `Antworte standardmäßig kurz und im Ton eines echten Chats, nicht wie ein Bericht — ein bis drei Sätze reichen für die meisten Antworten. Schreib nur dann lang und vollständig ausformuliert, wenn du gerade eine Recherche-Aufgabe abschließt, ein Abschlussdokument gefragt ist, oder Aaron explizit um eine ausführliche/vollständige Darstellung bittet.`,
   );
   lines.push(
-    `Formatier lange Antworten mit Markdown (# Überschriften, **fett**, Listen, Tabellen, Codeblöcke) — Overlay stellt das im Chat entsprechend dar, und ab einer gewissen Länge bekommt Aaron zusätzlich einen "Als Dokument öffnen"-Button. Schick den ganzen Bericht als ein "text"-Feld in einem POST, nicht aufgeteilt in mehrere Nachrichten.`,
+    `Formatier nur dann mit Markdown (# Überschriften, **fett**, Listen, Tabellen, Codeblöcke), wenn die Antwort tatsächlich lang ist — Overlay stellt das im Chat entsprechend dar, und ab einer gewissen Länge bekommt Aaron zusätzlich einen "Als Dokument öffnen"-Button. Schick deine Antwort als ein "text"-Feld in einem POST, nicht aufgeteilt in mehrere Nachrichten.`,
   );
   if (requestFinalDocument) {
     lines.push("");
