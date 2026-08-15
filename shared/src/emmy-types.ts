@@ -77,6 +77,8 @@ export interface EmmyChat {
   researchPhase?: EmmyResearchPhase;
   /** Set when Aaron asked for the final document; consumed by the next reply, which gets tagged isFinalDocument. */
   pendingFinalDocument?: boolean;
+  /** ISO timestamp of the automatic "dueAt reached, what's your status?" nudge (see emmy-scheduler.ts). Set once so the check fires only once per research task, not on every scheduler tick. */
+  dueCheckSentAt?: string;
 }
 
 /**

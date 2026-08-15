@@ -29,8 +29,14 @@ try {
     const body = await response.text().catch(() => "");
     throw new Error(`${response.status}: ${body.slice(0, 300)}`);
   }
-  const result = (await response.json()) as { triggered: string[]; failed: string[] };
-  console.log(`[emmy-scheduler] triggered=${result.triggered.length} failed=${result.failed.length}`);
+  const result = (await response.json()) as {
+    recurring: { triggered: string[]; failed: string[] };
+    researchDueChecks: { triggered: string[]; failed: string[] };
+  };
+  console.log(
+    `[emmy-scheduler] recurring: triggered=${result.recurring.triggered.length} failed=${result.recurring.failed.length}; ` +
+      `researchDueChecks: triggered=${result.researchDueChecks.triggered.length} failed=${result.researchDueChecks.failed.length}`,
+  );
   process.exit(0);
 } catch (err) {
   console.error(`[emmy-scheduler] run-now fehlgeschlagen: ${(err as Error).message}`);

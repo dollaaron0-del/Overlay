@@ -119,6 +119,18 @@ export function buildEmmyTurnMessage(
     lines.push(
       `Leg dabei besonderen Fokus auf die Punkte, die im Gesprächsverlauf mit Aaron als wichtig hervorgingen — nicht nur auf deine ursprüngliche Recherche. Das ist der Abschluss dieser Aufgabe, also lieber zu vollständig als zu knapp.`,
     );
+  } else if (category === "research" && researchPhase !== "discussion" && dueAt && new Date(dueAt).getTime() <= Date.now()) {
+    lines.push("");
+    lines.push("--- Status-Check: Dein Zeitfenster ist abgelaufen ---");
+    lines.push(
+      `Das für diese Recherche vereinbarte Zeitfenster endete bereits am ${new Date(dueAt).toLocaleString("de-DE", { dateStyle: "full", timeStyle: "short" })}. Aaron fragt jetzt nach dem Stand — antworte konkret auf genau eine der beiden folgenden Arten, nicht einfach mit einer weiteren Zwischenstand-Meldung ohne echte Antwort:`,
+    );
+    lines.push(
+      `  1. Du brauchst noch mehr Zeit: Schick eine Zwischenstand-Meldung (activity, OHNE "text") und nenn darin konkret, woran es noch hängt und wie viel länger du ungefähr brauchst (grobe Schätzung reicht, z. B. "brauche noch ca. 2 Stunden für X"). Das zählt nicht als Abschluss, recherchier danach direkt weiter.`,
+    );
+    lines.push(
+      `  2. Du hast das Wesentliche zusammen: Schick jetzt mit "text" die vollständige, ausführliche Zusammenfassung inklusive deiner eigenen Einschätzung — das ist dann der Abschluss der Recherche-Phase, danach steigen wir ins Gespräch darüber ein.`,
+    );
   } else if (category === "research" && researchPhase !== "discussion") {
     lines.push("");
     lines.push("--- Das hier ist eine Recherche-Aufgabe ---");
