@@ -10,6 +10,7 @@ import {
   listProjects,
   removeProject,
   resolveProjectDir,
+  scaffoldProject,
   updateProjectIcon,
   updateProjectName,
 } from "./projects.registry.js";
@@ -96,6 +97,28 @@ projectsRouter.post("/", async (req, res) => {
     }
     res.status(400).json({ error: "add_failed", message: (err as Error).message });
   }
+});
+
+const scaffoldProjectSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  initialPrompt: z.string().min(1),
+});
+
+// Creates a fresh, empty PM2-kind project and immediately hands the given
+// prompt to its (freshly spawned) Claude terminal session — the "umsetzen"
+// half of Emmy's "Ergebnis in neues Projekt umsetzen" flow, where the caller
+// has no existing project to target yet.
+projectsRouter.post("/scaffold", async (req, res) => {
+  const parsed = scaffoldProjectSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_request", details: parsed.error.issues });
+    return;
+  }
+  const project = await scaffoldProject(parsed.data.name);
+  await appendAuditEntry({ type: "project_added", detail: `${project.id} (scaffolded)` });
+  const session = getOrCreateSession(project);
+  session.paste(parsed.data.initialPrompt);
+  res.status(201).json(project);
 });
 
 projectsRouter.delete("/:id", async (req, res) => {
