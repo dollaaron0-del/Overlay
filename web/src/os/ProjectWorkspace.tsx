@@ -64,6 +64,11 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
     await api.patch(`/api/projects/${project.id}`, { name: trimmed });
   };
 
+  const toggleHomeSection = async () => {
+    const next = project.homeSection === "dashboard" ? "terminal" : "dashboard";
+    await api.patch(`/api/projects/${project.id}`, { homeSection: next });
+  };
+
   const removeProject = async () => {
     if (!confirm(`"${displayName}" aus Overlay entfernen? Die Dateien und der Prozess bleiben erhalten.`)) {
       return;
@@ -169,6 +174,13 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
               Dashboard öffnen ↗
             </a>
           )}
+          <button
+            className="project-home-section-toggle"
+            onClick={toggleHomeSection}
+            title="Auf dem Home-Screen unter Dashboards oder Projekt-Terminals einordnen"
+          >
+            {project.homeSection === "dashboard" ? "📊 Dashboard" : "⌨️ Terminal"}
+          </button>
           <button className="project-remove-button-inline" onClick={removeProject}>
             Entfernen
           </button>

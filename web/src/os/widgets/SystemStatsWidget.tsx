@@ -12,7 +12,7 @@ interface SystemStats {
   diskFreeBytes: number | null;
 }
 
-export function SystemStatsWidget() {
+export function SystemStatsWidget({ onOpen }: { onOpen: () => void }) {
   const [stats, setStats] = useState<SystemStats | null>(null);
 
   useEffect(() => {
@@ -31,7 +31,7 @@ export function SystemStatsWidget() {
       : null;
 
   return (
-    <div className="os-widget">
+    <div className="os-widget" onClick={onOpen} role="button">
       <h3>Server-Ressourcen</h3>
       {!stats && <p className="empty-hint">Lädt…</p>}
       {stats && (

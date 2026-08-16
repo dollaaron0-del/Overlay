@@ -9,7 +9,7 @@ interface BackupStatus {
   latest?: BackupSummary | null;
 }
 
-export function BackupWidget() {
+export function BackupWidget({ onOpen }: { onOpen: () => void }) {
   const [backup, setBackup] = useState<BackupStatus | null>(null);
 
   const loadStatus = () => {
@@ -27,7 +27,7 @@ export function BackupWidget() {
   const progress = useBackupProgress(loadStatus);
 
   return (
-    <div className="os-widget">
+    <div className="os-widget" onClick={onOpen} role="button">
       <h3>Backups</h3>
       {!backup && <p className="empty-hint">Lädt…</p>}
       {backup && !backup.configured && (

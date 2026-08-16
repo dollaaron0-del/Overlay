@@ -1,6 +1,6 @@
 import type { WebSocket } from "ws";
 import type { ProjectSummary, StatusServerMessage } from "@overlay/shared";
-import { listProjects, resolveProjectDir } from "../projects/projects.registry.js";
+import { listProjects, resolveHomeSection, resolveProjectDir } from "../projects/projects.registry.js";
 import { describeProcess, statusOf } from "../pm2/pm2.service.js";
 import { systemdStatus } from "../systemd/systemd.service.js";
 import { pm2RootStatus } from "../pm2root/pm2root.service.js";
@@ -17,6 +17,7 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
       // harmlessly resolves to null for it (not a git repo), same as any
       // other non-git project directory.
       const version = await getGitVersion(resolveProjectDir(p)).catch(() => null);
+      const homeSection = resolveHomeSection(p);
 
       if (p.kind === "systemd") {
         return {
@@ -33,6 +34,7 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
           icon: p.icon,
           name: p.name,
           version,
+          homeSection,
         } satisfies ProjectSummary;
       }
 
@@ -51,6 +53,7 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
           icon: p.icon,
           name: p.name,
           version,
+          homeSection,
         } satisfies ProjectSummary;
       }
 
@@ -70,6 +73,7 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
         icon: p.icon,
         name: p.name,
         version,
+        homeSection,
       } satisfies ProjectSummary;
     }),
   );

@@ -23,6 +23,13 @@ export interface ProjectSummary {
   name?: string;
   /** Current git commit/branch of the project directory, or null when it isn't a git repo. */
   version: { commit: string; branch: string | null } | null;
+  /**
+   * Which home-screen section this project's tile appears in. Always
+   * resolved server-side (never undefined here): falls back to "dashboard"
+   * for kind "systemd"/"pm2-root" and "terminal" otherwise unless the user
+   * set an explicit override via PATCH /:id.
+   */
+  homeSection: "dashboard" | "terminal";
 }
 
 export type StatusServerMessage = {

@@ -25,4 +25,11 @@ export interface Project {
   icon?: string;
   /** Optional custom display name, set via PATCH /:id. Falls back to dirName. */
   name?: string;
+  /**
+   * Manual override for which home-screen section this project's tile
+   * appears in, set via PATCH /:id. Undefined = automatic: "dashboard" for
+   * kind "systemd"/"pm2-root" (both link out to an externalUrl instead of
+   * offering a terminal), "terminal" otherwise.
+   */
+  homeSection?: "dashboard" | "terminal";
 }
