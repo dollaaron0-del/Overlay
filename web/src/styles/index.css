@@ -931,8 +931,101 @@ button.active {
 
 .os-shell {
   display: flex;
-  flex-direction: column;
   height: 100%;
+}
+
+.os-shell-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Sidebar --- */
+/* The single nav surface for the whole app: home, Sicherheit/Cockpit
+   shortcuts, and the Suche/Aktivität/Steuerung actions that used to be
+   duplicated between the TopBar and the bottom Dock. */
+
+.os-sidebar {
+  flex-shrink: 0;
+  width: 208px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  border-right: 1px solid var(--c-surface-2);
+  overflow-y: auto;
+}
+
+.os-sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: none;
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-weight: 700;
+  font-size: var(--fs-base);
+  color: var(--c-text);
+}
+
+.os-sidebar-brand-icon {
+  font-size: var(--fs-lg);
+}
+
+.os-sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--c-surface-2);
+}
+
+.os-sidebar-section--push-end {
+  margin-top: auto;
+}
+
+.os-sidebar-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  text-align: left;
+}
+
+.os-sidebar-button:hover {
+  background: var(--c-surface-2);
+}
+
+.os-sidebar-icon {
+  position: relative;
+  font-size: var(--fs-base);
+  width: 1.5em;
+  text-align: center;
+}
+
+.os-sidebar-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.os-sidebar-badge {
+  position: absolute;
+  top: -0.1rem;
+  right: -0.1rem;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-danger);
+  border: 1px solid var(--c-bg);
 }
 
 .os-topbar {
@@ -980,30 +1073,6 @@ button.active {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
-}
-
-.os-topbar-icon-button {
-  position: relative;
-  background: transparent;
-  border: none;
-  font-size: var(--fs-base);
-  padding: var(--space-1) var(--space-2);
-}
-
-.os-topbar-icon-button:hover {
-  background: var(--c-surface-2);
-  border-radius: var(--radius-md);
-}
-
-.os-topbar-badge {
-  position: absolute;
-  top: 0.05rem;
-  right: 0.15rem;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--c-danger);
-  border: 1px solid var(--c-bg);
 }
 
 .os-main {
@@ -1277,15 +1346,30 @@ button.active {
    actually works in stand out on a homescreen that's otherwise mostly
    utility apps. */
 .os-app-icon-wrapper--large .os-app-icon-glyph {
-  width: 76px;
-  height: 76px;
-  font-size: 2.6rem;
+  width: 96px;
+  height: 96px;
+  font-size: 3.2rem;
   border-radius: var(--radius-md);
 }
 
 .os-app-icon-wrapper--large .os-app-icon-label {
-  max-width: 96px;
-  font-size: var(--fs-xs);
+  max-width: 112px;
+  font-size: var(--fs-sm);
+}
+
+/* Emmy is the centerpiece of the overlay — its tile outranks even project
+   tiles in size. */
+.os-app-icon-wrapper--hero .os-app-icon-glyph {
+  width: 116px;
+  height: 116px;
+  font-size: 3.8rem;
+  border-radius: var(--radius-md);
+}
+
+.os-app-icon-wrapper--hero .os-app-icon-label {
+  max-width: 132px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
 }
 
 /* Rarely-used apps get a smaller glyph so they visually recede behind the
@@ -1332,45 +1416,6 @@ button.active {
   align-items: center;
   justify-content: center;
   z-index: 30;
-}
-
-/* --- Dock --- */
-
-.os-dock {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: center;
-  gap: var(--space-5);
-  padding: var(--space-2) var(--space-3)
-    calc(var(--space-2) + env(safe-area-inset-bottom));
-  border-top: 1px solid var(--c-surface-2);
-  background: var(--c-bg);
-}
-
-.os-dock-button {
-  background: transparent;
-  border: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-0);
-  color: var(--c-text);
-  padding: var(--space-1) var(--space-2);
-}
-
-.os-dock-button:hover {
-  background: transparent;
-  color: var(--c-text-2);
-}
-
-.os-dock-icon {
-  position: relative;
-  font-size: var(--fs-lg);
-}
-
-.os-dock-label {
-  font-size: var(--fs-xs);
-  color: var(--c-text-2);
 }
 
 /* --- Spotlight --- */
@@ -1875,295 +1920,6 @@ button.active {
 .quick-capture-save-button:disabled {
   opacity: 0.5;
   cursor: default;
-}
-
-/* --- Ideen-Chat --- */
-
-.ideachat-app {
-  padding: var(--space-3);
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  max-width: 640px;
-  margin: 0 auto;
-  width: 100%;
-  height: 100%;
-}
-
-.ideachat-chat-view {
-  overflow-y: hidden;
-}
-
-.ideachat-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.ideachat-header h2 {
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ideachat-new-button {
-  margin-left: auto;
-  background: var(--c-accent);
-  border-color: var(--c-accent);
-  font-weight: 600;
-}
-
-.ideachat-back-button {
-  background: var(--c-surface-2);
-  font-size: var(--fs-sm);
-}
-
-.ideachat-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  overflow-y: auto;
-}
-
-.ideachat-list-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-  padding: var(--space-3);
-  text-align: left;
-}
-
-.ideachat-list-item-title {
-  font-size: var(--fs-base);
-}
-
-.ideachat-list-item-meta {
-  font-size: var(--fs-xs);
-  color: var(--c-text-3);
-}
-
-.ideachat-project-picker {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.ideachat-project-picker button {
-  padding: var(--space-3);
-  font-size: var(--fs-base);
-  text-align: left;
-}
-
-.ideachat-textarea {
-  width: 100%;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  color: var(--c-text);
-  font-size: var(--fs-base);
-  font-family: inherit;
-  padding: var(--space-3);
-  resize: vertical;
-}
-
-.ideachat-messages {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-height: 0;
-}
-
-.ideachat-message {
-  max-width: 85%;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--fs-base);
-}
-
-.ideachat-message p {
-  margin: 0;
-  white-space: pre-wrap;
-}
-
-.ideachat-message-source {
-  display: block;
-  font-size: var(--fs-xs);
-  opacity: 0.65;
-  margin-bottom: var(--space-1);
-}
-
-.ideachat-message-user {
-  align-self: flex-end;
-  background: var(--c-accent);
-  color: #fff;
-}
-
-.ideachat-message-assistant {
-  align-self: flex-start;
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-border);
-}
-
-.ideachat-message-pending {
-  opacity: 0.7;
-}
-
-.ideachat-save-plan-button {
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-border-strong);
-  font-size: var(--fs-sm);
-  align-self: flex-start;
-}
-
-.ideachat-input-row {
-  display: flex;
-  gap: var(--space-2);
-  align-items: flex-end;
-}
-
-.ideachat-input-row .ideachat-textarea {
-  flex: 1;
-}
-
-.ideachat-send-button {
-  padding: var(--space-3);
-  font-size: var(--fs-base);
-  font-weight: 600;
-  background: var(--c-accent);
-  border-color: var(--c-accent);
-  white-space: nowrap;
-}
-
-.ideachat-send-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.ideachat-file-input {
-  display: none;
-}
-
-.ideachat-attach-button {
-  flex-shrink: 0;
-  font-size: var(--fs-base);
-  padding: var(--space-2);
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-
-.ideachat-attach-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.ideachat-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.ideachat-attachment-image img {
-  display: block;
-  max-width: 140px;
-  max-height: 140px;
-  border-radius: var(--radius-md);
-  object-fit: cover;
-}
-
-.ideachat-attachment-doc {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1) var(--space-2);
-  background: var(--c-surface-2);
-  border-radius: var(--radius-md);
-  font-size: var(--fs-xs);
-  color: var(--c-text);
-  text-decoration: none;
-}
-
-.ideachat-ai-status {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-}
-
-.ideachat-ai-status h3 {
-  margin: 0 0 var(--space-2);
-  font-size: var(--fs-sm);
-}
-
-.ideachat-ai-status-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.ideachat-ai-tier {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-
-.ideachat-ai-tier-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-top: var(--space-1);
-  flex-shrink: 0;
-  background: var(--c-text-3);
-}
-
-.ideachat-ai-tier-ok .ideachat-ai-tier-dot {
-  background: var(--c-success);
-}
-
-.ideachat-ai-tier-warn .ideachat-ai-tier-dot {
-  background: var(--c-caution);
-}
-
-.ideachat-ai-tier-error .ideachat-ai-tier-dot {
-  background: var(--c-danger);
-}
-
-.ideachat-ai-tier-label {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-}
-
-.ideachat-ai-tier-role {
-  font-size: var(--fs-xs);
-  color: var(--c-text-2);
-}
-
-.ideachat-ai-tier-state {
-  font-size: var(--fs-xs);
-  color: var(--c-text-3);
-}
-
-.ideachat-ai-tier-ok .ideachat-ai-tier-state {
-  color: var(--c-success);
-}
-
-.ideachat-ai-tier-warn .ideachat-ai-tier-state {
-  color: var(--c-caution);
-}
-
-.ideachat-ai-tier-error .ideachat-ai-tier-state {
-  color: var(--c-danger);
 }
 
 /* --- Emmy-Chat --- */
@@ -3330,6 +3086,51 @@ button.active {
   text-align: left;
   color: var(--c-text);
   padding: var(--space-2);
+}
+
+/* Narrow screens (kiosk portrait, iPhone): the app Sidebar becomes a bottom
+   bar, like the old Dock, so it doesn't eat horizontal space from content. */
+@media (max-width: 720px) {
+  .os-shell {
+    flex-direction: column;
+  }
+
+  .os-sidebar {
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    order: 2;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2) calc(var(--space-1) + env(safe-area-inset-bottom));
+    border-right: none;
+    border-top: 1px solid var(--c-surface-2);
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+
+  .os-sidebar-brand,
+  .os-sidebar-section {
+    flex-direction: row;
+    margin: 0;
+    padding: 0;
+    border-top: none;
+    gap: var(--space-1);
+  }
+
+  .os-sidebar-brand-label {
+    display: none;
+  }
+
+  .os-sidebar-section--push-end {
+    margin-left: auto;
+  }
+
+  .os-sidebar-button {
+    flex-direction: column;
+    gap: var(--space-0);
+    padding: var(--space-1);
+    font-size: var(--fs-xs);
+  }
 }
 
 /* Narrow screens (kiosk portrait, iPhone): one pane at a time. */

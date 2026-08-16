@@ -3,7 +3,7 @@ import { useProjectsStatus } from "../layout/useProjectsStatus";
 import { api, ApiError } from "../api/client";
 import { TopBar } from "./TopBar";
 import { HomeScreen } from "./HomeScreen";
-import { Dock } from "./Dock";
+import { Sidebar } from "./Sidebar";
 import { Spotlight, type SpotlightItem } from "./Spotlight";
 import { NotificationCenter } from "./NotificationCenter";
 import { ControlCenter } from "./ControlCenter";
@@ -134,24 +134,18 @@ export function OsShell() {
 
   return (
     <div className="os-shell">
-      <TopBar
-        title={title}
-        showBack={open !== null}
-        onBack={goHome}
+      <Sidebar
+        onHome={goHome}
+        onOpenApp={openStaticApp}
         onSearch={() => setSpotlightOpen(true)}
         onNotifications={() => setNotificationsOpen((v) => !v)}
         onControlCenter={() => setControlCenterOpen((v) => !v)}
         hasAlerts={hasAlerts}
       />
-      <main className="os-main">{content}</main>
-      {open === null && (
-        <Dock
-          onSearch={() => setSpotlightOpen(true)}
-          onNotifications={() => setNotificationsOpen((v) => !v)}
-          onControlCenter={() => setControlCenterOpen((v) => !v)}
-          hasAlerts={hasAlerts}
-        />
-      )}
+      <div className="os-shell-body">
+        <TopBar title={title} showBack={open !== null} onBack={goHome} />
+        <main className="os-main">{content}</main>
+      </div>
       {spotlightOpen && (
         <Spotlight items={spotlightItems} onSelect={selectSpotlightItem} onClose={() => setSpotlightOpen(false)} />
       )}
