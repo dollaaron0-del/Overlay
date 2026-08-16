@@ -93,6 +93,18 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       }
     };
 
+    // Shared by the Ctrl/Cmd+V handler below plus the right-click and
+    // middle-click paste handlers further down. Unlike writeClipboardText,
+    // there's no execCommand("paste") fallback left in modern browsers for
+    // JS-initiated reads, so this is a no-op over plain HTTP or in browsers
+    // (e.g. Firefox) that never grant clipboard-read to ordinary pages.
+    const pasteFromClipboard = () => {
+      navigator.clipboard
+        ?.readText()
+        .then((text) => term.paste(text))
+        .catch(() => {});
+    };
+
     // xterm.js otherwise always forwards Ctrl/Cmd+C as SIGINT (0x03) to the
     // pty, even with an active selection, and relies on the browser's native
     // paste event for Ctrl/Cmd+V, which doesn't reliably fire while focus sits
@@ -121,10 +133,7 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
         // (see onPaste below) carry it instead — that path needs no
         // permission at all.
         if (typeof navigator.clipboard?.readText !== "function") return true;
-        navigator.clipboard
-          .readText()
-          .then((text) => term.paste(text))
-          .catch(() => {});
+        pasteFromClipboard();
         event.preventDefault();
         return false;
       }
@@ -180,6 +189,35 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
     };
     container.addEventListener("paste", onPaste);
 
+    // The terminal surface xterm renders into is a grid of <span>s, not a
+    // real text input, so the browser never offers a working native "Paste"
+    // on right-click there and middle-click (the Linux primary-selection
+    // paste gesture) is silently swallowed the same way — both only do
+    // anything over an actually-focused editable element. Handle them
+    // ourselves via the Clipboard API instead. This still needs a secure
+    // context (HTTPS) to work, same constraint as pasteFromClipboard above;
+    // there is no ClipboardEvent to fall back to here since neither gesture
+    // is a real browser paste action on this element.
+    const onContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      const text = selectedText();
+      if (text) {
+        writeClipboardText(text);
+        term.clearSelection();
+        window.getSelection()?.removeAllRanges();
+      } else {
+        pasteFromClipboard();
+      }
+    };
+    container.addEventListener("contextmenu", onContextMenu);
+
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.button !== 1) return;
+      event.preventDefault();
+      pasteFromClipboard();
+    };
+    container.addEventListener("mousedown", onMouseDown);
+
     // The user-select:text override above (for native iOS selection) can stop
     // xterm's own mousedown->focus() chain from firing reliably on a simple
     // tap: WebKit sometimes treats a tap on selectable text as the start of a
@@ -229,6 +267,8 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       window.visualViewport?.removeEventListener("resize", safeFit);
       container.removeEventListener("copy", onCopy);
       container.removeEventListener("paste", onPaste);
+      container.removeEventListener("contextmenu", onContextMenu);
+      container.removeEventListener("mousedown", onMouseDown);
       container.removeEventListener("touchend", onTouchEnd);
       term.dispose();
       setTerminal(null);
