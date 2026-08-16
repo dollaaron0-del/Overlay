@@ -72,6 +72,14 @@ Dann in `.env`:
 - `COOKIE_SECURE=true`, sobald HTTPS via `tailscale cert` läuft
 - `CLAUDE_COMMAND=claude` (Standard) — nur für lokale Tests ohne echten
   `claude`-Login auf z.B. `bash` ändern
+- `CLAUDE_SHARED_HOME` setzen, **falls** Overlay als eigener Service-User
+  (z.B. `overlay`) läuft, `claude login` aber unter einem anderen Linux-User
+  (z.B. der eigene SSH-Login) ausgeführt wurde/wird. Ohne diese Angabe sucht
+  Overlay das Login unter dem `~/.claude` des Service-Users — dort liegt
+  nichts, und jede Projekt-Session verlangt erneut `/login`, obwohl anderswo
+  bereits eingeloggt ist. Wert: das `.claude`-Verzeichnis des Users mit dem
+  echten Login, z.B. `/home/aaron/.claude`. Leer lassen, wenn Overlay als
+  derselbe User läuft, der bei Claude eingeloggt ist.
 - `TERMINAL_SANDBOX=true` (Standard) belassen, sofern bubblewrap installiert
   ist (siehe Abschnitt 1). Nur auf `false` setzen, wenn bwrap auf diesem
   Server nicht installierbar ist — dann läuft die Terminalsession mit den
