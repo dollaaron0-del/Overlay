@@ -9,9 +9,7 @@ import { AddProjectForm } from "../layout/AddProjectForm";
 import { useHomescreenLayout } from "./homescreen-layout";
 import { useAppBadges } from "./useAppBadges";
 import { SystemStatsWidget } from "./widgets/SystemStatsWidget";
-import { SecurityWidget } from "./widgets/SecurityWidget";
 import { BackupWidget } from "./widgets/BackupWidget";
-import { OllamaWidget } from "./widgets/OllamaWidget";
 import { defaultProjectIcon } from "./project-icon";
 
 interface IconItem {
@@ -30,7 +28,15 @@ function isFolderId(id: string): boolean {
 
 // Static apps that are used rarely enough to visually recede behind
 // projects and everyday apps, rather than competing for attention.
-const SMALL_APP_IDS = new Set(["activity", "ideachat", "settings"]);
+const SMALL_APP_IDS = new Set(["activity", "settings"]);
+
+// Sicherheit and Cockpit have a permanent slot in the Sidebar, so they're
+// left out of the grid to avoid showing the same destination twice.
+const SIDEBAR_APP_IDS = new Set(["security", "cockpit"]);
+
+// Emmy is the centerpiece of the overlay — it gets the biggest tile on the
+// homescreen, bigger even than project tiles.
+const HERO_APP_IDS = new Set(["emmy"]);
 
 export function HomeScreen({
   projects,
@@ -58,7 +64,12 @@ export function HomeScreen({
       kind: "project" as const,
       homeSection: p.homeSection,
     })),
-    ...STATIC_APPS.map((a) => ({ id: `app:${a.id}`, title: a.title, icon: a.icon, kind: "app" as const })),
+    ...STATIC_APPS.filter((a) => !SIDEBAR_APP_IDS.has(a.id)).map((a) => ({
+      id: `app:${a.id}`,
+      title: a.title,
+      icon: a.icon,
+      kind: "app" as const,
+    })),
   ];
   const itemsById = new Map(items.map((item) => [item.id, item]));
 
@@ -168,6 +179,7 @@ export function HomeScreen({
         selected={selectedIds.has(id)}
         large={item.kind === "project"}
         small={item.kind === "app" && SMALL_APP_IDS.has(id.slice("app:".length))}
+        hero={item.kind === "app" && HERO_APP_IDS.has(id.slice("app:".length))}
         onToggleSelect={() => toggleSelect(id)}
         onClick={() => openItem(id)}
         onLongPress={() => setEditMode(true)}
@@ -184,9 +196,7 @@ export function HomeScreen({
         <h2 className="home-section-title">Widgets</h2>
         <div className="home-widget-grid">
           <SystemStatsWidget onOpen={() => onOpenApp("cockpit")} />
-          <SecurityWidget onOpen={() => onOpenApp("security")} />
           <BackupWidget onOpen={onOpenControlCenter} />
-          <OllamaWidget onOpen={() => onOpenApp("security")} />
         </div>
       </section>
 
