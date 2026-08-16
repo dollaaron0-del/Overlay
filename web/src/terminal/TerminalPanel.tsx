@@ -110,8 +110,19 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
         return false;
       }
       if (mod && event.key.toLowerCase() === "v") {
+        // navigator.clipboard.readText requires the page to hold the
+        // "clipboard-read" permission, which Firefox doesn't grant to
+        // ordinary pages at all and which a user can block in Chrome (unlike
+        // clipboard-write, there's no execCommand("paste") fallback left in
+        // modern browsers — it was removed for security). Preempting the key
+        // here would silently eat every Ctrl/Cmd+V forever in that case,
+        // repasting whatever was already on the line instead of the newly
+        // copied text. Bail out and let the browser's native paste event
+        // (see onPaste below) carry it instead — that path needs no
+        // permission at all.
+        if (typeof navigator.clipboard?.readText !== "function") return true;
         navigator.clipboard
-          ?.readText()
+          .readText()
           .then((text) => term.paste(text))
           .catch(() => {});
         event.preventDefault();
@@ -154,6 +165,20 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       event.clipboardData?.setData("text/plain", text);
     };
     container.addEventListener("copy", onCopy);
+
+    // Fallback for the Ctrl/Cmd+V case above where navigator.clipboard.readText
+    // isn't usable: a real paste ClipboardEvent carries clipboardData without
+    // needing any Clipboard API permission. Skip it whenever the keydown
+    // handler already served the paste via readText, so text isn't inserted
+    // twice.
+    const onPaste = (event: ClipboardEvent) => {
+      if (typeof navigator.clipboard?.readText === "function") return;
+      const text = event.clipboardData?.getData("text/plain");
+      if (!text) return;
+      event.preventDefault();
+      term.paste(text);
+    };
+    container.addEventListener("paste", onPaste);
 
     // The user-select:text override above (for native iOS selection) can stop
     // xterm's own mousedown->focus() chain from firing reliably on a simple
@@ -203,6 +228,7 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       resizeObserver.disconnect();
       window.visualViewport?.removeEventListener("resize", safeFit);
       container.removeEventListener("copy", onCopy);
+      container.removeEventListener("paste", onPaste);
       container.removeEventListener("touchend", onTouchEnd);
       term.dispose();
       setTerminal(null);
