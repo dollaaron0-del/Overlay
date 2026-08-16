@@ -43,6 +43,15 @@
   --c-text-2: #9aa4b8;
   --c-text-3: #6b7385;
   --c-danger: #ef6f6f;
+  --c-danger-bg: #4a1420;
+  --c-warning: #ffab5e;
+  --c-warning-bg: #4a2a14;
+  --c-caution: #ffd95e;
+  --c-caution-bg: #4a3f14;
+  --c-info: #5ecbff;
+  --c-info-bg: #143a4a;
+  --c-success: #5eff8f;
+  --c-success-bg: #143a1e;
 }
 
 :root[data-theme="light"] {
@@ -57,6 +66,15 @@
   --c-text-2: #565f70;
   --c-text-3: #7c8494;
   --c-danger: #c8323a;
+  --c-danger-bg: #fbe0e2;
+  --c-warning: #b35900;
+  --c-warning-bg: #fde9d0;
+  --c-caution: #8a6d00;
+  --c-caution-bg: #fbf0c7;
+  --c-info: #0969a2;
+  --c-info-bg: #d9f0fb;
+  --c-success: #1a7f37;
+  --c-success-bg: #d6f5df;
 }
 
 /* No stored/system preference yet: fall back to the visitor's OS setting
@@ -75,6 +93,15 @@
     --c-text-2: #565f70;
     --c-text-3: #7c8494;
     --c-danger: #c8323a;
+    --c-danger-bg: #fbe0e2;
+    --c-warning: #b35900;
+    --c-warning-bg: #fde9d0;
+    --c-caution: #8a6d00;
+    --c-caution-bg: #fbf0c7;
+    --c-info: #0969a2;
+    --c-info-bg: #d9f0fb;
+    --c-success: #1a7f37;
+    --c-success-bg: #d6f5df;
   }
 }
 
@@ -277,7 +304,7 @@ button.active {
 }
 
 .status-online {
-  background: #4caf50;
+  background: var(--c-success);
 }
 
 .status-stopped {
@@ -322,7 +349,7 @@ button.active {
 }
 
 .deploy-result-ok {
-  color: #7fd08a;
+  color: var(--c-success);
 }
 
 .deploy-result-error {
@@ -395,7 +422,7 @@ button.active {
 
 .overview-ollama-ok {
   margin: 0;
-  color: #5eff8f;
+  color: var(--c-success);
   font-size: var(--fs-sm);
 }
 
@@ -407,7 +434,7 @@ button.active {
 
 .overview-ollama-pending {
   margin: 0;
-  color: var(--c-text-muted, #9aa4b2);
+  color: var(--c-text-3);
   font-size: var(--fs-sm);
 }
 
@@ -450,11 +477,11 @@ button.active {
 }
 
 .connection-dot.connection-connected {
-  background: #4caf50;
+  background: var(--c-success);
 }
 
 .connection-dot.connection-connecting {
-  background: #ffab5e;
+  background: var(--c-warning);
 }
 
 .connection-dot.connection-reconnecting {
@@ -676,29 +703,29 @@ button.active {
 }
 
 .severity-badge.severity-critical {
-  background: #4a1420;
-  color: #ff6b81;
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
 }
 
 .severity-badge.severity-high {
-  background: #4a2a14;
-  color: #ffab5e;
+  background: var(--c-warning-bg);
+  color: var(--c-warning);
 }
 
 .severity-badge.severity-medium {
-  background: #4a3f14;
-  color: #ffd95e;
+  background: var(--c-caution-bg);
+  color: var(--c-caution);
 }
 
 .severity-badge.severity-low {
-  background: #143a4a;
-  color: #5ecbff;
+  background: var(--c-info-bg);
+  color: var(--c-info);
 }
 
 .severity-badge.severity-info,
 .severity-badge.severity-ok {
-  background: #143a1e;
-  color: #5eff8f;
+  background: var(--c-success-bg);
+  color: var(--c-success);
 }
 
 .llm-triage-card {
@@ -774,13 +801,13 @@ button.active {
 }
 
 .tool-status-badge.tool-status-findings {
-  background: #4a2a14;
-  color: #ffab5e;
+  background: var(--c-warning-bg);
+  color: var(--c-warning);
 }
 
 .tool-status-badge.tool-status-error {
-  background: #4a1420;
-  color: #ff6b81;
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
 }
 
 .tool-note {
@@ -879,7 +906,7 @@ button.active {
 }
 
 .activity-list li.activity-event-warn {
-  border-color: #7a3b3b;
+  border-color: var(--c-danger);
 }
 
 .activity-timestamp {
@@ -2099,11 +2126,11 @@ button.active {
 }
 
 .ideachat-ai-tier-ok .ideachat-ai-tier-dot {
-  background: #5eff8f;
+  background: var(--c-success);
 }
 
 .ideachat-ai-tier-warn .ideachat-ai-tier-dot {
-  background: #ffd95e;
+  background: var(--c-caution);
 }
 
 .ideachat-ai-tier-error .ideachat-ai-tier-dot {
@@ -2126,11 +2153,11 @@ button.active {
 }
 
 .ideachat-ai-tier-ok .ideachat-ai-tier-state {
-  color: #5eff8f;
+  color: var(--c-success);
 }
 
 .ideachat-ai-tier-warn .ideachat-ai-tier-state {
-  color: #ffd95e;
+  color: var(--c-caution);
 }
 
 .ideachat-ai-tier-error .ideachat-ai-tier-state {
@@ -2605,7 +2632,7 @@ button.active {
 }
 
 .emmy2-status-done {
-  background: #3fb950;
+  background: var(--c-success);
 }
 
 .emmy2-main {
