@@ -15,6 +15,7 @@ import {
   updateProjectIcon,
   updateProjectName,
 } from "./projects.registry.js";
+import { notifyProjectsChanged } from "../ws/status.ws.js";
 import { describeProcess, restartProcess, statusOf } from "../pm2/pm2.service.js";
 import { systemdStatus } from "../systemd/systemd.service.js";
 import { pm2RootStatus } from "../pm2root/pm2root.service.js";
@@ -98,6 +99,7 @@ projectsRouter.post("/", async (req, res) => {
         ? await addProject(parsed.data)
         : await addProject({ ...parsed.data, deployScript: parsed.data.deployScript?.trim() || undefined });
     await appendAuditEntry({ type: "project_added", detail: project.id });
+    notifyProjectsChanged();
     res.status(201).json(project);
   } catch (err) {
     if (err instanceof InvalidDirNameError) {
@@ -137,6 +139,7 @@ projectsRouter.post("/scaffold", async (req, res) => {
   }
   const project = await scaffoldProject(parsed.data.name);
   await appendAuditEntry({ type: "project_added", detail: `${project.id} (scaffolded)` });
+  notifyProjectsChanged();
   const session = getOrCreateSession(project);
   session.paste(parsed.data.initialPrompt);
   res.status(201).json(project);
