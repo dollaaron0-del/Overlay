@@ -2413,7 +2413,7 @@ button.active {
 
 .obsidian-note-body ul {
   margin: var(--space-2) 0;
-  padding-left: 1.4rem;
+  padding-left: var(--space-4);
 }
 
 .obsidian-embed-ref {
@@ -2451,7 +2451,7 @@ button.active {
 
 .obsidian-backlinks ul {
   margin: 0;
-  padding-left: 1.2rem;
+  padding-left: var(--space-3);
 }
 
 .obsidian-backlinks button {
@@ -2875,7 +2875,7 @@ button.active {
 .emmy2-markdown ul,
 .emmy2-markdown ol {
   margin: var(--space-2) 0;
-  padding-left: 1.4rem;
+  padding-left: var(--space-4);
 }
 
 .emmy2-markdown li {
