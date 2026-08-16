@@ -1,4 +1,4 @@
-import type { EmmyCategory } from "@overlay/shared";
+import type { EmmyCategory, EmmyChat } from "@overlay/shared";
 
 /**
  * Sorts a new task chat into one of the three ways Aaron works with Emmy:
@@ -241,4 +241,31 @@ export function classifyTask(text: string, now: Date = new Date()): EmmyClassifi
     return { category: "research", dueAt: due.toISOString() };
   }
   return { category: "instant" };
+}
+
+/**
+ * The schedule fields that go with a category, whether picked by Aaron in
+ * the UI or corrected by Emmy herself via /api/emmy/inbound. Explicit values
+ * always win; `undefined` falls back to the existing chat's value (or the
+ * category's default). Each category is defined by its schedule field, so
+ * switching into one fills the missing field and switching out clears both —
+ * a "sofort" task must not keep a stale deadline or interval lying around.
+ */
+export function defaultsForCategory(
+  category: EmmyCategory | undefined,
+  existing: EmmyChat | undefined,
+  dueAt: string | null | undefined,
+  intervalHours: number | null | undefined,
+): { dueAt?: string | null; intervalHours?: number | null } {
+  if (category === undefined) return { dueAt, intervalHours };
+  if (category === "research") {
+    return {
+      dueAt: dueAt ?? existing?.dueAt ?? new Date(Date.now() + DEFAULT_RESEARCH_WINDOW_HOURS * 3_600_000).toISOString(),
+      intervalHours: null,
+    };
+  }
+  if (category === "recurring") {
+    return { dueAt: null, intervalHours: intervalHours ?? existing?.intervalHours ?? DEFAULT_INTERVAL_HOURS };
+  }
+  return { dueAt: null, intervalHours: null };
 }

@@ -5,6 +5,11 @@ import type { AuditEntry, AuditEventType } from "@overlay/shared";
 const AUDIT_LOG_PATH = path.join(process.cwd(), "data", "audit.jsonl");
 const MAX_ENTRIES = 2000; // ample history for a personal dashboard without unbounded growth
 
+// Serializes appends so two concurrent calls (e.g. two routes firing an
+// audit entry within the same request burst) can't both read the file
+// before either writes, which would silently drop one entry.
+let writeQueue: Promise<unknown> = Promise.resolve();
+
 /**
  * Appends one entry and, in the same pass, re-reads + rewrites the file to
  * enforce MAX_ENTRIES. A personal homelab's audit volume (logins,
@@ -14,14 +19,17 @@ const MAX_ENTRIES = 2000; // ample history for a personal dashboard without unbo
  */
 export async function appendAuditEntry(entry: { type: AuditEventType; actor?: string; detail?: string }): Promise<void> {
   const full: AuditEntry = { timestamp: new Date().toISOString(), ...entry };
-  const existing = await listAuditEntriesOldestFirst();
-  existing.push(full);
-  const trimmed = existing.slice(-MAX_ENTRIES);
+  writeQueue = writeQueue.then(async () => {
+    const existing = await listAuditEntriesOldestFirst();
+    existing.push(full);
+    const trimmed = existing.slice(-MAX_ENTRIES);
 
-  await fs.mkdir(path.dirname(AUDIT_LOG_PATH), { recursive: true });
-  const tmpFile = `${AUDIT_LOG_PATH}.tmp`;
-  await fs.writeFile(tmpFile, trimmed.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
-  await fs.rename(tmpFile, AUDIT_LOG_PATH);
+    await fs.mkdir(path.dirname(AUDIT_LOG_PATH), { recursive: true });
+    const tmpFile = `${AUDIT_LOG_PATH}.tmp`;
+    await fs.writeFile(tmpFile, trimmed.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
+    await fs.rename(tmpFile, AUDIT_LOG_PATH);
+  });
+  await writeQueue;
 }
 
 async function listAuditEntriesOldestFirst(): Promise<AuditEntry[]> {

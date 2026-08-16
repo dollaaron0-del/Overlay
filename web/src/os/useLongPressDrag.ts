@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent } from "react";
+import { useEffect, useRef, type PointerEvent } from "react";
 
 const LONG_PRESS_MS = 500;
 
@@ -45,6 +45,11 @@ export function useLongPressDrag({
     moved.current = true;
     clearTimer();
   };
+
+  // If the icon this hook is attached to gets removed mid-press (e.g. edit
+  // mode reflows the grid), clear any pending timer so it can't fire
+  // onLongPress against a tile that's no longer there.
+  useEffect(() => clearTimer, []);
 
   return {
     onPointerDown: handlePointerDown,

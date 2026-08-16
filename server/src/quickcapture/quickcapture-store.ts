@@ -29,11 +29,21 @@ async function ensureLoaded(): Promise<QuickCaptureSettings> {
   return cache;
 }
 
-async function persist(settings: QuickCaptureSettings): Promise<void> {
-  await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
-  await fs.writeFile(TMP_FILE, JSON.stringify(settings, null, 2), "utf8");
-  await fs.rename(TMP_FILE, SETTINGS_FILE);
-  cache = settings;
+// Serializes reads-then-writes so two near-simultaneous updates (e.g. target
+// project + obsidian mode toggled from two devices) can't both read the same
+// starting state and have one silently overwrite the other's change.
+let writeQueue: Promise<unknown> = Promise.resolve();
+
+async function update(patch: Partial<QuickCaptureSettings>): Promise<void> {
+  writeQueue = writeQueue.then(async () => {
+    const current = await ensureLoaded();
+    const next = { ...current, ...patch };
+    await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
+    await fs.writeFile(TMP_FILE, JSON.stringify(next, null, 2), "utf8");
+    await fs.rename(TMP_FILE, SETTINGS_FILE);
+    cache = next;
+  });
+  await writeQueue;
 }
 
 /**
@@ -48,8 +58,7 @@ export async function getQuickCaptureTarget(): Promise<string | null> {
 }
 
 export async function setQuickCaptureTarget(projectId: string | null): Promise<void> {
-  const settings = await ensureLoaded();
-  await persist({ ...settings, targetProjectId: projectId });
+  await update({ targetProjectId: projectId });
 }
 
 export async function getQuickCaptureObsidianMode(): Promise<boolean> {
@@ -58,6 +67,5 @@ export async function getQuickCaptureObsidianMode(): Promise<boolean> {
 }
 
 export async function setQuickCaptureObsidianMode(obsidianMode: boolean): Promise<void> {
-  const settings = await ensureLoaded();
-  await persist({ ...settings, obsidianMode });
+  await update({ obsidianMode });
 }

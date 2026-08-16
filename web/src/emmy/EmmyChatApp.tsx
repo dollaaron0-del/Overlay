@@ -312,7 +312,11 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
           originalName: file.name,
         });
       }
-      setPending((prev) => [...prev, ...next].slice(0, 10));
+      setPending((prev) => {
+        const combined = [...prev, ...next];
+        if (combined.length > 10) setError("Maximal 10 Anhänge pro Nachricht — überzählige wurden nicht hinzugefügt.");
+        return combined.slice(0, 10);
+      });
     } catch {
       setError("Datei konnte nicht gelesen werden.");
     }
@@ -349,7 +353,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      void sendMessage();
+      if (!sending && (draft.trim() || pending.length > 0)) void sendMessage();
     }
   };
 

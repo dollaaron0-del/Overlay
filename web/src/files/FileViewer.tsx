@@ -11,12 +11,20 @@ export function FileViewer({ projectId, path }: { projectId: string; path: strin
       setError(null);
       return;
     }
+    let cancelled = false;
     setContent(null);
     setError(null);
     api
       .get<string>(`/api/projects/${projectId}/file?path=${encodeURIComponent(path)}`)
-      .then(setContent)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Fehler beim Laden"));
+      .then((data) => {
+        if (!cancelled) setContent(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof ApiError ? err.message : "Fehler beim Laden");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [projectId, path]);
 
   if (!path) return <div className="file-viewer empty-hint">Datei aus dem Baum auswählen</div>;

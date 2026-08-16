@@ -98,6 +98,18 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
         // ignore malformed frames
       }
     });
+    // The deploy itself runs server-side via the POST below and isn't tied
+    // to this socket — but if the live log connection drops mid-deploy, say
+    // so instead of leaving the log frozen with no explanation while the
+    // deploy silently keeps running.
+    ws.addEventListener("close", (event) => {
+      if (!event.wasClean) {
+        setDeployLines((prev) => [
+          ...prev,
+          { stream: "err", text: "[Live-Log-Verbindung verloren — Deploy läuft im Hintergrund weiter]" },
+        ]);
+      }
+    });
 
     try {
       const result = await api.post<DeployResult>(`/api/projects/${project.id}/deploy`);

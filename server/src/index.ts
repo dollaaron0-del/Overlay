@@ -57,6 +57,11 @@ server.listen(config.PORT, config.BIND_ADDRESS, () => {
 
 function shutdown(): void {
   server.close(() => process.exit(0));
+  // PTY, status and Emmy WebSocket connections are deliberately designed to
+  // stay open indefinitely (see pty.ws.ts), so server.close()'s callback
+  // never fires while any such tab is open — force-exit after a short grace
+  // period instead of hanging until the process manager sends SIGKILL.
+  setTimeout(() => process.exit(0), 3000);
 }
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);

@@ -19,8 +19,8 @@ import {
 } from "./emmy-store.js";
 import { publishEmmyMessage, publishEmmyChats } from "./emmy-bus.js";
 import { listActivities, markWorking, markIdle } from "./emmy-activity.js";
-import { classifyTask, DEFAULT_INTERVAL_HOURS, DEFAULT_RESEARCH_WINDOW_HOURS } from "./emmy-categorize.js";
-import type { EmmyCategory, EmmyChat, EmmyMessage, EmmyResearchPhase } from "@overlay/shared";
+import { classifyTask, defaultsForCategory } from "./emmy-categorize.js";
+import type { EmmyMessage, EmmyResearchPhase } from "@overlay/shared";
 import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
 import { saveEmmyAttachments, attachmentsDir } from "./emmy-attachments.js";
 import { resolveSafePath, UnsafePathError } from "../files/safe-path.js";
@@ -78,29 +78,6 @@ emmyRouter.post("/chats", async (req, res) => {
   await broadcastChats();
   res.status(201).json(chat);
 });
-
-/**
- * The schedule fields that go with an explicitly picked category. Explicit
- * values in the same request always win; `null` means "clear this field".
- */
-function defaultsForCategory(
-  category: EmmyCategory | undefined,
-  existing: EmmyChat | undefined,
-  dueAt: string | null | undefined,
-  intervalHours: number | null | undefined,
-): { dueAt?: string | null; intervalHours?: number | null } {
-  if (category === undefined) return { dueAt, intervalHours };
-  if (category === "research") {
-    return {
-      dueAt: dueAt ?? existing?.dueAt ?? new Date(Date.now() + DEFAULT_RESEARCH_WINDOW_HOURS * 3_600_000).toISOString(),
-      intervalHours: null,
-    };
-  }
-  if (category === "recurring") {
-    return { dueAt: null, intervalHours: intervalHours ?? existing?.intervalHours ?? DEFAULT_INTERVAL_HOURS };
-  }
-  return { dueAt: null, intervalHours: null };
-}
 
 const patchSchema = z.object({
   title: z.string().min(1).max(200).optional(),

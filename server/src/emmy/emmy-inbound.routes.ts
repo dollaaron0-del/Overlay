@@ -4,7 +4,7 @@ import { getChat, updateChat, appendMessage, listChats } from "./emmy-store.js";
 import { publishEmmyMessage, publishEmmyChats } from "./emmy-bus.js";
 import { markWorking, markIdle } from "./emmy-activity.js";
 import { indexMessageForMemory } from "./emmy-memory.js";
-import { minResearchDurationMs, DEFAULT_RESEARCH_WINDOW_HOURS } from "./emmy-categorize.js";
+import { minResearchDurationMs, DEFAULT_RESEARCH_WINDOW_HOURS, defaultsForCategory } from "./emmy-categorize.js";
 import { sessionKeyFor } from "./emmy-turn-message.js";
 import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
 
@@ -69,7 +69,11 @@ emmyInboundRouter.post("/", async (req, res) => {
   // A manual category is Aaron's call and outranks hers.
   let effectiveCategory = chat.category;
   if (category && chat.kind === "task" && chat.categorySource !== "manual") {
-    await updateChat(chatId, { category, categorySource: "auto", dueAt, intervalHours });
+    await updateChat(chatId, {
+      category,
+      categorySource: "auto",
+      ...defaultsForCategory(category, chat, dueAt, intervalHours),
+    });
     effectiveCategory = category;
   }
 
