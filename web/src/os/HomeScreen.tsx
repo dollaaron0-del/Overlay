@@ -20,6 +20,8 @@ interface IconItem {
   icon: string;
   statusDot?: ProjectSummary["status"];
   kind: "project" | "app";
+  /** Only set for projects — which home-screen section this tile belongs in. */
+  homeSection?: ProjectSummary["homeSection"];
 }
 
 function isFolderId(id: string): boolean {
@@ -34,13 +36,14 @@ export function HomeScreen({
   projects,
   onOpenProject,
   onOpenApp,
+  onOpenControlCenter,
 }: {
   projects: ProjectSummary[];
   onOpenProject: (id: string) => void;
   onOpenApp: (id: string) => void;
+  onOpenControlCenter: () => void;
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
-  const [showStatus, setShowStatus] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -53,6 +56,7 @@ export function HomeScreen({
       icon: p.icon || defaultProjectIcon(p.id),
       statusDot: p.status,
       kind: "project" as const,
+      homeSection: p.homeSection,
     })),
     ...STATIC_APPS.map((a) => ({ id: `app:${a.id}`, title: a.title, icon: a.icon, kind: "app" as const })),
   ];
@@ -62,6 +66,20 @@ export function HomeScreen({
     useHomescreenLayout(items.map((i) => i.id));
   const foldersById = new Map(folders.map((f) => [f.id, f]));
   const badges = useAppBadges();
+
+  // A folder counts as "Dashboards" only if every one of its members is a
+  // dashboard-kind project — a folder mixing dashboards with terminal
+  // projects or apps falls back to Projekt-Terminals rather than silently
+  // hiding non-dashboard members from view.
+  const isDashboardId = (id: string): boolean => {
+    if (isFolderId(id)) {
+      const folder = foldersById.get(id);
+      return !!folder && folder.memberIds.length > 0 && folder.memberIds.every(isDashboardId);
+    }
+    return itemsById.get(id)?.homeSection === "dashboard";
+  };
+  const dashboardIds = visibleIds.filter(isDashboardId);
+  const terminalIds = visibleIds.filter((id) => !isDashboardId(id));
 
   useEffect(() => {
     if (!draggingId) return;
@@ -118,35 +136,59 @@ export function HomeScreen({
 
   const openFolder = foldersById.get(openFolderId ?? "");
 
+  const renderIcon = (id: string) => {
+    if (isFolderId(id)) {
+      const folder = foldersById.get(id);
+      if (!folder) return null;
+      return (
+        <FolderIcon
+          key={id}
+          id={id}
+          name={folder.name}
+          previewIcons={folder.memberIds.map((m) => itemsById.get(m)?.icon ?? "❓")}
+          editMode={editMode}
+          onOpen={() => setOpenFolderId(id)}
+          onHide={() => hide(id)}
+          onLongPress={() => setEditMode(true)}
+          onDragStart={setDraggingId}
+        />
+      );
+    }
+    const item = itemsById.get(id);
+    if (!item) return null;
+    return (
+      <AppIcon
+        key={id}
+        id={id}
+        icon={item.icon}
+        label={item.title}
+        statusDot={item.statusDot}
+        badge={badges[id]}
+        editMode={editMode}
+        selected={selectedIds.has(id)}
+        large={item.kind === "project"}
+        small={item.kind === "app" && SMALL_APP_IDS.has(id.slice("app:".length))}
+        onToggleSelect={() => toggleSelect(id)}
+        onClick={() => openItem(id)}
+        onLongPress={() => setEditMode(true)}
+        onHide={() => hide(id)}
+        onDelete={item.kind === "project" ? () => deleteProject(id.slice("project:".length), item.title) : undefined}
+        onDragStart={setDraggingId}
+      />
+    );
+  };
+
   return (
     <div className="home-screen">
-      {!editMode && (
-        <button className="home-status-toggle" onClick={() => setShowStatus(true)}>
-          <span className="home-status-toggle-icon">📊</span> Status
-        </button>
-      )}
-
-      {showStatus && (
-        <div className="home-modal-backdrop" onClick={() => setShowStatus(false)}>
-          <div className="home-status-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="notification-header">
-              <h3>Status</h3>
-              <button className="close-button" onClick={() => setShowStatus(false)}>
-                ✕
-              </button>
-            </div>
-            <SystemStatsWidget />
-            <SecurityWidget
-              onOpen={() => {
-                setShowStatus(false);
-                onOpenApp("security");
-              }}
-            />
-            <BackupWidget />
-            <OllamaWidget />
-          </div>
+      <section className="home-section">
+        <h2 className="home-section-title">Widgets</h2>
+        <div className="home-widget-grid">
+          <SystemStatsWidget onOpen={() => onOpenApp("cockpit")} />
+          <SecurityWidget onOpen={() => onOpenApp("security")} />
+          <BackupWidget onOpen={onOpenControlCenter} />
+          <OllamaWidget onOpen={() => onOpenApp("security")} />
         </div>
-      )}
+      </section>
 
       <div className="home-app-grid-header">
         {editMode ? (
@@ -165,60 +207,30 @@ export function HomeScreen({
         )}
       </div>
 
-      <div className="home-app-grid">
-        {visibleIds.map((id) => {
-          if (isFolderId(id)) {
-            const folder = foldersById.get(id);
-            if (!folder) return null;
-            return (
-              <FolderIcon
-                key={id}
-                id={id}
-                name={folder.name}
-                previewIcons={folder.memberIds.map((m) => itemsById.get(m)?.icon ?? "❓")}
-                editMode={editMode}
-                onOpen={() => setOpenFolderId(id)}
-                onHide={() => hide(id)}
-                onLongPress={() => setEditMode(true)}
-                onDragStart={setDraggingId}
-              />
-            );
-          }
-          const item = itemsById.get(id);
-          if (!item) return null;
-          return (
+      {(editMode || dashboardIds.length > 0) && (
+        <section className="home-section">
+          <h2 className="home-section-title">Dashboards</h2>
+          <div className="home-app-grid">{dashboardIds.map(renderIcon)}</div>
+        </section>
+      )}
+
+      <section className="home-section">
+        <h2 className="home-section-title">Projekt-Terminals</h2>
+        <div className="home-app-grid">
+          {terminalIds.map(renderIcon)}
+          {!editMode && (
             <AppIcon
-              key={id}
-              id={id}
-              icon={item.icon}
-              label={item.title}
-              statusDot={item.statusDot}
-              badge={badges[id]}
-              editMode={editMode}
-              selected={selectedIds.has(id)}
-              large={item.kind === "project"}
-              small={item.kind === "app" && SMALL_APP_IDS.has(id.slice("app:".length))}
-              onToggleSelect={() => toggleSelect(id)}
-              onClick={() => openItem(id)}
-              onLongPress={() => setEditMode(true)}
-              onHide={() => hide(id)}
-              onDelete={item.kind === "project" ? () => deleteProject(id.slice("project:".length), item.title) : undefined}
-              onDragStart={setDraggingId}
+              id="__add__"
+              icon="➕"
+              label="Hinzufügen"
+              editMode={false}
+              onClick={() => setShowAddForm(true)}
+              onLongPress={() => undefined}
+              onDragStart={() => undefined}
             />
-          );
-        })}
-        {!editMode && (
-          <AppIcon
-            id="__add__"
-            icon="➕"
-            label="Hinzufügen"
-            editMode={false}
-            onClick={() => setShowAddForm(true)}
-            onLongPress={() => undefined}
-            onDragStart={() => undefined}
-          />
-        )}
-      </div>
+          )}
+        </div>
+      </section>
 
       {editMode && hiddenIds.length > 0 && (
         <div className="home-hidden-section">

@@ -9,7 +9,7 @@ interface OllamaStatus {
   error?: string;
 }
 
-export function OllamaWidget() {
+export function OllamaWidget({ onOpen }: { onOpen: () => void }) {
   const [ollama, setOllama] = useState<OllamaStatus | null>(null);
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export function OllamaWidget() {
   }, []);
 
   return (
-    <div className="os-widget">
+    <div className="os-widget" onClick={onOpen} role="button">
       <h3>Ollama (LLM-Triage)</h3>
       {!ollama && <p className="empty-hint">Lädt…</p>}
       {ollama && !ollama.configured && (

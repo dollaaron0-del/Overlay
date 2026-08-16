@@ -69,6 +69,14 @@ export function resolveProjectDir(project: Pick<Project, "dirName">): string {
   return path.join(config.APPS_ROOT, project.dirName);
 }
 
+// Undefined homeSection = automatic: external (link-out) projects default to
+// the Dashboards section, everything else defaults to Projekt-Terminals —
+// the user can flip either way via PATCH /:id.
+export function resolveHomeSection(project: Pick<Project, "kind" | "homeSection">): "dashboard" | "terminal" {
+  if (project.homeSection) return project.homeSection;
+  return project.kind === "systemd" || project.kind === "pm2-root" ? "dashboard" : "terminal";
+}
+
 export async function listProjects(): Promise<Project[]> {
   return ensureLoaded();
 }
@@ -231,6 +239,22 @@ export async function updateProjectName(id: string, name: string | null): Promis
 
   const next = [...projects];
   next[index] = { ...next[index], name: name ?? undefined };
+  await writeToDisk(next);
+  cache = next;
+  return next[index];
+}
+
+/** Sets (or clears, with null, back to automatic) a project's home-screen section override. */
+export async function updateProjectHomeSection(
+  id: string,
+  homeSection: "dashboard" | "terminal" | null,
+): Promise<Project | undefined> {
+  const projects = await ensureLoaded();
+  const index = projects.findIndex((p) => p.id === id);
+  if (index === -1) return undefined;
+
+  const next = [...projects];
+  next[index] = { ...next[index], homeSection: homeSection ?? undefined };
   await writeToDisk(next);
   cache = next;
   return next[index];

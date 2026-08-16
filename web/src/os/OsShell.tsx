@@ -106,7 +106,14 @@ export function OsShell() {
   let title = "Overlay";
   let content;
   if (open === null) {
-    content = <HomeScreen projects={projects} onOpenProject={openProject} onOpenApp={openStaticApp} />;
+    content = (
+      <HomeScreen
+        projects={projects}
+        onOpenProject={openProject}
+        onOpenApp={openStaticApp}
+        onOpenControlCenter={() => setControlCenterOpen(true)}
+      />
+    );
   } else if (open.kind === "project") {
     const project = projects.find((p) => p.id === open.projectId);
     if (!project) {

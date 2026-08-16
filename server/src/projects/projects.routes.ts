@@ -10,8 +10,10 @@ import {
   listAvailableDirs,
   listProjects,
   removeProject,
+  resolveHomeSection,
   resolveProjectDir,
   scaffoldProject,
+  updateProjectHomeSection,
   updateProjectIcon,
   updateProjectName,
 } from "./projects.registry.js";
@@ -39,14 +41,15 @@ projectsRouter.get("/", async (_req, res) => {
   const projects = await listProjects();
   const withStatus = await Promise.all(
     projects.map(async (project) => {
+      const homeSection = resolveHomeSection(project);
       if (project.kind === "systemd") {
-        return { ...project, status: await systemdStatus(project.systemdUnit!) };
+        return { ...project, homeSection, status: await systemdStatus(project.systemdUnit!) };
       }
       if (project.kind === "pm2-root") {
-        return { ...project, status: await pm2RootStatus(project.pm2RootName!) };
+        return { ...project, homeSection, status: await pm2RootStatus(project.pm2RootName!) };
       }
       const desc = await describeProcess(project.pm2Name!).catch(() => undefined);
-      return { ...project, status: statusOf(desc) };
+      return { ...project, homeSection, status: statusOf(desc) };
     }),
   );
   res.json(withStatus);
@@ -162,6 +165,7 @@ const updateProjectSchema = z.object({
   // pasting a paragraph in here.
   icon: z.string().max(16).nullable().optional(),
   name: z.string().trim().min(1).max(100).nullable().optional(),
+  homeSection: z.enum(["dashboard", "terminal"]).nullable().optional(),
 });
 
 projectsRouter.patch("/:id", async (req, res) => {
@@ -170,7 +174,7 @@ projectsRouter.patch("/:id", async (req, res) => {
     res.status(400).json({ error: "invalid_request", details: parsed.error.issues });
     return;
   }
-  if (parsed.data.icon === undefined && parsed.data.name === undefined) {
+  if (parsed.data.icon === undefined && parsed.data.name === undefined && parsed.data.homeSection === undefined) {
     res.status(400).json({ error: "invalid_request", message: "Nothing to update" });
     return;
   }
@@ -182,11 +186,14 @@ projectsRouter.patch("/:id", async (req, res) => {
   }
   if (parsed.data.icon !== undefined) updated = await updateProjectIcon(req.params.id, parsed.data.icon);
   if (updated && parsed.data.name !== undefined) updated = await updateProjectName(req.params.id, parsed.data.name);
+  if (updated && parsed.data.homeSection !== undefined) {
+    updated = await updateProjectHomeSection(req.params.id, parsed.data.homeSection);
+  }
   if (!updated) {
     res.status(404).json({ error: "not_found" });
     return;
   }
-  res.json(updated);
+  res.json({ ...updated, homeSection: resolveHomeSection(updated) });
 });
 
 const terminalInputSchema = z.object({
