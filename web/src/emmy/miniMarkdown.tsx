@@ -1,10 +1,13 @@
 import type { ReactNode } from "react";
+import { EmmyChart, parseEmmyChartSpec } from "./EmmyChart.js";
+import { EmmyMermaid } from "./EmmyMermaid.js";
 
 // Minimal Markdown -> React renderer for Emmy's replies: headings, bold,
 // italic, inline code, code blocks, links, lists, blockquotes, tables, rules.
 // No new dependency — same approach as web/src/obsidian/miniMarkdown.tsx, but
 // without wikilinks (irrelevant here) and with code blocks/tables added,
-// since research reports commonly use both.
+// since research reports commonly use both. ```mermaid and ```chart fences
+// get a diagram/chart instead of a plain code block (see EmmyMermaid/EmmyChart).
 
 const SAFE_LINK_SCHEME = /^(https?:|mailto:)/i;
 
@@ -113,10 +116,11 @@ export function renderMiniMarkdown(markdown: string): ReactNode {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
-    const fenceMatch = /^```/.exec(line.trim());
+    const fenceMatch = /^```(\w*)/.exec(line.trim());
     if (fenceMatch) {
       flushList();
       flushQuote();
+      const lang = fenceMatch[1].toLowerCase();
       const codeLines: string[] = [];
       i++;
       while (i < lines.length && !/^```/.test(lines[i].trim())) {
@@ -124,11 +128,19 @@ export function renderMiniMarkdown(markdown: string): ReactNode {
         i++;
       }
       i++; // skip closing fence
-      blocks.push(
-        <pre key={`code-${blockKey++}`}>
-          <code>{codeLines.join("\n")}</code>
-        </pre>,
-      );
+      const body = codeLines.join("\n");
+      const chartSpec = lang === "chart" ? parseEmmyChartSpec(body) : null;
+      if (lang === "mermaid") {
+        blocks.push(<EmmyMermaid key={`mermaid-${blockKey++}`} code={body} />);
+      } else if (chartSpec) {
+        blocks.push(<EmmyChart key={`chart-${blockKey++}`} spec={chartSpec} />);
+      } else {
+        blocks.push(
+          <pre key={`code-${blockKey++}`}>
+            <code>{body}</code>
+          </pre>,
+        );
+      }
       continue;
     }
 
