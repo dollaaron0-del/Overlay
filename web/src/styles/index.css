@@ -145,7 +145,7 @@ body {
 }
 
 .login-card button {
-  margin-top: 0.5rem;
+  margin-top: var(--space-2);
 }
 
 .login-error {
@@ -301,7 +301,7 @@ button.active {
   background: var(--c-surface-2);
   border-radius: var(--radius-md);
   padding: var(--space-0) var(--space-2);
-  margin-left: 0.4rem;
+  margin-left: var(--space-2);
 }
 
 .project-resource-usage {
@@ -313,7 +313,7 @@ button.active {
 }
 
 .project-deploy-result {
-  margin-top: 0.4rem;
+  margin-top: var(--space-2);
   font-size: var(--fs-xs);
 }
 
@@ -330,7 +330,7 @@ button.active {
 }
 
 .project-deploy-result pre {
-  margin-top: 0.3rem;
+  margin-top: var(--space-1);
   max-height: 160px;
   overflow: auto;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -345,7 +345,7 @@ button.active {
 }
 
 .project-deploy-live {
-  margin-top: 0.4rem;
+  margin-top: var(--space-2);
   font-size: var(--fs-xs);
 }
 
@@ -373,7 +373,7 @@ button.active {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-2);
 }
 
 .overview-system-stats {
@@ -569,7 +569,7 @@ button.active {
 }
 
 .tree-node-children {
-  padding-left: 1rem;
+  padding-left: var(--space-3);
 }
 
 .file-viewer {
@@ -640,7 +640,7 @@ button.active {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
-  margin-top: 0.3rem;
+  margin-top: var(--space-1);
 }
 
 .security-detail {
@@ -663,7 +663,7 @@ button.active {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-bottom: 1.5rem;
+  margin-bottom: var(--space-4);
 }
 
 .severity-badge {
@@ -702,18 +702,18 @@ button.active {
 }
 
 .llm-triage-card {
-  background: #17203a;
-  border: 1px dashed #3a4a7a;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
   padding: var(--space-3);
-  margin-bottom: 1.5rem;
+  margin-bottom: var(--space-4);
 }
 
 .llm-triage-header {
   display: flex;
   flex-direction: column;
   gap: var(--space-0);
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-2);
   font-weight: 600;
 }
 
@@ -758,7 +758,7 @@ button.active {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.4rem;
+  margin-bottom: var(--space-2);
 }
 
 .tool-name {
@@ -786,7 +786,7 @@ button.active {
 .tool-note {
   font-size: var(--fs-xs);
   color: var(--c-text-2);
-  margin-bottom: 0.4rem;
+  margin-bottom: var(--space-2);
 }
 
 .finding-list {
@@ -811,7 +811,7 @@ button.active {
 }
 
 .tool-raw {
-  margin-top: 0.6rem;
+  margin-top: var(--space-2);
   font-size: var(--fs-xs);
 }
 
@@ -821,7 +821,7 @@ button.active {
 }
 
 .tool-raw pre {
-  margin-top: 0.4rem;
+  margin-top: var(--space-2);
   max-height: 240px;
   overflow: auto;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
@@ -841,7 +841,7 @@ button.active {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: 0.75rem;
+  margin-bottom: var(--space-3);
 }
 
 .activity-log-header h2 {
@@ -1288,7 +1288,7 @@ button.active {
 
 .home-hidden-section {
   border-top: 1px solid var(--c-surface-2);
-  padding-top: 1rem;
+  padding-top: var(--space-3);
 }
 
 .home-hidden-section h3 {
@@ -1452,7 +1452,7 @@ button.active {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.4rem;
+  margin-bottom: var(--space-2);
 }
 
 .notification-header h3 {
@@ -1656,7 +1656,7 @@ button.active {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-bottom: 0.75rem;
+  margin-bottom: var(--space-3);
   font-size: var(--fs-sm);
 }
 
@@ -1675,7 +1675,7 @@ button.active {
 }
 
 .settings-section {
-  margin-top: 1.5rem;
+  margin-top: var(--space-4);
 }
 
 .settings-section h3 {
@@ -1737,11 +1737,11 @@ button.active {
   gap: var(--space-2);
   font-size: var(--fs-sm);
   color: var(--c-text-dim);
-  margin-top: 0.5rem;
+  margin-top: var(--space-2);
 }
 
 .quick-capture-obsidian-toggle input {
-  margin-top: 0.2rem;
+  margin-top: var(--space-1);
 }
 
 .quick-capture-obsidian-hint {
@@ -1966,7 +1966,7 @@ button.active {
   display: block;
   font-size: var(--fs-xs);
   opacity: 0.65;
-  margin-bottom: 0.3rem;
+  margin-bottom: var(--space-1);
 }
 
 .ideachat-message-user {
@@ -2039,7 +2039,7 @@ button.active {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: 0.5rem;
+  margin-top: var(--space-2);
 }
 
 .ideachat-attachment-image img {
@@ -2093,7 +2093,7 @@ button.active {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  margin-top: 0.35rem;
+  margin-top: var(--space-1);
   flex-shrink: 0;
   background: var(--c-text-3);
 }
@@ -2208,7 +2208,7 @@ button.active {
 
 .emmy-bubble-time {
   display: block;
-  margin-top: 0.3rem;
+  margin-top: var(--space-1);
   font-size: var(--fs-xs);
   opacity: 0.65;
 }
@@ -2308,9 +2308,9 @@ button.active {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
-  padding-bottom: 0.5rem;
+  padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--c-surface-2);
-  margin-bottom: 0.25rem;
+  margin-bottom: var(--space-1);
 }
 
 .obsidian-tag-filter button {
@@ -2403,8 +2403,8 @@ button.active {
 }
 
 .obsidian-backlinks {
-  margin-top: 1.5rem;
-  padding-top: 0.75rem;
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--c-surface-2);
 }
 
@@ -2461,7 +2461,7 @@ button.active {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-3);
   padding: var(--space-3);
   background: var(--c-surface);
   border: 1px solid var(--c-border);
@@ -2498,7 +2498,7 @@ button.active {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-bottom: 0.4rem;
+  margin-bottom: var(--space-2);
 }
 
 .emmy2-sidebar-head h2 {
@@ -2544,7 +2544,7 @@ button.active {
 }
 
 .emmy2-group {
-  margin-top: 0.5rem;
+  margin-top: var(--space-2);
 }
 
 .emmy2-group-head {
@@ -2621,9 +2621,9 @@ button.active {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding-bottom: 0.6rem;
+  padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--c-border);
-  margin-bottom: 0.6rem;
+  margin-bottom: var(--space-2);
 }
 
 .emmy2-conv-title {
@@ -2716,7 +2716,7 @@ button.active {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  margin-top: 0.3rem;
+  margin-top: var(--space-1);
   /* Selecting a message to copy it (e.g. to paste into a terminal) triple-
      clicks or drags across the whole bubble, which otherwise scoops up this
      footer too — pasting ends up with the real text and a trailing
@@ -2765,9 +2765,10 @@ button.active {
 .emmy2-report-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--space-2);
-  margin-bottom: 0.4rem;
+  margin-bottom: var(--space-2);
   /* Same reasoning as .emmy2-bubble-time: this badge + button sit in the same
      bubble as the report text, so a selection spanning the whole message
      would otherwise pull "📄 Ausführlicher Bericht Als Dokument öffnen" into
@@ -2784,9 +2785,26 @@ button.active {
   color: var(--c-text-2);
 }
 
+.emmy2-report-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 .emmy2-report-actions button {
   font-size: var(--fs-xs);
   padding: var(--space-1) var(--space-2);
+}
+
+.emmy2-implement-button {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.emmy2-implement-button:hover {
+  filter: brightness(1.1);
 }
 
 /* Long reports show a capped, fading preview inline — the full text is one
@@ -3008,7 +3026,7 @@ button.active {
 
 .emmy2-att-doc {
   display: inline-block;
-  margin-top: 0.2rem;
+  margin-top: var(--space-1);
   color: inherit;
   text-decoration: underline;
 }
@@ -3050,7 +3068,7 @@ button.active {
   display: flex;
   gap: var(--space-2);
   align-items: flex-end;
-  padding-top: 0.5rem;
+  padding-top: var(--space-2);
 }
 
 .emmy2-attach {
@@ -3232,7 +3250,7 @@ button.active {
   display: flex;
   gap: var(--space-2);
   align-items: center;
-  padding-bottom: 0.6rem;
+  padding-bottom: var(--space-2);
   font-size: var(--fs-sm);
   color: var(--c-text-2);
 }

@@ -34,6 +34,15 @@ function downloadAsMarkdown(text: string, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Wraps a finished research report in an instruction so the project's agent
+ * implements it instead of treating it as a plain chat message — used for the
+ * "In Projekt umsetzen" action on report/final-document bubbles.
+ */
+function buildImplementationPrompt(reportText: string, chatTitle: string): string {
+  return `Setze das folgende Recherche-Ergebnis aus Emmys Chat „${chatTitle}“ in diesem Projekt um. Lies es aufmerksam durch, leite die relevanten Schritte ab und implementiere sie direkt im Code dieses Projekts.\n\n---\n\n${reportText}`;
+}
+
 const STATUS_LABEL: Record<EmmyTaskStatus, string> = {
   open: "Offen",
   in_progress: "In Arbeit",
@@ -164,7 +173,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
   const [openArchiveEntry, setOpenArchiveEntry] = useState<EmmyArchiveEntry | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [openDocument, setOpenDocument] = useState<{ message: EmmyMessage; chatTitle: string } | null>(null);
-  const [sendToProject, setSendToProject] = useState<EmmyMessage | null>(null);
+  const [projectPickerRequest, setProjectPickerRequest] = useState<{ text: string; heading: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedIdRef = useRef<string | null>(null);
@@ -498,7 +507,16 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
             onOpenDocument={(message) =>
               openArchiveEntry && setOpenDocument({ message, chatTitle: openArchiveEntry.chat.title })
             }
-            onSendToProject={setSendToProject}
+            onSendToProject={(message) =>
+              setProjectPickerRequest({ text: message.text, heading: "An welches Projekt-Terminal?" })
+            }
+            onImplementInProject={(message) =>
+              openArchiveEntry &&
+              setProjectPickerRequest({
+                text: buildImplementationPrompt(message.text, openArchiveEntry.chat.title),
+                heading: "Recherche-Ergebnis umsetzen in…",
+              })
+            }
             error={error}
           />
         ) : !selectedChat ? (
@@ -627,7 +645,15 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                   key={m.id}
                   message={m}
                   onOpenDocument={() => setOpenDocument({ message: m, chatTitle: selectedChat.title })}
-                  onSendToProject={() => setSendToProject(m)}
+                  onSendToProject={() =>
+                    setProjectPickerRequest({ text: m.text, heading: "An welches Projekt-Terminal?" })
+                  }
+                  onImplementInProject={() =>
+                    setProjectPickerRequest({
+                      text: buildImplementationPrompt(m.text, selectedChat.title),
+                      heading: "Recherche-Ergebnis umsetzen in…",
+                    })
+                  }
                 />
               ))}
               {activeActivity && <ActivityBubble activity={activeActivity} now={now} />}
@@ -684,12 +710,13 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
           onClose={() => setOpenDocument(null)}
         />
       )}
-      {sendToProject && (
+      {projectPickerRequest && (
         <ProjectPickerModal
-          message={sendToProject}
-          onClose={() => setSendToProject(null)}
+          text={projectPickerRequest.text}
+          heading={projectPickerRequest.heading}
+          onClose={() => setProjectPickerRequest(null)}
           onSent={(projectId) => {
-            setSendToProject(null);
+            setProjectPickerRequest(null);
             onOpenProject?.(projectId);
           }}
         />
@@ -784,6 +811,7 @@ function ArchiveView({
   onPurge,
   onOpenDocument,
   onSendToProject,
+  onImplementInProject,
   error,
 }: {
   entries: EmmyArchiveSummary[];
@@ -793,6 +821,7 @@ function ArchiveView({
   onPurge: (entry: EmmyArchiveSummary) => void;
   onOpenDocument: (message: EmmyMessage) => void;
   onSendToProject: (message: EmmyMessage) => void;
+  onImplementInProject: (message: EmmyMessage) => void;
   error: string | null;
 }) {
   return (
@@ -816,6 +845,7 @@ function ArchiveView({
               message={m}
               onOpenDocument={() => onOpenDocument(m)}
               onSendToProject={() => onSendToProject(m)}
+              onImplementInProject={() => onImplementInProject(m)}
             />
           ))}
         </div>
@@ -848,10 +878,12 @@ function MessageBubble({
   message,
   onOpenDocument,
   onSendToProject,
+  onImplementInProject,
 }: {
   message: EmmyMessage;
   onOpenDocument: () => void;
   onSendToProject: () => void;
+  onImplementInProject: () => void;
 }) {
   const isFinalDocument = message.role === "emmy" && message.isFinalDocument === true;
   const isLongReport = message.role === "emmy" && (isFinalDocument || message.text.length > LONG_REPORT_CHARS);
@@ -860,7 +892,12 @@ function MessageBubble({
       {isLongReport && (
         <div className="emmy2-report-actions">
           <span className="emmy2-report-badge">{isFinalDocument ? "📘 Abschlussdokument" : "📄 Ausführlicher Bericht"}</span>
-          <button onClick={onOpenDocument}>Als Dokument öffnen</button>
+          <span className="emmy2-report-buttons">
+            <button onClick={onOpenDocument}>Als Dokument öffnen</button>
+            <button className="emmy2-implement-button" onClick={onImplementInProject} title="Recherche-Ergebnis direkt in einem Projekt umsetzen">
+              🚀 In Projekt umsetzen
+            </button>
+          </span>
         </div>
       )}
       {message.text &&
@@ -893,13 +930,15 @@ function MessageBubble({
   );
 }
 
-/** Lets the user pick a project to push one Emmy message's text into as a prompt in that project's terminal. */
+/** Lets the user pick a project to push some text into as a prompt in that project's terminal — either a raw forwarded message or a wrapped "implement this research" instruction. */
 function ProjectPickerModal({
-  message,
+  text,
+  heading,
   onClose,
   onSent,
 }: {
-  message: EmmyMessage;
+  text: string;
+  heading: string;
   onClose: () => void;
   onSent: (projectId: string) => void;
 }) {
@@ -921,7 +960,7 @@ function ProjectPickerModal({
     setSendingId(projectId);
     setError(null);
     try {
-      await api.post(`/api/projects/${projectId}/terminal-input`, { text: message.text });
+      await api.post(`/api/projects/${projectId}/terminal-input`, { text });
       onSent(projectId);
     } catch {
       setError("Senden ans Terminal fehlgeschlagen.");
@@ -937,7 +976,7 @@ function ProjectPickerModal({
     try {
       const project = await api.post<{ id: string }>("/api/projects/scaffold", {
         name,
-        initialPrompt: message.text,
+        initialPrompt: text,
       });
       onSent(project.id);
     } catch {
@@ -950,7 +989,7 @@ function ProjectPickerModal({
     <div className="home-modal-backdrop" onClick={onClose}>
       <div className="emmy2-project-picker" onClick={(e) => e.stopPropagation()}>
         <header className="emmy2-doc-head">
-          <h3>An welches Projekt-Terminal?</h3>
+          <h3>{heading}</h3>
           <button onClick={onClose} title="Schließen">
             ✕
           </button>
