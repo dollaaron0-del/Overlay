@@ -75,23 +75,30 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
   );
 }
 
+const activeSockets = new Set<WebSocket>();
+
+// Lets project-mutation routes (e.g. POST /api/projects/scaffold) push an
+// updated project list immediately instead of every connected client having
+// to wait out the rest of its current 3s poll interval — otherwise a client
+// that navigates straight to a just-created project right after the POST
+// resolves can hit "Projekt nicht gefunden" before its next scheduled tick.
+export function notifyProjectsChanged(): void {
+  for (const ws of activeSockets) void tick(ws);
+}
+
+async function tick(ws: WebSocket): Promise<void> {
+  if (ws.readyState !== ws.OPEN) return;
+  const projects = await buildSummaries().catch(() => []);
+  ws.send(JSON.stringify({ type: "projects", projects } satisfies StatusServerMessage));
+}
+
 export function handleStatusConnection(ws: WebSocket): void {
-  let stopped = false;
-  const send = (msg: StatusServerMessage) => {
-    if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
-  };
-
-  const tick = async () => {
-    if (stopped) return;
-    const projects = await buildSummaries().catch(() => []);
-    send({ type: "projects", projects });
-  };
-
-  void tick();
-  const interval = setInterval(() => void tick(), POLL_INTERVAL_MS);
+  activeSockets.add(ws);
+  void tick(ws);
+  const interval = setInterval(() => void tick(ws), POLL_INTERVAL_MS);
 
   ws.on("close", () => {
-    stopped = true;
+    activeSockets.delete(ws);
     clearInterval(interval);
   });
 }
