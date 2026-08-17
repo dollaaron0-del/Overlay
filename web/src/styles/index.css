@@ -2692,6 +2692,42 @@ button.active {
   background: var(--c-surface-2);
 }
 
+.emmy2-mermaid {
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  background: var(--c-surface-2);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  display: flex;
+  justify-content: center;
+}
+
+.emmy2-mermaid svg {
+  max-width: 100%;
+}
+
+.emmy2-mermaid-loading {
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  color: var(--c-text-2);
+  font-size: var(--fs-sm);
+}
+
+.emmy2-mermaid-error {
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--c-danger-bg);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.emmy2-math {
+  margin: var(--space-2) 0;
+  padding: var(--space-1) 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
 /* --- Full-document viewer for long Emmy reports --- */
 
 .emmy2-doc-panel {
