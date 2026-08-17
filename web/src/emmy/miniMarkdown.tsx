@@ -95,37 +95,48 @@ interface ListItem {
   indent: number;
 }
 
+interface ListGroup {
+  item: ListItem;
+  children: ListGroup[];
+}
+
 /**
- * Turns a flat, indent-tagged run of list items into a properly nested
- * <ul>/<ol> tree — a nested item becomes a child list inside its parent's
- * <li>, rather than every item landing flat regardless of indentation.
- * Returns the list node plus the index it stopped at (first item whose
- * indent is shallower than `indent`, i.e. belongs to an ancestor level).
+ * Groups a flat, indent-tagged run of list items into a tree using an
+ * indentation stack: each item attaches under the nearest still-open
+ * ancestor with a strictly shallower indent, then opens its own level at
+ * its own indent. This never drops an item just because no earlier sibling
+ * happened to use that exact indent value — e.g. indent jumping straight
+ * from 0 to 4 and back to 2, with no item ever previously at indent 2,
+ * still nests the indent-2 item under the indent-0 item instead of vanishing
+ * (a strict-equality match against open levels would silently swallow it
+ * and everything after it in the list).
  */
-function buildNestedList(items: ListItem[], start: number, indent: number, keyPrefix: string): [ReactNode, number] {
-  const liNodes: ReactNode[] = [];
-  let i = start;
-  let ordered = items[start].ordered;
-  let n = 0;
-  while (i < items.length && items[i].indent === indent) {
-    const item = items[i];
-    ordered = item.ordered;
-    const itemIndex = i;
-    i++;
-    let child: ReactNode = null;
-    if (i < items.length && items[i].indent > indent) {
-      [child, i] = buildNestedList(items, i, items[i].indent, `${keyPrefix}-${n}`);
+function groupListItems(items: ListItem[]): ListGroup[] {
+  const roots: ListGroup[] = [];
+  const stack: { indent: number; children: ListGroup[] }[] = [{ indent: -1, children: roots }];
+  for (const item of items) {
+    while (stack.length > 1 && item.indent <= stack[stack.length - 1].indent) {
+      stack.pop();
     }
-    liNodes.push(
-      <li key={`${keyPrefix}-li-${itemIndex}`}>
-        {renderInline(item.text, `${keyPrefix}-txt-${itemIndex}`)}
-        {child}
-      </li>,
-    );
-    n++;
+    const node: ListGroup = { item, children: [] };
+    stack[stack.length - 1].children.push(node);
+    stack.push({ indent: item.indent, children: node.children });
   }
-  const Tag = ordered ? "ol" : "ul";
-  return [<Tag key={`${keyPrefix}-list`}>{liNodes}</Tag>, i];
+  return roots;
+}
+
+function renderListGroups(groups: ListGroup[], keyPrefix: string): ReactNode {
+  const Tag = groups[0].item.ordered ? "ol" : "ul";
+  return (
+    <Tag key={`${keyPrefix}-list`}>
+      {groups.map((group, i) => (
+        <li key={`${keyPrefix}-li-${i}`}>
+          {renderInline(group.item.text, `${keyPrefix}-txt-${i}`)}
+          {group.children.length > 0 && renderListGroups(group.children, `${keyPrefix}-${i}`)}
+        </li>
+      ))}
+    </Tag>
+  );
 }
 
 export function renderMiniMarkdown(markdown: string): ReactNode {
@@ -137,8 +148,7 @@ export function renderMiniMarkdown(markdown: string): ReactNode {
 
   const flushList = () => {
     if (!listItems) return;
-    const [node] = buildNestedList(listItems, 0, listItems[0].indent, `list-${blockKey++}`);
-    blocks.push(node);
+    blocks.push(renderListGroups(groupListItems(listItems), `list-${blockKey++}`));
     listItems = null;
   };
 
