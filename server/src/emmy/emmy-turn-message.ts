@@ -135,6 +135,9 @@ export function buildEmmyTurnMessage(
     lines.push("");
     lines.push("--- Das hier ist eine Recherche-Aufgabe ---");
     lines.push(
+      `Ist die Aufgabenstellung noch zu ungenau, um zielgerichtet zu recherchieren (unklarer Fokus, mehrdeutiger Begriff, fehlender Kontext, mehrere plausible Interpretationen)? Dann fang nicht einfach drauflos raten, sondern schick zuerst 1-3 knappe, konkrete Rückfragen — genau wie eine normale Antwort mit "text", aber zusätzlich mit "needsClarification":true im selben POST. Das zählt nicht als deine Recherche-Zusammenfassung, die Mindestzeit läuft weiter und die Phase bleibt offen; sobald Aarons Antwort im Verlauf steht, gehst du direkt in die eigentliche Recherche. Ist die Aufgabenstellung klar genug, überspring diesen Schritt und leg direkt los.`,
+    );
+    lines.push(
       `Nimm dir dafür so viel Zeit wie nötig — mehrere Stunden oder über Nacht sind ausdrücklich erwünscht, nicht nur erlaubt. Arbeite dich wirklich tief ein: mehrere unabhängige Quellen statt nur der ersten Treffer, gegenläufige Positionen einholen, Zahlen/Fakten querchecken. Hör nicht auf, sobald du "genug" zu haben glaubst — schick stattdessen weitere Zwischenstand-Meldungen (activity/sourcesSearched/knowledgeLevel) und recherchiere weiter, bis dein knowledgeLevel wirklich hoch ist.`,
     );
     if (dueAt) {

@@ -51,6 +51,8 @@ export interface EmmyMessage {
   attachments?: EmmyAttachment[];
   /** Marks the one reply that is the requested end-of-conversation research document. */
   isFinalDocument?: boolean;
+  /** Marks a reply where Emmy is asking Aaron to clarify a vague research task instead of diving in. */
+  needsClarification?: boolean;
 }
 
 export interface EmmyChat {

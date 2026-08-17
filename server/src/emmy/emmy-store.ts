@@ -214,6 +214,7 @@ export async function appendMessage(
   text: string,
   attachments?: EmmyAttachment[],
   isFinalDocument?: boolean,
+  needsClarification?: boolean,
 ): Promise<EmmyMessage> {
   const store = await ensureLoaded();
   const message: EmmyMessage = {
@@ -224,6 +225,7 @@ export async function appendMessage(
     at: new Date().toISOString(),
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
     ...(isFinalDocument ? { isFinalDocument: true } : {}),
+    ...(needsClarification ? { needsClarification: true } : {}),
   };
   const chats = store.chats.map((c) => (c.id === chatId ? { ...c, updatedAt: message.at } : c));
   const next = { ...store, chats, messages: [...store.messages, message] };
