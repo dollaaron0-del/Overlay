@@ -12,19 +12,22 @@
 set -euo pipefail
 cd /opt/overlay
 
-echo "==> 1/4 Hole geprüften Branch (nur was bereits per PR reviewt+gemerged wurde)"
+echo "==> 1/5 Hole geprüften Branch (nur was bereits per PR reviewt+gemerged wurde)"
 git fetch origin
 git merge --ff-only "@{u}"
 
-echo "==> 2/4 Baue neu"
+echo "==> 2/5 Installiere Abhängigkeiten (falls der Branch package-lock.json geändert hat)"
+npm ci
+
+echo "==> 3/5 Baue neu"
 npm run build -w shared
 npm run build -w server
 npm run build -w web
 
-echo "==> 3/4 Starte Overlay neu"
+echo "==> 4/5 Starte Overlay neu"
 runuser -u overlay -- pm2 restart overlay
 
-echo "==> 4/4 Erzwinge erneute 2FA (Authelia-Sitzungen zurücksetzen)"
+echo "==> 5/5 Erzwinge erneute 2FA (Authelia-Sitzungen zurücksetzen)"
 # Ein automatisches Update bringt neuen Code auf den Server — das ist ein
 # sicherheitsrelevantes Ereignis, das nicht durch eine noch Wochen gültige
 # Session (siehe extend-authelia-session.sh: expiration=1M) unbemerkt
