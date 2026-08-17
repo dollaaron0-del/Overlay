@@ -42,14 +42,22 @@ projectsRouter.get("/", async (_req, res) => {
   const withStatus = await Promise.all(
     projects.map(async (project) => {
       const homeSection = resolveHomeSection(project);
-      if (project.kind === "systemd") {
-        return { ...project, homeSection, status: await systemdStatus(project.systemdUnit!) };
+      // One project's status check throwing must never take the rest of the
+      // list down with it (see the matching guard in ws/status.ws.ts) — it
+      // just degrades that one project's tile to "unknown" instead.
+      try {
+        if (project.kind === "systemd") {
+          return { ...project, homeSection, status: await systemdStatus(project.systemdUnit!) };
+        }
+        if (project.kind === "pm2-root") {
+          return { ...project, homeSection, status: await pm2RootStatus(project.pm2RootName!) };
+        }
+        const desc = await describeProcess(project.pm2Name!).catch(() => undefined);
+        return { ...project, homeSection, status: statusOf(desc) };
+      } catch (err) {
+        console.error(`[projects] Failed to build status for project "${project.id}":`, err);
+        return { ...project, homeSection, status: "unknown" as const };
       }
-      if (project.kind === "pm2-root") {
-        return { ...project, homeSection, status: await pm2RootStatus(project.pm2RootName!) };
-      }
-      const desc = await describeProcess(project.pm2Name!).catch(() => undefined);
-      return { ...project, homeSection, status: statusOf(desc) };
     }),
   );
   res.json(withStatus);

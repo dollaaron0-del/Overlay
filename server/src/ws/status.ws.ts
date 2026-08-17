@@ -8,24 +8,94 @@ import { getGitVersion } from "../projects/git-version.js";
 
 const POLL_INTERVAL_MS = 3000;
 
+// One project's status check throwing (e.g. an unexpected error from the
+// systemd/pm2-root shell-out, beyond the "command failed" cases those
+// already turn into "unknown") must never take down every other project's
+// tile with it — every connected client would otherwise see an empty
+// homescreen until the next successful tick. So each project is built
+// independently and a failure here only degrades that one tile to
+// "unknown" instead of rejecting the whole batch.
+async function buildSummary(p: Awaited<ReturnType<typeof listProjects>>[number]): Promise<ProjectSummary> {
+  // A systemd project's dirName is just an empty placeholder Overlay
+  // created (see ensureStubDir in projects.registry.ts) — getGitVersion
+  // harmlessly resolves to null for it (not a git repo), same as any
+  // other non-git project directory.
+  const version = await getGitVersion(resolveProjectDir(p)).catch(() => null);
+  const homeSection = resolveHomeSection(p);
+
+  if (p.kind === "systemd") {
+    return {
+      id: p.id,
+      dirName: p.dirName,
+      kind: "systemd",
+      externalUrl: p.externalUrl,
+      status: await systemdStatus(p.systemdUnit!),
+      uptimeMs: null,
+      restarts: null,
+      memoryBytes: null,
+      cpuPercent: null,
+      hasDeployScript: false,
+      icon: p.icon,
+      name: p.name,
+      version,
+      homeSection,
+    } satisfies ProjectSummary;
+  }
+
+  if (p.kind === "pm2-root") {
+    return {
+      id: p.id,
+      dirName: p.dirName,
+      kind: "pm2-root",
+      externalUrl: p.externalUrl,
+      status: await pm2RootStatus(p.pm2RootName!),
+      uptimeMs: null,
+      restarts: null,
+      memoryBytes: null,
+      cpuPercent: null,
+      hasDeployScript: false,
+      icon: p.icon,
+      name: p.name,
+      version,
+      homeSection,
+    } satisfies ProjectSummary;
+  }
+
+  const desc = await describeProcess(p.pm2Name!).catch(() => undefined);
+  const env = desc?.pm2_env as { pm_uptime?: number; restart_time?: number } | undefined;
+  const monit = desc?.monit as { memory?: number; cpu?: number } | undefined;
+  return {
+    id: p.id,
+    dirName: p.dirName,
+    pm2Name: p.pm2Name,
+    status: statusOf(desc),
+    uptimeMs: env?.pm_uptime ? Date.now() - env.pm_uptime : null,
+    restarts: env?.restart_time ?? null,
+    memoryBytes: monit?.memory ?? null,
+    cpuPercent: monit?.cpu ?? null,
+    hasDeployScript: Boolean(p.deployScript),
+    icon: p.icon,
+    name: p.name,
+    version,
+    homeSection,
+  } satisfies ProjectSummary;
+}
+
 async function buildSummaries(): Promise<ProjectSummary[]> {
   const projects = await listProjects();
   return Promise.all(
     projects.map(async (p) => {
-      // A systemd project's dirName is just an empty placeholder Overlay
-      // created (see ensureStubDir in projects.registry.ts) — getGitVersion
-      // harmlessly resolves to null for it (not a git repo), same as any
-      // other non-git project directory.
-      const version = await getGitVersion(resolveProjectDir(p)).catch(() => null);
-      const homeSection = resolveHomeSection(p);
-
-      if (p.kind === "systemd") {
+      try {
+        return await buildSummary(p);
+      } catch (err) {
+        console.error(`[status.ws] Failed to build status summary for project "${p.id}":`, err);
         return {
           id: p.id,
           dirName: p.dirName,
-          kind: "systemd",
+          kind: p.kind,
+          pm2Name: p.pm2Name,
           externalUrl: p.externalUrl,
-          status: await systemdStatus(p.systemdUnit!),
+          status: "unknown",
           uptimeMs: null,
           restarts: null,
           memoryBytes: null,
@@ -33,48 +103,10 @@ async function buildSummaries(): Promise<ProjectSummary[]> {
           hasDeployScript: false,
           icon: p.icon,
           name: p.name,
-          version,
-          homeSection,
+          version: null,
+          homeSection: resolveHomeSection(p),
         } satisfies ProjectSummary;
       }
-
-      if (p.kind === "pm2-root") {
-        return {
-          id: p.id,
-          dirName: p.dirName,
-          kind: "pm2-root",
-          externalUrl: p.externalUrl,
-          status: await pm2RootStatus(p.pm2RootName!),
-          uptimeMs: null,
-          restarts: null,
-          memoryBytes: null,
-          cpuPercent: null,
-          hasDeployScript: false,
-          icon: p.icon,
-          name: p.name,
-          version,
-          homeSection,
-        } satisfies ProjectSummary;
-      }
-
-      const desc = await describeProcess(p.pm2Name!).catch(() => undefined);
-      const env = desc?.pm2_env as { pm_uptime?: number; restart_time?: number } | undefined;
-      const monit = desc?.monit as { memory?: number; cpu?: number } | undefined;
-      return {
-        id: p.id,
-        dirName: p.dirName,
-        pm2Name: p.pm2Name,
-        status: statusOf(desc),
-        uptimeMs: env?.pm_uptime ? Date.now() - env.pm_uptime : null,
-        restarts: env?.restart_time ?? null,
-        memoryBytes: monit?.memory ?? null,
-        cpuPercent: monit?.cpu ?? null,
-        hasDeployScript: Boolean(p.deployScript),
-        icon: p.icon,
-        name: p.name,
-        version,
-        homeSection,
-      } satisfies ProjectSummary;
     }),
   );
 }
@@ -92,7 +124,10 @@ export function notifyProjectsChanged(): void {
 
 async function tick(ws: WebSocket): Promise<void> {
   if (ws.readyState !== ws.OPEN) return;
-  const projects = await buildSummaries().catch(() => []);
+  const projects = await buildSummaries().catch((err) => {
+    console.error("[status.ws] Failed to list projects:", err);
+    return [];
+  });
   ws.send(JSON.stringify({ type: "projects", projects } satisfies StatusServerMessage));
 }
 
