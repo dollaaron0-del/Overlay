@@ -134,14 +134,16 @@ export function OsShell() {
 
   return (
     <div className="os-shell">
-      <Sidebar
-        onHome={goHome}
-        onOpenApp={openStaticApp}
-        onSearch={() => setSpotlightOpen(true)}
-        onNotifications={() => setNotificationsOpen((v) => !v)}
-        onControlCenter={() => setControlCenterOpen((v) => !v)}
-        hasAlerts={hasAlerts}
-      />
+      {open === null && (
+        <Sidebar
+          onHome={goHome}
+          onOpenApp={openStaticApp}
+          onSearch={() => setSpotlightOpen(true)}
+          onNotifications={() => setNotificationsOpen((v) => !v)}
+          onControlCenter={() => setControlCenterOpen((v) => !v)}
+          hasAlerts={hasAlerts}
+        />
+      )}
       <div className="os-shell-body">
         <TopBar title={title} showBack={open !== null} onBack={goHome} />
         <main className="os-main">{content}</main>
