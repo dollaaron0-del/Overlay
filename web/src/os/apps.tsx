@@ -2,7 +2,6 @@ import type { AppDef } from "./types";
 import { SecurityDashboard } from "../security/SecurityDashboard";
 import { ActivityLog } from "../activity/ActivityLog";
 import { SettingsApp } from "../settings/SettingsApp";
-import { QuickCaptureApp } from "../quickcapture/QuickCaptureApp";
 import { EmmyChatApp } from "../emmy/EmmyChatApp";
 import { CockpitApp } from "./CockpitApp";
 
@@ -20,7 +19,6 @@ import { CockpitApp } from "./CockpitApp";
 export const STATIC_APPS: AppDef[] = [
   { id: "security", title: "Sicherheit", icon: "🛡", render: () => <SecurityDashboard /> },
   { id: "activity", title: "Aktivität", icon: "📋", render: () => <ActivityLog /> },
-  { id: "quickcapture", title: "Schnellnotiz", icon: "📝", render: () => <QuickCaptureApp /> },
   { id: "emmy", title: "Emmy", icon: "🦊", render: (nav) => <EmmyChatApp onOpenProject={nav.openProject} /> },
   { id: "cockpit", title: "Cockpit", icon: "🖥️", render: () => <CockpitApp /> },
   { id: "settings", title: "Einstellungen", icon: "⚙️", render: () => <SettingsApp /> },

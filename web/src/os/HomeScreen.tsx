@@ -26,13 +26,10 @@ function isFolderId(id: string): boolean {
   return id.startsWith("folder:");
 }
 
-// Static apps that are used rarely enough to visually recede behind
-// projects and everyday apps, rather than competing for attention.
-const SMALL_APP_IDS = new Set(["activity", "settings"]);
-
-// Sicherheit and Cockpit have a permanent slot in the Sidebar, so they're
-// left out of the grid to avoid showing the same destination twice.
-const SIDEBAR_APP_IDS = new Set(["security", "cockpit"]);
+// Sicherheit, Cockpit, Aktivität and Einstellungen have a permanent slot in
+// the Sidebar, so they're left out of the grid to avoid showing the same
+// destination twice.
+const SIDEBAR_APP_IDS = new Set(["security", "cockpit", "activity", "settings"]);
 
 // Emmy is the centerpiece of the overlay — it gets the biggest tile on the
 // homescreen, bigger even than project tiles.
@@ -178,7 +175,6 @@ export function HomeScreen({
         editMode={editMode}
         selected={selectedIds.has(id)}
         large={item.kind === "project"}
-        small={item.kind === "app" && SMALL_APP_IDS.has(id.slice("app:".length))}
         hero={item.kind === "app" && HERO_APP_IDS.has(id.slice("app:".length))}
         onToggleSelect={() => toggleSelect(id)}
         onClick={() => openItem(id)}
