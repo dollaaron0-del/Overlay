@@ -3078,6 +3078,23 @@ button.active {
   font-size: var(--fs-sm);
 }
 
+.emmy2-math {
+  margin: var(--space-2) 0;
+  padding: var(--space-1) 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.emmy2-math-error {
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  background: var(--c-warning-bg);
+  border: 1px solid var(--c-warning);
+  border-radius: var(--radius-md);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+}
+
 /* --- Full-document viewer for long Emmy reports --- */
 
 .emmy2-doc-panel {

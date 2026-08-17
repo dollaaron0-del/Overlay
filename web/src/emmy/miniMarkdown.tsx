@@ -1,13 +1,16 @@
 import type { ReactNode } from "react";
 import { EmmyChart, parseEmmyChartSpec } from "./EmmyChart.js";
+import { EmmyMath } from "./EmmyMath.js";
 import { EmmyMermaid } from "./EmmyMermaid.js";
 
 // Minimal Markdown -> React renderer for Emmy's replies: headings, bold,
-// italic, inline code, code blocks, links, lists, blockquotes, tables, rules.
-// No new dependency — same approach as web/src/obsidian/miniMarkdown.tsx, but
+// italic, inline code, code blocks, links, lists (nested), blockquotes,
+// tables, rules. Same approach as web/src/obsidian/miniMarkdown.tsx, but
 // without wikilinks (irrelevant here) and with code blocks/tables added,
 // since research reports commonly use both. ```mermaid and ```chart fences
-// get a diagram/chart instead of a plain code block (see EmmyMermaid/EmmyChart).
+// get a diagram/chart instead of a plain code block (see EmmyMermaid/EmmyChart),
+// and $$...$$ blocks get real typesetting via KaTeX (already a transitive
+// mermaid dependency, so this adds no new bytes to the on-demand chunk).
 
 const SAFE_LINK_SCHEME = /^(https?:|mailto:)/i;
 
@@ -86,23 +89,56 @@ function isTableSeparator(line: string): boolean {
   return /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line) && line.includes("-");
 }
 
+interface ListItem {
+  ordered: boolean;
+  text: string;
+  indent: number;
+}
+
+/**
+ * Turns a flat, indent-tagged run of list items into a properly nested
+ * <ul>/<ol> tree — a nested item becomes a child list inside its parent's
+ * <li>, rather than every item landing flat regardless of indentation.
+ * Returns the list node plus the index it stopped at (first item whose
+ * indent is shallower than `indent`, i.e. belongs to an ancestor level).
+ */
+function buildNestedList(items: ListItem[], start: number, indent: number, keyPrefix: string): [ReactNode, number] {
+  const liNodes: ReactNode[] = [];
+  let i = start;
+  let ordered = items[start].ordered;
+  let n = 0;
+  while (i < items.length && items[i].indent === indent) {
+    const item = items[i];
+    ordered = item.ordered;
+    const itemIndex = i;
+    i++;
+    let child: ReactNode = null;
+    if (i < items.length && items[i].indent > indent) {
+      [child, i] = buildNestedList(items, i, items[i].indent, `${keyPrefix}-${n}`);
+    }
+    liNodes.push(
+      <li key={`${keyPrefix}-li-${itemIndex}`}>
+        {renderInline(item.text, `${keyPrefix}-txt-${itemIndex}`)}
+        {child}
+      </li>,
+    );
+    n++;
+  }
+  const Tag = ordered ? "ol" : "ul";
+  return [<Tag key={`${keyPrefix}-list`}>{liNodes}</Tag>, i];
+}
+
 export function renderMiniMarkdown(markdown: string): ReactNode {
   const lines = markdown.split("\n");
   const blocks: ReactNode[] = [];
-  let listItems: { ordered: boolean; text: string }[] | null = null;
+  let listItems: ListItem[] | null = null;
   let quoteLines: string[] | null = null;
   let blockKey = 0;
 
   const flushList = () => {
     if (!listItems) return;
-    const items = listItems;
-    const ordered = items[0]?.ordered ?? false;
-    const Tag = ordered ? "ol" : "ul";
-    blocks.push(
-      <Tag key={`list-${blockKey++}`}>
-        {items.map((item, i) => <li key={i}>{renderInline(item.text, `li-${blockKey}-${i}`)}</li>)}
-      </Tag>,
-    );
+    const [node] = buildNestedList(listItems, 0, listItems[0].indent, `list-${blockKey++}`);
+    blocks.push(node);
     listItems = null;
   };
 
@@ -144,6 +180,30 @@ export function renderMiniMarkdown(markdown: string): ReactNode {
       continue;
     }
 
+    // A $$...$$ math block, either fenced across multiple lines or self-
+    // contained on one line.
+    const mathInlineBlockMatch = /^\$\$(.+)\$\$$/.exec(line.trim());
+    if (line.trim() === "$$") {
+      flushList();
+      flushQuote();
+      const mathLines: string[] = [];
+      i++;
+      while (i < lines.length && lines[i].trim() !== "$$") {
+        mathLines.push(lines[i]);
+        i++;
+      }
+      i++; // skip closing $$
+      blocks.push(<EmmyMath key={`math-${blockKey++}`} latex={mathLines.join("\n")} />);
+      continue;
+    }
+    if (mathInlineBlockMatch) {
+      flushList();
+      flushQuote();
+      blocks.push(<EmmyMath key={`math-${blockKey++}`} latex={mathInlineBlockMatch[1]} />);
+      i++;
+      continue;
+    }
+
     // A pipe-table: a header row immediately followed by a separator row.
     if (line.includes("|") && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
       flushList();
@@ -159,8 +219,8 @@ export function renderMiniMarkdown(markdown: string): ReactNode {
     }
 
     const headingMatch = /^(#{1,6})\s+(.*)$/.exec(line);
-    const orderedMatch = /^\s*\d+[.)]\s+(.*)$/.exec(line);
-    const bulletMatch = /^\s*[-*+]\s+(.*)$/.exec(line);
+    const orderedMatch = /^(\s*)\d+[.)]\s+(.*)$/.exec(line);
+    const bulletMatch = /^(\s*)[-*+]\s+(.*)$/.exec(line);
     const quoteMatch = /^\s*>\s?(.*)$/.exec(line);
     const ruleMatch = /^\s*(-{3,}|\*{3,}|_{3,})\s*$/.exec(line);
 
@@ -177,11 +237,11 @@ export function renderMiniMarkdown(markdown: string): ReactNode {
     } else if (bulletMatch) {
       flushQuote();
       listItems = listItems ?? [];
-      listItems.push({ ordered: false, text: bulletMatch[1] });
+      listItems.push({ ordered: false, text: bulletMatch[2], indent: bulletMatch[1].length });
     } else if (orderedMatch) {
       flushQuote();
       listItems = listItems ?? [];
-      listItems.push({ ordered: true, text: orderedMatch[1] });
+      listItems.push({ ordered: true, text: orderedMatch[2], indent: orderedMatch[1].length });
     } else if (quoteMatch) {
       flushList();
       quoteLines = quoteLines ?? [];
