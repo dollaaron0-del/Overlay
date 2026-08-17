@@ -43,6 +43,54 @@ function buildImplementationPrompt(reportText: string, chatTitle: string): strin
   return `Setze das folgende Recherche-Ergebnis aus Emmys Chat „${chatTitle}“ in diesem Projekt um. Lies es aufmerksam durch, leite die relevanten Schritte ab und implementiere sie direkt im Code dieses Projekts.\n\n---\n\n${reportText}`;
 }
 
+/**
+ * Client-side only: prints the already-rendered document body via a hidden
+ * iframe (so the print dialog only shows the report, not the whole app) and
+ * lets the user pick "Save as PDF" — no server round-trip or PDF library needed.
+ */
+function printAsPdf(title: string, bodyHtml: string): void {
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument;
+  if (!doc) {
+    document.body.removeChild(iframe);
+    return;
+  }
+  doc.open();
+  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+    <style>
+      body { font-family: system-ui, sans-serif; color: #111; padding: 2rem; line-height: 1.5; max-width: 800px; margin: 0 auto; }
+      h1, h2, h3 { margin-top: 1.4em; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; }
+      pre { background: #f4f4f4; padding: 0.8rem; overflow-x: auto; white-space: pre-wrap; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }
+    </style>
+  </head><body>${bodyHtml}</body></html>`);
+  doc.close();
+  const cleanup = () => {
+    if (iframe.parentNode) document.body.removeChild(iframe);
+  };
+  iframe.onload = () => {
+    const win = iframe.contentWindow;
+    if (!win) return cleanup();
+    win.addEventListener("afterprint", cleanup);
+    win.focus();
+    win.print();
+  };
+  window.setTimeout(cleanup, 60_000);
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
 const STATUS_LABEL: Record<EmmyTaskStatus, string> = {
   open: "Offen",
   in_progress: "In Arbeit",
@@ -1051,6 +1099,7 @@ function EmmyDocumentViewer({
   chatTitle: string;
   onClose: () => void;
 }) {
+  const bodyRef = useRef<HTMLDivElement>(null);
   return (
     <div className="home-modal-backdrop" onClick={onClose}>
       <div className="emmy2-doc-panel" onClick={(e) => e.stopPropagation()}>
@@ -1060,12 +1109,17 @@ function EmmyDocumentViewer({
             <button onClick={() => downloadAsMarkdown(message.text, downloadFilenameFor(chatTitle, message.at))}>
               ⬇️ Herunterladen (.md)
             </button>
+            <button onClick={() => bodyRef.current && printAsPdf(chatTitle, bodyRef.current.innerHTML)}>
+              🖨️ Als PDF exportieren
+            </button>
             <button onClick={onClose} title="Schließen">
               ✕
             </button>
           </div>
         </header>
-        <div className="emmy2-doc-body emmy2-markdown">{renderMiniMarkdown(message.text)}</div>
+        <div ref={bodyRef} className="emmy2-doc-body emmy2-markdown">
+          {renderMiniMarkdown(message.text)}
+        </div>
       </div>
     </div>
   );

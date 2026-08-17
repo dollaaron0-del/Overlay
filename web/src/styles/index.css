@@ -60,6 +60,17 @@
   --c-info-bg: #143a4a;
   --c-success: #5eff8f;
   --c-success-bg: #143a1e;
+
+  /* Categorical chart series — fixed order, never cycled/reassigned.
+     Validated against this surface: node scripts/validate_palette.js. */
+  --c-series-1: #3987e5;
+  --c-series-2: #d95926;
+  --c-series-3: #199e70;
+  --c-series-4: #c98500;
+  --c-series-5: #d55181;
+  --c-series-6: #008300;
+  --c-series-7: #9085e9;
+  --c-series-8: #e66767;
 }
 
 :root[data-theme="light"] {
@@ -83,6 +94,15 @@
   --c-info-bg: #d9f0fb;
   --c-success: #1a7f37;
   --c-success-bg: #d6f5df;
+
+  --c-series-1: #2a78d6;
+  --c-series-2: #eb6834;
+  --c-series-3: #1baf7a;
+  --c-series-4: #eda100;
+  --c-series-5: #e87ba4;
+  --c-series-6: #008300;
+  --c-series-7: #4a3aa7;
+  --c-series-8: #e34948;
 }
 
 /* No stored/system preference yet: fall back to the visitor's OS setting
@@ -110,6 +130,15 @@
     --c-info-bg: #d9f0fb;
     --c-success: #1a7f37;
     --c-success-bg: #d6f5df;
+
+    --c-series-1: #2a78d6;
+    --c-series-2: #eb6834;
+    --c-series-3: #1baf7a;
+    --c-series-4: #eda100;
+    --c-series-5: #e87ba4;
+    --c-series-6: #008300;
+    --c-series-7: #4a3aa7;
+    --c-series-8: #e34948;
   }
 }
 
@@ -2700,6 +2729,146 @@ button.active {
 
 .emmy2-markdown th {
   background: var(--c-surface-2);
+}
+
+/* --- Charts (```chart) and diagrams (```mermaid) inline in a reply --- */
+
+.emmy2-chart {
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+}
+
+.emmy2-chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.emmy2-chart-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+.emmy2-chart-toggle {
+  font-size: var(--fs-xs);
+  padding: var(--space-0) var(--space-2);
+  background: transparent;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--c-text-2);
+  cursor: pointer;
+}
+
+.emmy2-chart-toggle:hover {
+  background: var(--c-surface-2-hover);
+}
+
+.emmy2-chart-svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.emmy2-chart-axis {
+  stroke: var(--c-border-strong);
+  stroke-width: 1;
+}
+
+.emmy2-chart-axis-label {
+  font-size: 10px;
+  fill: var(--c-text-3);
+}
+
+.emmy2-chart-value-label {
+  font-size: 10px;
+  fill: var(--c-text-2);
+}
+
+.emmy2-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  font-size: var(--fs-xs);
+  color: var(--c-text-2);
+}
+
+.emmy2-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.emmy2-chart-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.emmy2-chart-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-xs);
+}
+
+.emmy2-chart-table th,
+.emmy2-chart-table td {
+  border: 1px solid var(--c-border);
+  padding: var(--space-1) var(--space-2);
+  text-align: left;
+  color: var(--c-text);
+}
+
+.emmy2-chart-table th {
+  background: var(--c-surface);
+  color: var(--c-text-2);
+}
+
+.emmy2-mermaid {
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+}
+
+.emmy2-mermaid svg {
+  max-width: 100%;
+}
+
+.emmy2-mermaid-error {
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  background: var(--c-warning-bg);
+  border: 1px solid var(--c-warning);
+  border-radius: var(--radius-md);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+}
+
+.emmy2-math {
+  margin: var(--space-2) 0;
+  padding: var(--space-1) 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+.emmy2-math-error {
+  margin: var(--space-2) 0;
+  padding: var(--space-2);
+  background: var(--c-warning-bg);
+  border: 1px solid var(--c-warning);
+  border-radius: var(--radius-md);
+  color: var(--c-text);
+  font-size: var(--fs-sm);
 }
 
 /* --- Full-document viewer for long Emmy reports --- */

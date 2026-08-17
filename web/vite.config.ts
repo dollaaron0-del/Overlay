@@ -4,6 +4,15 @@ import { VitePWA } from "vite-plugin-pwa";
 
 const BACKEND = "http://127.0.0.1:4317";
 
+// mermaid (and its diagram-renderer deps: d3, dagre, cytoscape, katex, ...)
+// is only ever reached via the dynamic import() in EmmyMermaid.tsx, loaded
+// on demand when a chat actually contains a ```mermaid block. Force it into
+// one predictably-named chunk so the PWA precache list below can exclude it
+// by name — otherwise workbox's default globPatterns would precache all of
+// mermaid's ~4MB of diagram-type chunks into the service worker on every
+// visit, even for users who never see a diagram.
+const MERMAID_CHUNK_DEPS = /node_modules\/(mermaid|d3-?|dagre|dagre-d3-es|khroma|cytoscape|cose-base|cose-bilkent|layout-base|katex|marked|dompurify|roughjs|elkjs|@mermaid-js|langium|chevrotain|ts-dedent|internmap|delaunator|robust-predicates|uuid)\//;
+
 export default defineConfig({
   plugins: [
     react(),
@@ -25,6 +34,10 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Keep mermaid's on-demand chunk out of the install-time precache
+        // (see MERMAID_CHUNK_DEPS above) — it's still runtime-cached the
+        // first time a diagram actually renders, via the CacheFirst rule below.
+        globIgnores: ["**/mermaid-vendor-*.js"],
         // This is a live dashboard, not an offline-first content app: never
         // let the service worker cache API calls or WebSocket upgrades.
         navigateFallbackDenylist: [/^\/api\//, /^\/ws\//],
@@ -47,10 +60,24 @@ export default defineConfig({
             urlPattern: /^\/api\//,
             handler: "NetworkOnly",
           },
+          {
+            urlPattern: /\/assets\/mermaid-vendor-.*\.js$/,
+            handler: "CacheFirst",
+            options: { cacheName: "mermaid-vendor", expiration: { maxEntries: 4 } },
+          },
         ],
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (MERMAID_CHUNK_DEPS.test(id)) return "mermaid-vendor";
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       "/api": { target: BACKEND, changeOrigin: true },
