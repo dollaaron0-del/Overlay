@@ -2578,6 +2578,16 @@ button.active {
   color: var(--c-text-2);
 }
 
+.emmy2-clarify-badge {
+  display: inline-block;
+  font-size: var(--fs-xs);
+  padding: var(--space-0) var(--space-2);
+  border-radius: 999px;
+  background: var(--c-info-bg);
+  color: var(--c-info);
+  margin-bottom: var(--space-2);
+}
+
 .emmy2-report-buttons {
   display: flex;
   flex-wrap: wrap;

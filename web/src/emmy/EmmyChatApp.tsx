@@ -886,9 +886,11 @@ function MessageBubble({
   onImplementInProject: () => void;
 }) {
   const isFinalDocument = message.role === "emmy" && message.isFinalDocument === true;
+  const needsClarification = message.role === "emmy" && message.needsClarification === true;
   const isLongReport = message.role === "emmy" && (isFinalDocument || message.text.length > LONG_REPORT_CHARS);
   return (
     <div className={`emmy2-bubble emmy2-bubble-${message.role}${isLongReport ? " emmy2-bubble-report" : ""}`}>
+      {needsClarification && <span className="emmy2-clarify-badge">❓ Rückfrage vor der Recherche</span>}
       {isLongReport && (
         <div className="emmy2-report-actions">
           <span className="emmy2-report-badge">{isFinalDocument ? "📘 Abschlussdokument" : "📄 Ausführlicher Bericht"}</span>
