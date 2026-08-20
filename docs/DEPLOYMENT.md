@@ -1173,7 +1173,14 @@ manuellen Knopf gibt es einen eigenen Timer, der `deploy/check-and-update.sh`
 alle 10 Minuten laufen lässt: der prüft nur per `git fetch` + `rev-parse`, ob
 `@{u}` neue Commits hat, und stößt bei Bedarf exakt dieselbe
 `overlay-update.service` an, die auch der Knopf nutzt — kein separater
-Codepfad. Einrichtung (als root):
+Codepfad. Seit dem Fix für "wiederkehrende Checks laufen nie automatisch"
+installiert `deploy/update.sh` (Schritt 6/7) die Unit **automatisch** bei
+jedem Update, falls `/etc/systemd/system/overlay-check-update.timer` noch
+fehlt — derselbe zuvor rein manuelle Schritt, der beim Emmy-Scheduler-Timer
+(Abschnitt 16.2) genau diese Lücke war. Mit
+`systemctl status overlay-check-update.timer` prüfen. Nur falls das
+automatische Nachziehen aus irgendeinem Grund nicht greift, hier der
+manuelle Weg (als root):
 
 ```
 install -m 0644 /opt/overlay/deploy/systemd/overlay-check-update.service \
@@ -1193,7 +1200,7 @@ daher den unauthentifizierten, bewusst minimalen Endpunkt
 `GET /api/health/terminals` (`{"activeSessions": true|false}`, kein
 Projektname, keine Anzahl) und verschiebt den Deploy um einen Tick, solange
 mindestens eine Session offen ist. Das darf ein sicherheitsrelevantes Update
-(Schritt 5/5 erzwingt eine neue Authelia-Session) aber nicht auf unbestimmte
+(Schritt 7/7 erzwingt eine neue Authelia-Session) aber nicht auf unbestimmte
 Zeit blockieren — deshalb ein Zähler in `/run/overlay-update-defer-count`
 (tmpfs, verschwindet also beim nächsten Boot von selbst), der nach
 `MAX_DEFERS=6` Versuchen (~1 Stunde bei 10-Minuten-Takt) das Update trotz
@@ -1246,7 +1253,7 @@ bricht mit einer klaren Fehlermeldung ab, statt still nichts zu tun.
 ### 16.2 systemd-Timer einrichten
 
 Seit dem Fix für "wiederkehrende Checks laufen nie automatisch" installiert
-`deploy/update.sh` (Schritt 5/6) die Unit **automatisch** bei jedem Update,
+`deploy/update.sh` (Schritt 5/7) die Unit **automatisch** bei jedem Update,
 falls `/etc/systemd/system/overlay-emmy-scheduler.timer` noch fehlt — der
 zuvor rein manuelle Schritt unten war genau die Lücke, die auf diesem
 Server dazu geführt hat, dass der Timer nie existierte und Checks
