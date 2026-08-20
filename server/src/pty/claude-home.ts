@@ -98,6 +98,24 @@ function adoptExistingHistory(home: string, projectDir: string): void {
   fs.cpSync(source, destination, { recursive: true });
 }
 
+/**
+ * Whether Claude Code already has a transcript for this project directory
+ * under the given config home, i.e. whether `--continue` has something to
+ * resume. Without this check, a brand-new project's first terminal session
+ * gets `--continue` anyway, and current Claude Code versions exit with
+ * "No conversation found to continue" instead of falling back to a fresh
+ * session — killing the pty before the user can type anything.
+ */
+export function hasExistingConversation(home: string, projectDir: string): boolean {
+  const key = projectDir.replace(/\//g, "-");
+  const dir = path.join(home, "projects", key);
+  try {
+    return fs.readdirSync(dir).length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function linkCredentials(home: string): void {
   const target = path.join(SHARED_HOME, CREDENTIALS_FILE);
   const link = path.join(home, CREDENTIALS_FILE);
