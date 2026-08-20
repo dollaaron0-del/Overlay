@@ -174,13 +174,15 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
               Dashboard öffnen ↗
             </a>
           )}
-          <button
-            className="project-home-section-toggle"
-            onClick={toggleHomeSection}
-            title="Auf dem Home-Screen unter Dashboards oder Projekt-Terminals einordnen"
-          >
-            {project.homeSection === "dashboard" ? "📊 Dashboard" : "⌨️ Terminal"}
-          </button>
+          {isExternal && (
+            <button
+              className="project-home-section-toggle"
+              onClick={toggleHomeSection}
+              title="Auf dem Home-Screen unter Dashboards oder Projekt-Terminals einordnen"
+            >
+              {project.homeSection === "dashboard" ? "📊 Dashboard" : "⌨️ Terminal"}
+            </button>
+          )}
           <button className="project-remove-button-inline" onClick={removeProject}>
             Entfernen
           </button>
