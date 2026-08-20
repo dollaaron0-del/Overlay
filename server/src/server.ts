@@ -22,6 +22,7 @@ import { emmyInboundRouter } from "./emmy/emmy-inbound.routes.js";
 import { requireEmmyInboundToken } from "./emmy/emmy-inbound.middleware.js";
 import { emmySchedulerRouter } from "./emmy/emmy-scheduler.routes.js";
 import { apiRateLimiter } from "./rate-limit.js";
+import { hasActiveSessions } from "./pty/pty.manager.js";
 
 // Quick-capture photos arrive as base64 JSON (~33% larger than the raw
 // file) — comfortably covers a real phone photo without raising the body
@@ -91,6 +92,16 @@ export function createApp() {
   // intentionally minimal — no version info, no project/process details.
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", uptimeSeconds: Math.floor(process.uptime()) });
+  });
+
+  // Also unauthenticated and deliberately minimal (a boolean, nothing that
+  // identifies which project or how many) — read by deploy/check-and-update.sh
+  // over localhost, as root, before it restarts this very process. Without
+  // this, every auto-update kills every open project terminal (and any
+  // `claude` process running inside it) the moment new commits land, no
+  // matter how frequently that happens.
+  app.get("/api/health/terminals", (_req, res) => {
+    res.json({ activeSessions: hasActiveSessions() });
   });
 
   // Own, larger body-size limit for quick-capture photos — must be
