@@ -9,9 +9,10 @@ import { FileTree } from "../files/FileTree";
 import { FileViewer } from "../files/FileViewer";
 import { PlansTab } from "./PlansTab";
 import { ObsidianTab } from "./ObsidianTab";
+import { DecisionBoard } from "./DecisionBoard";
 import { defaultProjectIcon } from "./project-icon";
 
-type Tab = "terminal" | "logs" | "files" | "plans" | "obsidian";
+type Tab = "terminal" | "logs" | "files" | "plans" | "obsidian" | "decisions";
 
 const ICON_PRESETS = ["📁", "🚀", "💻", "🌐", "🔧", "📦", "🗂", "⚙️", "📊", "🔒", "🎨", "🛠", "📡", "🧩", "☁️", "🐳", "🔥", "📈"];
 
@@ -290,6 +291,9 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
             </button>
           </>
         )}
+        <button className={tab === "decisions" ? "active" : ""} onClick={() => setTab("decisions")}>
+          Entscheidungen
+        </button>
         {!isExternal && tab === "terminal" && (
           <button
             className={`tab-bar-split-toggle ${showHostTerminal ? "active" : ""}`}
@@ -323,6 +327,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
         {!isExternal && tab === "obsidian" && (
           <ObsidianTab key={project.id} projectId={project.id} projectDirName={project.dirName} />
         )}
+        {tab === "decisions" && <DecisionBoard key={project.id} projectId={project.id} />}
       </div>
     </div>
   );
