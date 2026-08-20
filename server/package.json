@@ -8,24 +8,21 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "security-scan": "node dist/security/cli.js",
-    "set-password": "tsx scripts/set-password.ts",
     "test": "node --import tsx --test $(find src -name '*.test.ts')"
   },
   "dependencies": {
     "@overlay/shared": "*",
-    "bcrypt": "^6.0.0",
-    "cookie": "^1.0.2",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
     "node-pty": "^1.0.0",
+    "pdfkit": "^0.19.1",
     "pm2": "^7.0.3",
     "ws": "^8.18.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@types/bcrypt": "^5.0.2",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.5",
     "@types/ws": "^8.5.13",

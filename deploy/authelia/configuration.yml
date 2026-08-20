@@ -1,8 +1,10 @@
-# Authelia configuration for putting real 2FA (TOTP) in front of Overlay.
-# This adds a THIRD protection layer on top of the two already documented in
-# docs/SECURITY.md (Tailscale network isolation + Overlay's own password
-# login): even a stolen/leaked Overlay password isn't enough on its own
-# anymore, an attacker would also need the TOTP device.
+# Authelia configuration for the real login in front of Overlay: password +
+# a second factor (TOTP, or a WebAuthn security key/fingerprint sensor — see
+# the webauthn: block below). Overlay itself has no login of its own (see
+# docs/SECURITY.md) — it trusts the Remote-User header Caddy's forward_auth
+# sets once Authelia approves a two_factor session, so this file and
+# access_control below are the ONLY gate in front of the dashboard, on top
+# of Tailscale network isolation.
 #
 # NOTE: verify this against the current official docs before relying on it —
 # https://www.authelia.com/configuration/ — Authelia's config schema has
@@ -29,11 +31,38 @@ log:
 totp:
   issuer: 'overlay' # cosmetic label shown in the user's authenticator app
 
+# Enables registering a FIDO2/WebAuthn security key (e.g. a YubiKey Bio with
+# a fingerprint sensor) as a second factor, alongside TOTP — the portal lets
+# you register either or both, and pick which to use at login. WebAuthn is
+# on by default in current Authelia versions even without this block; it's
+# spelled out here so user_verification is explicitly "preferred", which is
+# what makes the Bio series actually require a fingerprint (not just "key
+# present") — see docs/DEPLOYMENT.md section 9.2a for the registration
+# walkthrough.
+webauthn:
+  disable: false
+  display_name: 'Overlay Server'
+  attestation_conveyance_preference: indirect
+  selection_criteria:
+    user_verification: preferred
+  filtering:
+    permitted_aaguids: []
+    prohibited_aaguids: []
+
 authentication_backend:
   file:
     path: '/etc/authelia/users_database.yml'
     password:
       algorithm: 'argon2'
+
+# Required by `authelia validate-config` even though it'll never actually
+# fire: no SMTP is configured (see notifier below), so the email-based
+# reset-password flow can never deliver a reset link in practice. Manage the
+# single user's password via `authelia crypto hash generate` and editing
+# users_database.yml directly instead (same as the notifier note below).
+identity_validation:
+  reset_password:
+    jwt_secret: 'CHANGE-ME-a-third-long-random-string'
 
 access_control:
   default_policy: 'deny'

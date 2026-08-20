@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
+import type { EmmyAttachment } from "@overlay/shared";
+import { EMMY_LONG_REPORT_CHARS } from "@overlay/shared";
 import { getChat, updateChat, appendMessage, listChats } from "./emmy-store.js";
 import { publishEmmyMessage, publishEmmyChats } from "./emmy-bus.js";
 import { markWorking, markIdle } from "./emmy-activity.js";
@@ -7,6 +9,8 @@ import { indexMessageForMemory } from "./emmy-memory.js";
 import { minResearchDurationMs, DEFAULT_RESEARCH_WINDOW_HOURS } from "./emmy-categorize.js";
 import { sessionKeyFor } from "./emmy-turn-message.js";
 import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
+import { renderMarkdownToPdf, pdfFilenameFor } from "./emmy-pdf.js";
+import { saveGeneratedAttachment } from "./emmy-attachments.js";
 
 /**
  * Called by the Emmy agent turn when it replies to a chat message (see
@@ -94,7 +98,24 @@ emmyInboundRouter.post("/", async (req, res) => {
   // pending — the pending request stays queued for whenever she actually
   // delivers the summary (see pendingFinalDocument handling below).
   const isFinalDocument = chat.pendingFinalDocument === true && needsClarification !== true;
-  const message = await appendMessage(chatId, "emmy", text, undefined, isFinalDocument, needsClarification === true);
+  // Same "long report" threshold the web UI uses to clip the inline preview
+  // (see EMMY_LONG_REPORT_CHARS) — whenever that preview would kick in, a
+  // real PDF is generated alongside it so the full text is never trapped
+  // behind the clipped bubble, only a click away as an actual document.
+  // Clarifying questions are conversation, not reports — never a PDF.
+  let attachments: EmmyAttachment[] | undefined;
+  if (needsClarification !== true && (isFinalDocument || text.length > EMMY_LONG_REPORT_CHARS)) {
+    try {
+      const pdf = await renderMarkdownToPdf(text, chat.title);
+      const filename = pdfFilenameFor(chat.title, new Date().toISOString());
+      attachments = [await saveGeneratedAttachment(chatId, pdf, filename, "application/pdf")];
+    } catch {
+      // The chat message itself must still land even if PDF rendering fails
+      // for some reason (e.g. pathological markdown) — no attachment then.
+    }
+  }
+
+  const message = await appendMessage(chatId, "emmy", text, attachments, isFinalDocument, needsClarification === true);
   publishEmmyMessage(message);
   void indexMessageForMemory(message, chat.title).catch(() => {});
   // The answer is here, so she is no longer working on this chat.

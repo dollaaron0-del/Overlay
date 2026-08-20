@@ -18,18 +18,15 @@ const schema = z.object({
   PORT: z.coerce.number().int().positive().default(4317),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   APPS_ROOT: z.string().min(1, "APPS_ROOT must be set"),
-  SESSION_SECRET: z.string().min(16, "SESSION_SECRET must be set to a long random string"),
-  ADMIN_USERNAME: z.string().min(1, "ADMIN_USERNAME must be set"),
-  ADMIN_PASSWORD_HASH: z.string().min(1, "ADMIN_PASSWORD_HASH must be set (run: npm run set-password -w server)"),
-  // Turns off Overlay's OWN session-cookie login: "1"/"true" makes
-  // requireAuth, the WebSocket upgrade check and the /api/session answer
-  // no-ops. Only defensible when a real authentication proxy sits in front of
-  // every route (the intended setup is Authelia behind Caddy's forward_auth
-  // with two_factor + default deny, see docs/DEPLOYMENT.md section 9) — this
-  // drops the redundant second layer, not the only one. With Overlay exposed
-  // directly, this hands the whole dashboard, every project terminal and this
-  // machine's .env to anyone who can reach the port. Empty/unset = normal
-  // login, which is what every fresh install gets.
+  // Overlay has no login of its own: every route trusts the Remote-User
+  // header that Caddy's forward_auth sets once Authelia has approved a
+  // two_factor session (see docs/DEPLOYMENT.md section 9 and
+  // auth/auth.middleware.ts). AUTH_DISABLED skips that header check
+  // entirely — only defensible for local dev, when no Authelia/Caddy sits
+  // in front at all. With Overlay reachable directly, this hands the whole
+  // dashboard, every project terminal and this machine's .env to anyone who
+  // can reach the port, with zero authentication. Empty/unset = normal
+  // behaviour, which is what every fresh install gets.
   AUTH_DISABLED: z
     .string()
     .default("")
@@ -67,6 +64,20 @@ const schema = z.object({
     .string()
     .default("true")
     .transform((v) => v !== "false"),
+  // Shell spawned for the host terminal (a second, deliberately unsandboxed
+  // pty onto this machine itself — see pty/host-terminal.manager.ts), so it
+  // can sit open next to a project's terminal for commands that don't belong
+  // to any one project (systemctl, journalctl, disk usage, ...). Unlike the
+  // per-project terminal above, this always runs with the full rights of the
+  // Overlay service user; it exists specifically to reach outside a project
+  // sandbox, so wrapping it in one would defeat the point. It is reachable by
+  // anyone who can reach this app itself, i.e. anyone Overlay's own auth (or
+  // AUTH_DISABLED's front proxy) already lets in — same trust boundary as
+  // every other route. Empty/unset = fall back to $SHELL, then /bin/bash.
+  HOST_TERMINAL_SHELL: z.string().default(""),
+  // Working directory the host terminal starts in. Empty/unset = this
+  // process's own home directory.
+  HOST_TERMINAL_CWD: z.string().default(""),
   // Only consulted outside production: the Vite dev server runs on its own
   // port and proxies /api and /ws through to this backend, so the browser's
   // Origin header for a WebSocket upgrade is the dev server's origin, not
@@ -187,10 +198,6 @@ const schema = z.object({
   // turn, independent of the embedding tier above — this alone is what fixes
   // Emmy forgetting mid-task even with no Ollama configured at all.
   EMMY_MEMORY_RECENT_MESSAGES: z.coerce.number().int().positive().default(10),
-  COOKIE_SECURE: z
-    .string()
-    .default("false")
-    .transform((v) => v === "true"),
 });
 
 function loadConfig() {

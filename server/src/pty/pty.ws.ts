@@ -3,6 +3,8 @@ import type { WebSocket } from "ws";
 import type { PtyClientMessage, PtyServerMessage } from "@overlay/shared";
 import { getProject } from "../projects/projects.registry.js";
 import { getOrCreateSession } from "./pty.manager.js";
+import { getOrCreateHostSession } from "./host-terminal.manager.js";
+import type { PtySession } from "./pty.session.js";
 
 const HEARTBEAT_INTERVAL_MS = 20_000;
 
@@ -19,7 +21,7 @@ export async function handlePtyConnection(ws: WebSocket, projectId: string): Pro
   // become a silent unhandled rejection — logged server-side only, with the
   // browser left connecting forever. Surface it as terminal output instead,
   // the one place this connection can still put something in front of the user.
-  let session;
+  let session: PtySession;
   try {
     session = getOrCreateSession(project);
   } catch (err) {
@@ -31,6 +33,19 @@ export async function handlePtyConnection(ws: WebSocket, projectId: string): Pro
     ws.close(4500, "session_start_failed");
     return;
   }
+  attachPtySession(ws, session);
+}
+
+/**
+ * The host terminal has no owning project to look up and no sandbox to fail
+ * to build — getOrCreateHostSession() spawns a plain shell, so unlike
+ * handlePtyConnection above there is nothing here that can throw.
+ */
+export function handleHostPtyConnection(ws: WebSocket): void {
+  attachPtySession(ws, getOrCreateHostSession());
+}
+
+function attachPtySession(ws: WebSocket, session: PtySession): void {
   // Identifies this one browser tab for the duration of the connection, so
   // its viewport can be dropped from the session's size arbitration when it
   // goes away (see PtySession.setClientSize).

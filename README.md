@@ -14,8 +14,9 @@ iPad — und überwacht den Server selbst mit einem nächtlichen Security-Scan
 apt-Updates, offene Ports), optional ergänzt um eine rein beratende
 LLM-Triage über ein lokal laufendes Ollama-Modell, sichtbar in der
 "Sicherheit"-App. Nächtliche Backups (restic), Ressourcen-Monitoring und ein
-Aktivitätsprotokoll runden den Serverbetrieb ab. Optional lässt sich
-zusätzlich echtes 2FA (Authelia + Caddy) vorschalten.
+Aktivitätsprotokoll runden den Serverbetrieb ab. Overlay hat kein eigenes
+Login — der Zugriff läuft ausschließlich über einen vorgeschalteten 2FA-Login
+(Authelia + Caddy, inkl. WebAuthn/Fingerabdruck-Security-Key).
 
 Länger laufende Aktionen zeigen ihren tatsächlichen Fortschritt statt nur
 "Lädt…": Backups einen echten Prozent-Balken (live aus restics eigenen
@@ -70,9 +71,10 @@ erreichbar, Modell installiert).
 - `web/` — React-PWA-Frontend (Vite)
 - `shared/` — gemeinsame Typen (WebSocket-Nachrichten, Security-Scan-Reports)
 - `deploy/systemd/` — systemd-Units für den nächtlichen Security-Scan
-- `deploy/authelia/`, `deploy/caddy/` — optionale 2FA-Vorbau-Konfiguration
+- `deploy/authelia/`, `deploy/caddy/` — Konfiguration für den 2FA-Login
+  (Authelia + Caddy), der einzigen Anmeldeschicht vor Overlay
 - `docs/DEPLOYMENT.md` — Einrichtung auf dem echten Homeserver (Tailscale,
-  PM2, HTTPS, Security-Scan-Timer, optionales 2FA)
+  PM2, HTTPS, Security-Scan-Timer, Authelia + Caddy 2FA-Login)
 - `docs/SECURITY.md` — Bedrohungsmodell
 
 ## Lokale Entwicklung
@@ -80,9 +82,10 @@ erreichbar, Modell installiert).
 ```
 npm install
 cp .env.example .env
-# .env ausfüllen: APPS_ROOT, SESSION_SECRET, ADMIN_USERNAME
-npm run set-password -w server -- <passwort>
-# ADMIN_PASSWORD_HASH aus der Ausgabe in .env eintragen
+# .env ausfüllen: APPS_ROOT
+# Ohne Authelia/Caddy davor (siehe docs/DEPLOYMENT.md Abschnitt 9) lokal
+# testweise AUTH_DISABLED=true setzen, sonst liefert jede Route 401 —
+# Overlay hat kein eigenes Login mehr, siehe docs/SECURITY.md
 npm run dev
 ```
 

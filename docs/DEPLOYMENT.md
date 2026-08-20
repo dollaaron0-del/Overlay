@@ -30,26 +30,34 @@ Webserver-Prozesses.
 
 ## 2. Tailscale-Zugriffsmodell
 
-Das Grundprinzip: Overlay bindet **nur** an die Tailscale-Interface-Adresse,
-nie an `0.0.0.0` oder die LAN-IP. Dadurch ist das Dashboard selbst dann nicht
-erreichbar, wenn jemand im selben (geteilten) WLAN mitliest oder scannt.
+**Wichtig:** Overlay hat kein eigenes Login mehr (siehe `docs/SECURITY.md`) —
+es vertraut ausschließlich dem `Remote-User`-Header, den Caddys
+`forward_auth` nach einer erfolgreichen Authelia-Anmeldung setzt. Das
+bedeutet, Abschnitt 9 (Authelia + Caddy) ist **kein optionales Extra mehr,
+sondern Voraussetzung**: ohne davorstehendes Authelia+Caddy ist Overlay,
+sobald es auf einer im Tailnet erreichbaren Adresse lauscht, für jedes
+Tailnet-Mitglied ohne jede Anmeldung offen.
 
-1. IP des Tailscale-Interface ermitteln: `tailscale ip -4`
-2. In `.env` setzen: `BIND_ADDRESS=<diese-tailscale-ip>`
+Das Grundprinzip bleibt trotzdem: Overlay selbst bindet **nur** an
+`127.0.0.1`, nie an `0.0.0.0` oder eine im Tailnet erreichbare Adresse —
+**Caddy** ist der einzige Dienst, der direkt an die Tailscale-Interface-
+Adresse bindet (siehe Abschnitt 9). Dadurch ist Overlay selbst nie direkt
+erreichbar, egal ob durch einen Mitbewohner im geteilten WLAN oder ein
+kompromittiertes Tailnet-Gerät.
+
+1. IP des Tailscale-Interface ermitteln: `tailscale ip -4` (für Caddys
+   Bindung in Abschnitt 9, nicht für Overlay selbst)
+2. In `.env` setzen: `BIND_ADDRESS=127.0.0.1` (Standardwert, siehe
+   `.env.example`)
 3. Firewall (zusätzliche Absicherung, defense-in-depth): den konfigurierten
    `PORT` auf dem LAN-Interface explizit blockieren, z.B. mit `ufw`:
    ```
    ufw deny in on eth0 to any port 4317
    ```
 4. Für echtes HTTPS (nötig für Service Worker + "Zum Home-Bildschirm
-   hinzufügen" unter iOS) ein Tailscale-Zertifikat ausstellen:
-   ```
-   tailscale cert <dein-tailscale-hostname>.<dein-tailnet>.ts.net
-   ```
-   Die erzeugten Zertifikatsdateien vor einen Reverse-Proxy (z.B. Caddy oder
-   nginx) schalten, der auf 443 lauscht und an den Overlay-Port
-   weiterreicht — oder Node direkt mit `https.createServer` betreiben, falls
-   kein Reverse-Proxy gewünscht ist.
+   hinzufügen" unter iOS) ein Tailscale-Zertifikat ausstellen — Details in
+   Abschnitt 9.1/9.2, die Zertifikate landen bei Caddy, nicht bei Overlay
+   direkt.
 5. **Niemals** `tailscale funnel` für dieses Dashboard aktivieren — das würde
    es öffentlich ins Internet exponieren und widerspricht dem gewählten
    Sicherheitsmodell.
@@ -66,10 +74,11 @@ cp .env.example .env
 Dann in `.env`:
 - `APPS_ROOT` auf das tatsächliche Verzeichnis setzen, unter dem die
   verwalteten Web-Apps liegen (z.B. `/home/<user>/apps`)
-- `SESSION_SECRET` generieren: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
-- Admin-Passwort setzen: `npm run set-password -w server -- <dein-passwort>`
-  und den ausgegebenen Hash als `ADMIN_PASSWORD_HASH` eintragen
-- `COOKIE_SECURE=true`, sobald HTTPS via `tailscale cert` läuft
+- `BIND_ADDRESS=127.0.0.1` (Standard, siehe Abschnitt 2) — **nicht** ändern,
+  solange nicht auch Abschnitt 9 (Authelia + Caddy) eingerichtet ist
+- `AUTH_DISABLED` leer/unset lassen (Standard) — nur für lokale Entwicklung
+  ohne Authelia/Caddy davor auf `true` setzen, siehe die Warnung dazu in
+  `.env.example` und `docs/SECURITY.md`
 - `CLAUDE_COMMAND=claude` (Standard) — nur für lokale Tests ohne echten
   `claude`-Login auf z.B. `bash` ändern
 - `CLAUDE_SHARED_HOME` setzen, **falls** Overlay als eigener Service-User
@@ -631,18 +640,24 @@ selbst. Nach der Einrichtung auf dem echten Server dennoch prüfen:
 - [ ] Das `RESTIC_PASSWORD` ist an einem zweiten Ort gesichert, getrennt vom
       Server
 
-## 9. Optional (empfohlen): Echtes 2FA mit Authelia + Caddy
+## 9. Erforderlich: Login mit 2FA über Authelia + Caddy
 
-Fügt eine **dritte** Schutzschicht vor Overlay ein: einen Login mit
-Zwei-Faktor-Authentifizierung (TOTP-App auf dem iPad), bevor überhaupt der
-eigene Overlay-Login erscheint. Sinnvoll, seit sensible Daten (Second Brain
-u.a.) gehostet werden — ein gestohlenes Overlay-Passwort allein reicht damit
-nicht mehr.
+Overlay hat **kein eigenes Login mehr** (siehe `docs/SECURITY.md`) — dieser
+Abschnitt richtet die einzige Anmeldeschicht ein, die es jetzt gibt: einen
+Login mit Zwei-Faktor-Authentifizierung (TOTP-App **oder** ein
+FIDO2/WebAuthn-Security-Key wie ein YubiKey Bio mit Fingerabdrucksensor,
+siehe 9.2a), bevor überhaupt etwas von Overlay erreichbar ist.
 
-**Netzwerkmodell-Änderung:** Bisher band Overlays Node-Prozess direkt an die
-Tailscale-Adresse. Mit Authelia übernimmt stattdessen **Caddy** (Reverse
-Proxy) die Tailscale-Adresse, prüft über Authelia die 2FA-Session und leitet
-erst danach an Overlay weiter, das jetzt nur noch auf `127.0.0.1` lauscht.
+**Netzwerkmodell:** Nicht Overlays Node-Prozess bindet an die
+Tailscale-Adresse, sondern **Caddy** (Reverse Proxy) — prüft über Authelia
+die 2FA-Session und leitet erst danach an Overlay weiter, das nur auf
+`127.0.0.1` lauscht und dem `Remote-User`-Header vertraut, den Caddy nach
+erfolgreicher Prüfung mitschickt (siehe `auth/auth.middleware.ts`). Ohne
+diesen Abschnitt ist Overlay, sobald `BIND_ADDRESS` auf eine im Tailnet
+erreichbare Adresse zeigt, für jedes Tailnet-Mitglied ohne jede Anmeldung
+offen — **vor** dem Umstieg auf diesen Abschnitt unbedingt mit
+`ss -tlnp | grep node` (oder der `PORT`-Variable) prüfen, dass Overlay
+aktuell wirklich nur dort lauscht, wo erwartet.
 
 ### 9.1 Installation
 
@@ -660,11 +675,13 @@ apt install authelia
 ### 9.2 Konfigurieren
 
 Templates liegen unter `deploy/authelia/` und `deploy/caddy/` in diesem
-Repo — **beide Dateien haben ausführliche Kommentare, unter anderem einen
-Hinweis, dass das genaue Feldformat/der Endpunkt-Pfad nicht gegen die
-aktuelle Authelia-Dokumentation verifiziert werden konnte** (kein Zugriff
-auf die Live-Docs aus dieser Entwicklungssandbox) — vor dem produktiven
-Einsatz einmal gegen https://www.authelia.com/configuration/ gegenprüfen.
+Repo — beide Dateien haben ausführliche Kommentare. Das Feldformat wurde
+gegen ein lokal installiertes Authelia v4.39.20 mit `authelia
+validate-config` und Caddy mit `caddy validate` geprüft (inkl. des
+`webauthn.selection_criteria.user_verification`-Felds, das in 4.39
+umbenannt wurde) — trotzdem vor dem produktiven Einsatz einmal gegen
+https://www.authelia.com/configuration/ gegenprüfen, falls die installierte
+Version abweicht.
 
 ```
 mkdir -p /etc/authelia /var/lib/authelia
@@ -675,10 +692,19 @@ cp deploy/caddy/Caddyfile /etc/caddy/Caddyfile
 
 In allen drei Dateien `CHANGE-ME.tailnet-name.ts.net` durch den echten
 Tailscale-MagicDNS-Hostnamen ersetzen (`tailscale status` zeigt ihn an).
+**Wichtig:** beide Dateien müssen denselben Port für Authelias
+`server.address` (Standard `9091`) verwenden wie der `forward_auth`-Block
+im Caddyfile — weichen sie voneinander ab, schlägt jede Anfrage fehl.
 
 In `/etc/authelia/configuration.yml`:
-- `session.secret` und `storage.encryption_key` generieren:
+- `session.secret`, `storage.encryption_key` und
+  `identity_validation.reset_password.jwt_secret` generieren (je ein
+  eigener Wert):
   `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- Der `webauthn:`-Block ist bereits enthalten und aktiviert WebAuthn mit
+  `user_verification: preferred` — das ist es, was einen YubiKey Bio
+  tatsächlich zum Fingerabdruck zwingt, statt nur "Key eingesteckt" zu
+  akzeptieren.
 
 In `/etc/authelia/users_database.yml`:
 - Passwort-Hash generieren: `authelia crypto hash generate argon2 --password '<dein-passwort>'`
@@ -698,6 +724,28 @@ BIND_ADDRESS=127.0.0.1
 ```
 (Caddy übernimmt jetzt die Tailscale-Adresse, Overlay selbst muss nicht mehr
 direkt darauf binden.)
+
+### 9.2a Security Key / Fingerabdruck registrieren (z.B. YubiKey Bio)
+
+Hardware: ein FIDO2/WebAuthn-fähiger Security Key mit Fingerabdrucksensor
+(z.B. YubiKey Bio Series, USB-A oder USB-C je nach freiem Anschluss am
+Gerät, das am Display hängt). Alternativ, falls dort bereits ein Gerät mit
+Windows Hello oder Touch ID hängt: kein Kauf nötig, dessen eingebauter
+Sensor lässt sich direkt als Platform Authenticator registrieren.
+
+1. Security Key in den USB-Port des Display-Geräts stecken (bzw. bei
+   Windows Hello/Touch ID: nichts einstecken).
+2. Im Browser zur Tailscale-Adresse navigieren → Authelia-Portal erscheint.
+3. Mit Passwort (1. Faktor) einloggen wie gewohnt.
+4. Im Portal zu **Settings → Security Keys** (bzw. "Zwei-Faktor-Methoden
+   verwalten") navigieren.
+5. "Security Key hinzufügen" wählen, Namen vergeben (z.B. "YubiKey Bio —
+   Display"), Browser-Prompt folgen: Key antippen, Finger auf den Sensor
+   legen zur Registrierung.
+6. **TOTP als zusätzliche Methode bestehen lassen** (nicht löschen) — das
+   ist der Fallback, falls der Key mal nicht griffbereit ist.
+7. Test-Logout + Login: Beim 2FA-Schritt sollte jetzt die Wahl zwischen
+   "Security Key" (→ Finger auflegen) und "TOTP" erscheinen.
 
 ### 9.3 Aktivieren
 
@@ -733,22 +781,37 @@ Tailnet mit einem einzigen Nutzer ein vertretbarer Kompromiss) und
 ### 9.5 Manuelle Verifikation
 
 - [ ] `https://<tailscale-host>` zeigt zuerst die Authelia-Login-Seite
-      (Passwort + TOTP-Code), erst danach den Overlay-Login
-- [ ] TOTP-Gerät (z.B. Authenticator-App auf dem iPad) beim ersten Login
-      erfolgreich registriert
+      (Passwort + 2FA-Wahl) — Overlay selbst zeigt **kein** eigenes Login
+      mehr, direkt danach erscheint das Dashboard
+- [ ] Login einmal über TOTP durchspielen (funktioniert weiterhin als
+      Fallback)
+- [ ] Login einmal über den Security Key durchspielen (Finger auf den
+      Sensor) — landet direkt im Dashboard
+- [ ] Falscher/fremder Finger auf dem Key → Login schlägt sauber fehl, kein
+      Bypass
 - [ ] `https://<tailscale-host>:9091` erreicht direkt das Authelia-Portal
-- [ ] Overlay selbst ist **nicht** mehr direkt über die Tailscale-Adresse auf
-      dem alten Port erreichbar, nur noch über Caddy — mit `curl` von einem
-      anderen Tailnet-Gerät auf `127.0.0.1:<PORT>` sollte das lokal auf dem
-      Server selbst funktionieren, von außen aber nicht
+- [ ] Overlay selbst ist **nicht** mehr direkt über die Tailscale-Adresse
+      erreichbar, nur noch über Caddy — mit `curl` von einem anderen
+      Tailnet-Gerät auf `127.0.0.1:<PORT>` sollte das lokal auf dem Server
+      selbst funktionieren, von außen aber nicht
+- [ ] Negativtest ohne Authelia-Session: `curl -i https://<tailscale-host>`
+      ohne Cookies von einem anderen Gerät muss von Caddy/Authelia
+      abgefangen werden (Redirect zur Login-Seite), nie direkt
+      Dashboard-Inhalte liefern. Zusätzlich lokal auf dem Server selbst:
+      `curl http://127.0.0.1:<PORT>/api/session` (ohne den `Remote-User`-
+      Header, den nur Caddy setzt) muss `{"authenticated":false,...}`
+      liefern — das ist Overlays eigene Verteidigungslinie, falls Caddy
+      selbst mal umgangen wird
 - [ ] Der Caddy-`forward_auth`-Endpunkt-Pfad (`/api/authz/forward-auth`)
       passt zur installierten Authelia-Version (siehe Hinweis in
       `deploy/caddy/Caddyfile`) — bei Fehlern in den Caddy-Logs
       (`journalctl -u caddy`) als Erstes hier nachsehen
+- [ ] iPad-PWA-Login separat testen (bekannter Cache-Stolperstein — im
+      Zweifel App entfernen und neu "Zum Home-Bildschirm hinzufügen")
 - [ ] Nach Ablauf von `session.inactivity` (zum Testen kurz auf `1m` setzen)
       landet eine geöffnete Overlay-Oberfläche von selbst wieder im
-      Authelia-Portal — und **nicht** in einem Overlay-Login, der jedes
-      Passwort als falsch abweist
+      Authelia-Portal — ein eigenes Overlay-Login, das dazwischenfunken
+      könnte, gibt es nicht mehr
 
 ## 10. Manuelle Verifikation nach dem Deployment
 
@@ -1173,7 +1236,14 @@ manuellen Knopf gibt es einen eigenen Timer, der `deploy/check-and-update.sh`
 alle 10 Minuten laufen lässt: der prüft nur per `git fetch` + `rev-parse`, ob
 `@{u}` neue Commits hat, und stößt bei Bedarf exakt dieselbe
 `overlay-update.service` an, die auch der Knopf nutzt — kein separater
-Codepfad. Einrichtung (als root):
+Codepfad. Seit dem Fix für "wiederkehrende Checks laufen nie automatisch"
+installiert `deploy/update.sh` (Schritt 6/7) die Unit **automatisch** bei
+jedem Update, falls `/etc/systemd/system/overlay-check-update.timer` noch
+fehlt — derselbe zuvor rein manuelle Schritt, der beim Emmy-Scheduler-Timer
+(Abschnitt 16.2) genau diese Lücke war. Mit
+`systemctl status overlay-check-update.timer` prüfen. Nur falls das
+automatische Nachziehen aus irgendeinem Grund nicht greift, hier der
+manuelle Weg (als root):
 
 ```
 install -m 0644 /opt/overlay/deploy/systemd/overlay-check-update.service \
@@ -1193,7 +1263,7 @@ daher den unauthentifizierten, bewusst minimalen Endpunkt
 `GET /api/health/terminals` (`{"activeSessions": true|false}`, kein
 Projektname, keine Anzahl) und verschiebt den Deploy um einen Tick, solange
 mindestens eine Session offen ist. Das darf ein sicherheitsrelevantes Update
-(Schritt 5/5 erzwingt eine neue Authelia-Session) aber nicht auf unbestimmte
+(Schritt 7/7 erzwingt eine neue Authelia-Session) aber nicht auf unbestimmte
 Zeit blockieren — deshalb ein Zähler in `/run/overlay-update-defer-count`
 (tmpfs, verschwindet also beim nächsten Boot von selbst), der nach
 `MAX_DEFERS=6` Versuchen (~1 Stunde bei 10-Minuten-Takt) das Update trotz
@@ -1246,7 +1316,7 @@ bricht mit einer klaren Fehlermeldung ab, statt still nichts zu tun.
 ### 16.2 systemd-Timer einrichten
 
 Seit dem Fix für "wiederkehrende Checks laufen nie automatisch" installiert
-`deploy/update.sh` (Schritt 5/6) die Unit **automatisch** bei jedem Update,
+`deploy/update.sh` (Schritt 5/7) die Unit **automatisch** bei jedem Update,
 falls `/etc/systemd/system/overlay-emmy-scheduler.timer` noch fehlt — der
 zuvor rein manuelle Schritt unten war genau die Lücke, die auf diesem
 Server dazu geführt hat, dass der Timer nie existierte und Checks

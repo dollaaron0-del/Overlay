@@ -2,12 +2,13 @@ import type { IncomingMessage } from "node:http";
 import { config } from "../config.js";
 
 /**
- * Defense-in-depth alongside the auth-cookie check: rejects WebSocket
- * upgrades whose Origin doesn't match the host actually being connected to.
- * Not the primary defense (Tailscale-only network reachability + the
- * SameSite=Lax session cookie already do most of the work), but cheap and
- * catches e.g. a malicious page loaded in another tab trying to open a
- * cross-site WebSocket using a browser's ambient cookie jar.
+ * Defense-in-depth alongside the Remote-User header check: rejects
+ * WebSocket upgrades whose Origin doesn't match the host actually being
+ * connected to. Not the primary defense (Tailscale-only network
+ * reachability + Authelia's own SameSite=Lax session cookie already do most
+ * of the work), but cheap and catches e.g. a malicious page loaded in
+ * another tab trying to open a cross-site WebSocket using the browser's
+ * ambient Authelia cookie jar.
  */
 export function isAllowedOrigin(req: IncomingMessage): boolean {
   const origin = req.headers.origin;
