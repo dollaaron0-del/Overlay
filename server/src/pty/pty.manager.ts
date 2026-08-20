@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { config } from "../config.js";
 import { resolveProjectDir } from "../projects/projects.registry.js";
 import type { Project } from "../projects/projects.types.js";
-import { ensureProjectClaudeHome, sharedClaudeHomeDir, sharedCredentialsFile } from "./claude-home.js";
+import { ensureProjectClaudeHome, hasExistingConversation, sharedClaudeHomeDir, sharedCredentialsFile } from "./claude-home.js";
 import { ensureGitCredentialHelper } from "./git-credentials.js";
 import { buildSandboxCommand } from "./sandbox.js";
 import { PtySession } from "./pty.session.js";
@@ -40,11 +40,16 @@ export function getOrCreateSession(project: Project): PtySession {
   // case now that overlay-check-update.timer restarts the server on its
   // own) an update just killed every running pty. --continue resumes the
   // most recent conversation for this cwd so reopening a project after a
-  // restart lands back in the existing chat instead of a blank one; with no
-  // prior conversation it just starts fresh, same as today. Only added for
-  // the real CLI — CLAUDE_COMMAND is overridden to e.g. "bash" for local
-  // pty-plumbing tests, which doesn't understand this flag.
-  const claudeArgs = config.CLAUDE_COMMAND === "claude" ? ["--continue"] : [];
+  // restart lands back in the existing chat instead of a blank one. Only
+  // added when a transcript for this cwd actually exists: Claude Code does
+  // NOT fall back to a fresh session when there is nothing to resume — it
+  // prints "No conversation found to continue" and exits immediately,
+  // which would kill a brand-new project's very first terminal before the
+  // user can type anything. Only added for the real CLI — CLAUDE_COMMAND is
+  // overridden to e.g. "bash" for local pty-plumbing tests, which doesn't
+  // understand this flag.
+  const claudeArgs =
+    config.CLAUDE_COMMAND === "claude" && hasExistingConversation(claudeHome, cwd) ? ["--continue"] : [];
 
   // Sandboxed by default, so a session cannot reach the neighbouring projects
   // or this installation's secrets. buildSandboxCommand throws with an

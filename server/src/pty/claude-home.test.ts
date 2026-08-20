@@ -21,7 +21,7 @@ fs.mkdirSync(path.join(fakeHome, ".claude"), { recursive: true });
 fs.writeFileSync(path.join(fakeHome, ".claude", ".credentials.json"), '{"token":"shared"}');
 fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), '{"model":"opus"}');
 
-const { ensureProjectClaudeHome } = await import("./claude-home.js");
+const { ensureProjectClaudeHome, hasExistingConversation } = await import("./claude-home.js");
 
 before(() => process.chdir(workdir));
 after(() => {
@@ -128,4 +128,19 @@ test("carried-over history never overwrites newer conversations", () => {
 test("a project with no previous history is fine", () => {
   const home = ensureProjectClaudeHome("fresh", "/opt/apps/never-used");
   assert.ok(fs.statSync(home).isDirectory());
+});
+
+test("hasExistingConversation is false for a brand-new project", () => {
+  const projectDir = "/opt/apps/brand-new";
+  const home = ensureProjectClaudeHome("brand-new", projectDir);
+  assert.equal(hasExistingConversation(home, projectDir), false);
+});
+
+test("hasExistingConversation is true once a transcript exists", () => {
+  const projectDir = "/opt/apps/has-transcript";
+  const key = projectDir.replace(/\//g, "-");
+  const home = ensureProjectClaudeHome("has-transcript", projectDir);
+  fs.mkdirSync(path.join(home, "projects", key), { recursive: true });
+  fs.writeFileSync(path.join(home, "projects", key, "session.jsonl"), "conversation");
+  assert.equal(hasExistingConversation(home, projectDir), true);
 });
