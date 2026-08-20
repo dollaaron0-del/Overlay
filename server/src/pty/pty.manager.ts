@@ -9,6 +9,20 @@ import { PtySession } from "./pty.session.js";
 
 const sessions = new Map<string, PtySession>();
 
+/**
+ * Whether any project terminal currently has a live pty. Exposed so the
+ * root-run auto-update check (deploy/check-and-update.sh) can defer
+ * restarting this process while someone is mid-session instead of always
+ * killing every open terminal — see the comment above about `--continue`
+ * for why that used to be the only mitigation.
+ */
+export function hasActiveSessions(): boolean {
+  for (const session of sessions.values()) {
+    if (session.isAlive) return true;
+  }
+  return false;
+}
+
 export function getOrCreateSession(project: Project): PtySession {
   const existing = sessions.get(project.id);
   if (existing && existing.isAlive) return existing;
@@ -21,13 +35,24 @@ export function getOrCreateSession(project: Project): PtySession {
   const claudeHome = ensureProjectClaudeHome(project.id, cwd);
   ensureGitCredentialHelper(cwd);
 
+  // A fresh PtySession here always means the previous claude process is
+  // gone — either this project's terminal was never opened, or (the common
+  // case now that overlay-check-update.timer restarts the server on its
+  // own) an update just killed every running pty. --continue resumes the
+  // most recent conversation for this cwd so reopening a project after a
+  // restart lands back in the existing chat instead of a blank one; with no
+  // prior conversation it just starts fresh, same as today. Only added for
+  // the real CLI — CLAUDE_COMMAND is overridden to e.g. "bash" for local
+  // pty-plumbing tests, which doesn't understand this flag.
+  const claudeArgs = config.CLAUDE_COMMAND === "claude" ? ["--continue"] : [];
+
   // Sandboxed by default, so a session cannot reach the neighbouring projects
   // or this installation's secrets. buildSandboxCommand throws with an
   // actionable message when bubblewrap is missing rather than quietly
   // dropping the boundary — that failure is visible in the terminal, whereas
   // a silent fallback would not be.
   const { command, args } = config.TERMINAL_SANDBOX
-    ? buildSandboxCommand(config.CLAUDE_COMMAND, [], {
+    ? buildSandboxCommand(config.CLAUDE_COMMAND, claudeArgs, {
         projectDir: cwd,
         claudeHome,
         appsRoot: realPathOrSelf(config.APPS_ROOT),
@@ -35,7 +60,7 @@ export function getOrCreateSession(project: Project): PtySession {
         sharedClaudeHome: sharedClaudeHomeDir(),
         sharedCredentialsFile: sharedCredentialsFile(),
       })
-    : { command: config.CLAUDE_COMMAND, args: [] };
+    : { command: config.CLAUDE_COMMAND, args: claudeArgs };
 
   const session = new PtySession(command, args, cwd, {
     CLAUDE_CONFIG_DIR: claudeHome,
@@ -46,18 +71,6 @@ export function getOrCreateSession(project: Project): PtySession {
     if (sessions.get(project.id) === session) sessions.delete(project.id);
   });
   return session;
-}
-
-export function stopSession(projectId: string): boolean {
-  const session = sessions.get(projectId);
-  if (!session) return false;
-  session.kill();
-  sessions.delete(projectId);
-  return true;
-}
-
-export function getSession(projectId: string): PtySession | undefined {
-  return sessions.get(projectId);
 }
 
 /**

@@ -85,7 +85,10 @@ async function writeAtomicObsidianNote(project: Project, input: QuickCaptureInpu
   if (imageFilename) parts.push(`![[${imageFilename}]]`);
 
   const content = `${frontmatter}\n${parts.join("\n\n")}\n`;
-  const filename = `${isoStamp}-${slugify(titleSource, "schnellnotiz")}.md`;
+  // Random suffix (same reasoning as saveImageIfAny above) — without it, two
+  // captures with the same text landing in the same second would silently
+  // overwrite one another instead of becoming two notes.
+  const filename = `${isoStamp}-${slugify(titleSource, "schnellnotiz")}-${Math.random().toString(36).slice(2, 8)}.md`;
 
   await fs.mkdir(inboxDir, { recursive: true });
   await fs.writeFile(path.join(inboxDir, filename), content, "utf8");

@@ -170,3 +170,135 @@ test("updateProjectIcon on an unknown id returns undefined", async () => {
   const result = await registry.updateProjectIcon("does-not-exist", "🚀");
   assert.equal(result, undefined);
 });
+
+test("updateProjectExternalUrl sets and clears a normal PM2 project's dashboard link", async () => {
+  await fs.mkdir(path.join(appsRoot, "app-url-test"), { recursive: true });
+  await registry.addProject({
+    id: "app-url-test",
+    dirName: "app-url-test",
+    pm2Name: "app-url-test",
+    startScript: "npm start",
+  });
+
+  const updated = await registry.updateProjectExternalUrl("app-url-test", "https://server.tail2388d0.ts.net:9093/");
+  assert.equal(updated?.externalUrl, "https://server.tail2388d0.ts.net:9093/");
+  assert.equal((await registry.getProject("app-url-test"))?.externalUrl, "https://server.tail2388d0.ts.net:9093/");
+
+  const cleared = await registry.updateProjectExternalUrl("app-url-test", null);
+  assert.equal(cleared?.externalUrl, undefined);
+});
+
+test("updateProjectExternalUrl rejects a non-https URL", async () => {
+  await fs.mkdir(path.join(appsRoot, "app-url-insecure"), { recursive: true });
+  await registry.addProject({
+    id: "app-url-insecure",
+    dirName: "app-url-insecure",
+    pm2Name: "app-url-insecure",
+    startScript: "npm start",
+  });
+
+  await assert.rejects(
+    () => registry.updateProjectExternalUrl("app-url-insecure", "http://server.tail2388d0.ts.net:9093/"),
+    registry.InvalidExternalUrlError,
+  );
+});
+
+test("addProject for a normal PM2 project accepts an optional externalUrl", async () => {
+  await fs.mkdir(path.join(appsRoot, "app-with-dashboard"), { recursive: true });
+  const project = await registry.addProject({
+    id: "app-with-dashboard",
+    dirName: "app-with-dashboard",
+    pm2Name: "app-with-dashboard",
+    startScript: "npm start",
+    externalUrl: "https://server.tail2388d0.ts.net:9093/",
+  });
+  assert.equal(project.externalUrl, "https://server.tail2388d0.ts.net:9093/");
+});
+
+test("addProject with kind systemd creates an empty stub dir instead of requiring one to pre-exist", async () => {
+  const project = await registry.addProject({
+    kind: "systemd",
+    id: "aktien-bot",
+    dirName: "aktien-bot",
+    systemdUnit: "aktien_dashboard.service",
+    externalUrl: "https://server.tail2388d0.ts.net:9093/aktien/",
+  });
+  assert.equal(project.systemdUnit, "aktien_dashboard.service");
+
+  const stat = await fs.stat(path.join(appsRoot, "aktien-bot"));
+  assert.ok(stat.isDirectory());
+  const marker = await fs.readFile(path.join(appsRoot, "aktien-bot", "README.md"), "utf8");
+  assert.match(marker, /Platzhalter/);
+});
+
+test("addProject with kind systemd rejects an invalid unit name", async () => {
+  await assert.rejects(
+    () =>
+      registry.addProject({
+        kind: "systemd",
+        id: "evil-unit",
+        dirName: "evil-unit",
+        systemdUnit: "not a unit; rm -rf /",
+        externalUrl: "https://server.tail2388d0.ts.net:9093/",
+      }),
+    registry.InvalidSystemdUnitError,
+  );
+});
+
+test("addProject with kind systemd rejects a non-https externalUrl", async () => {
+  await assert.rejects(
+    () =>
+      registry.addProject({
+        kind: "systemd",
+        id: "insecure-url",
+        dirName: "insecure-url",
+        systemdUnit: "insecure.service",
+        externalUrl: "http://server.tail2388d0.ts.net:9093/",
+      }),
+    registry.InvalidExternalUrlError,
+  );
+});
+
+test("addProject with kind pm2-root creates an empty stub dir instead of requiring one to pre-exist", async () => {
+  const project = await registry.addProject({
+    kind: "pm2-root",
+    id: "nachhilfe",
+    dirName: "nachhilfe",
+    pm2RootName: "nachhilfe",
+    externalUrl: "https://server.tail2388d0.ts.net:9093/",
+  });
+  assert.equal(project.pm2RootName, "nachhilfe");
+
+  const stat = await fs.stat(path.join(appsRoot, "nachhilfe"));
+  assert.ok(stat.isDirectory());
+  const marker = await fs.readFile(path.join(appsRoot, "nachhilfe", "README.md"), "utf8");
+  assert.match(marker, /Platzhalter/);
+});
+
+test("addProject with kind pm2-root rejects an invalid process name", async () => {
+  await assert.rejects(
+    () =>
+      registry.addProject({
+        kind: "pm2-root",
+        id: "evil-pm2-name",
+        dirName: "evil-pm2-name",
+        pm2RootName: "not a name; rm -rf /",
+        externalUrl: "https://server.tail2388d0.ts.net:9093/",
+      }),
+    registry.InvalidPm2RootNameError,
+  );
+});
+
+test("addProject with kind pm2-root rejects a non-https externalUrl", async () => {
+  await assert.rejects(
+    () =>
+      registry.addProject({
+        kind: "pm2-root",
+        id: "insecure-pm2-root-url",
+        dirName: "insecure-pm2-root-url",
+        pm2RootName: "insecure",
+        externalUrl: "http://server.tail2388d0.ts.net:9093/",
+      }),
+    registry.InvalidExternalUrlError,
+  );
+});

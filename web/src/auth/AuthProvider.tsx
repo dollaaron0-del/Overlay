@@ -18,6 +18,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api
       .get<{ authenticated: boolean }>("/api/session")
       .then((res) => setAuthenticated(res.authenticated))
+      // A probe that never reaches Overlay (server down, or the 2FA portal in
+      // front of it intercepting) is not an answer of "logged in" — fall back
+      // to the login screen rather than leaving the rejection unhandled.
+      .catch(() => setAuthenticated(false))
       .finally(() => setLoading(false));
   }, []);
 

@@ -1,10 +1,16 @@
 import type { ReactNode } from "react";
+import { EmmyChart, parseEmmyChartSpec } from "./EmmyChart.js";
+import { EmmyMath } from "./EmmyMath.js";
+import { EmmyMermaid } from "./EmmyMermaid.js";
 
 // Minimal Markdown -> React renderer for Emmy's replies: headings, bold,
-// italic, inline code, code blocks, links, lists, blockquotes, tables, rules.
-// No new dependency — same approach as web/src/obsidian/miniMarkdown.tsx, but
+// italic, inline code, code blocks, links, lists (nested), blockquotes,
+// tables, rules. Same approach as web/src/obsidian/miniMarkdown.tsx, but
 // without wikilinks (irrelevant here) and with code blocks/tables added,
-// since research reports commonly use both.
+// since research reports commonly use both. ```mermaid and ```chart fences
+// get a diagram/chart instead of a plain code block (see EmmyMermaid/EmmyChart),
+// and $$...$$ blocks get real typesetting via KaTeX (already a transitive
+// mermaid dependency, so this adds no new bytes to the on-demand chunk).
 
 const SAFE_LINK_SCHEME = /^(https?:|mailto:)/i;
 
@@ -83,23 +89,66 @@ function isTableSeparator(line: string): boolean {
   return /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line) && line.includes("-");
 }
 
+interface ListItem {
+  ordered: boolean;
+  text: string;
+  indent: number;
+}
+
+interface ListGroup {
+  item: ListItem;
+  children: ListGroup[];
+}
+
+/**
+ * Groups a flat, indent-tagged run of list items into a tree using an
+ * indentation stack: each item attaches under the nearest still-open
+ * ancestor with a strictly shallower indent, then opens its own level at
+ * its own indent. This never drops an item just because no earlier sibling
+ * happened to use that exact indent value — e.g. indent jumping straight
+ * from 0 to 4 and back to 2, with no item ever previously at indent 2,
+ * still nests the indent-2 item under the indent-0 item instead of vanishing
+ * (a strict-equality match against open levels would silently swallow it
+ * and everything after it in the list).
+ */
+function groupListItems(items: ListItem[]): ListGroup[] {
+  const roots: ListGroup[] = [];
+  const stack: { indent: number; children: ListGroup[] }[] = [{ indent: -1, children: roots }];
+  for (const item of items) {
+    while (stack.length > 1 && item.indent <= stack[stack.length - 1].indent) {
+      stack.pop();
+    }
+    const node: ListGroup = { item, children: [] };
+    stack[stack.length - 1].children.push(node);
+    stack.push({ indent: item.indent, children: node.children });
+  }
+  return roots;
+}
+
+function renderListGroups(groups: ListGroup[], keyPrefix: string): ReactNode {
+  const Tag = groups[0].item.ordered ? "ol" : "ul";
+  return (
+    <Tag key={`${keyPrefix}-list`}>
+      {groups.map((group, i) => (
+        <li key={`${keyPrefix}-li-${i}`}>
+          {renderInline(group.item.text, `${keyPrefix}-txt-${i}`)}
+          {group.children.length > 0 && renderListGroups(group.children, `${keyPrefix}-${i}`)}
+        </li>
+      ))}
+    </Tag>
+  );
+}
+
 export function renderMiniMarkdown(markdown: string): ReactNode {
   const lines = markdown.split("\n");
   const blocks: ReactNode[] = [];
-  let listItems: { ordered: boolean; text: string }[] | null = null;
+  let listItems: ListItem[] | null = null;
   let quoteLines: string[] | null = null;
   let blockKey = 0;
 
   const flushList = () => {
     if (!listItems) return;
-    const items = listItems;
-    const ordered = items[0]?.ordered ?? false;
-    const Tag = ordered ? "ol" : "ul";
-    blocks.push(
-      <Tag key={`list-${blockKey++}`}>
-        {items.map((item, i) => <li key={i}>{renderInline(item.text, `li-${blockKey}-${i}`)}</li>)}
-      </Tag>,
-    );
+    blocks.push(renderListGroups(groupListItems(listItems), `list-${blockKey++}`));
     listItems = null;
   };
 
@@ -113,10 +162,11 @@ export function renderMiniMarkdown(markdown: string): ReactNode {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
-    const fenceMatch = /^```/.exec(line.trim());
+    const fenceMatch = /^```(\w*)/.exec(line.trim());
     if (fenceMatch) {
       flushList();
       flushQuote();
+      const lang = fenceMatch[1].toLowerCase();
       const codeLines: string[] = [];
       i++;
       while (i < lines.length && !/^```/.test(lines[i].trim())) {
@@ -124,11 +174,43 @@ export function renderMiniMarkdown(markdown: string): ReactNode {
         i++;
       }
       i++; // skip closing fence
-      blocks.push(
-        <pre key={`code-${blockKey++}`}>
-          <code>{codeLines.join("\n")}</code>
-        </pre>,
-      );
+      const body = codeLines.join("\n");
+      const chartSpec = lang === "chart" ? parseEmmyChartSpec(body) : null;
+      if (lang === "mermaid") {
+        blocks.push(<EmmyMermaid key={`mermaid-${blockKey++}`} code={body} />);
+      } else if (chartSpec) {
+        blocks.push(<EmmyChart key={`chart-${blockKey++}`} spec={chartSpec} />);
+      } else {
+        blocks.push(
+          <pre key={`code-${blockKey++}`}>
+            <code>{body}</code>
+          </pre>,
+        );
+      }
+      continue;
+    }
+
+    // A $$...$$ math block, either fenced across multiple lines or self-
+    // contained on one line.
+    const mathInlineBlockMatch = /^\$\$(.+)\$\$$/.exec(line.trim());
+    if (line.trim() === "$$") {
+      flushList();
+      flushQuote();
+      const mathLines: string[] = [];
+      i++;
+      while (i < lines.length && lines[i].trim() !== "$$") {
+        mathLines.push(lines[i]);
+        i++;
+      }
+      i++; // skip closing $$
+      blocks.push(<EmmyMath key={`math-${blockKey++}`} latex={mathLines.join("\n")} />);
+      continue;
+    }
+    if (mathInlineBlockMatch) {
+      flushList();
+      flushQuote();
+      blocks.push(<EmmyMath key={`math-${blockKey++}`} latex={mathInlineBlockMatch[1]} />);
+      i++;
       continue;
     }
 
@@ -147,8 +229,8 @@ export function renderMiniMarkdown(markdown: string): ReactNode {
     }
 
     const headingMatch = /^(#{1,6})\s+(.*)$/.exec(line);
-    const orderedMatch = /^\s*\d+[.)]\s+(.*)$/.exec(line);
-    const bulletMatch = /^\s*[-*+]\s+(.*)$/.exec(line);
+    const orderedMatch = /^(\s*)\d+[.)]\s+(.*)$/.exec(line);
+    const bulletMatch = /^(\s*)[-*+]\s+(.*)$/.exec(line);
     const quoteMatch = /^\s*>\s?(.*)$/.exec(line);
     const ruleMatch = /^\s*(-{3,}|\*{3,}|_{3,})\s*$/.exec(line);
 
@@ -165,11 +247,11 @@ export function renderMiniMarkdown(markdown: string): ReactNode {
     } else if (bulletMatch) {
       flushQuote();
       listItems = listItems ?? [];
-      listItems.push({ ordered: false, text: bulletMatch[1] });
+      listItems.push({ ordered: false, text: bulletMatch[2], indent: bulletMatch[1].length });
     } else if (orderedMatch) {
       flushQuote();
       listItems = listItems ?? [];
-      listItems.push({ ordered: true, text: orderedMatch[1] });
+      listItems.push({ ordered: true, text: orderedMatch[2], indent: orderedMatch[1].length });
     } else if (quoteMatch) {
       flushList();
       quoteLines = quoteLines ?? [];

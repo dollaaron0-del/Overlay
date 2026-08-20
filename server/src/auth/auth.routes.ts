@@ -21,6 +21,19 @@ const loginSchema = z.object({
 // Simple in-memory backoff against brute-force login attempts (single-user app).
 const failedAttempts = new Map<string, { count: number; nextAllowedAt: number }>();
 
+// Without this, an entry outlives its own backoff window forever — a client
+// that stops retrying after being blocked once leaves its IP in the map for
+// the life of the process. Harmless at personal-app scale, but unbounded if
+// the login endpoint is ever probed from many distinct source IPs (e.g. a
+// scanner). unref() so this timer alone can't keep the process alive.
+const ATTEMPT_SWEEP_INTERVAL_MS = 60_000;
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, attempt] of failedAttempts) {
+    if (now >= attempt.nextAllowedAt) failedAttempts.delete(ip);
+  }
+}, ATTEMPT_SWEEP_INTERVAL_MS).unref();
+
 function backoffMs(count: number): number {
   return Math.min(30_000, 500 * 2 ** count);
 }

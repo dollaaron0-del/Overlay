@@ -48,6 +48,20 @@ export class PtySession {
   }
 
   /**
+   * Writes text as a single bracketed-paste block and submits it, the same
+   * shape a real terminal sends when a user pastes multi-line text. Plain
+   * `write` sends raw keystrokes: a bare "\n" inside the text is read by the
+   * CLI's input prompt as its own Enter press, so a multi-paragraph message
+   * fragments into several separately-submitted lines instead of arriving as
+   * one prompt. Wrapping it in CSI 200~/201~ tells the CLI's readline "this
+   * is pasted content," so internal newlines stay literal and only the
+   * trailing \r submits.
+   */
+  paste(text: string): void {
+    this.write(`\x1b[200~${text}\x1b[201~\r`);
+  }
+
+  /**
    * Records one client's viewport and sizes the pty to the most recently
    * active one.
    *

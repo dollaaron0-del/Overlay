@@ -14,7 +14,9 @@ const STATUS_LABEL = {
 export function TerminalPanel({ projectId }: { projectId: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const pasteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [terminal, setTerminal] = useState<Terminal | null>(null);
+  const [pasteBoxOpen, setPasteBoxOpen] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -93,6 +95,26 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       }
     };
 
+    // Shared by the right-click and middle-click paste handlers further
+    // down. Unlike writeClipboardText, there's no execCommand("paste")
+    // fallback left in modern browsers for JS-initiated reads — over plain
+    // HTTP (a non-secure context) navigator.clipboard is entirely undefined,
+    // not just missing readText, so `navigator.clipboard?.readText()` alone
+    // would previously short-circuit to undefined and silently do nothing
+    // with no feedback at all. Open the manual paste box instead, which
+    // needs no permission or secure context — pasting into a real, visible
+    // textarea always works.
+    const pasteFromClipboard = () => {
+      if (typeof navigator.clipboard?.readText !== "function") {
+        setPasteBoxOpen(true);
+        return;
+      }
+      navigator.clipboard.readText().then(
+        (text) => term.paste(text),
+        () => setPasteBoxOpen(true),
+      );
+    };
+
     // xterm.js otherwise always forwards Ctrl/Cmd+C as SIGINT (0x03) to the
     // pty, even with an active selection, and relies on the browser's native
     // paste event for Ctrl/Cmd+V, which doesn't reliably fire while focus sits
@@ -110,10 +132,20 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
         return false;
       }
       if (mod && event.key.toLowerCase() === "v") {
-        navigator.clipboard
-          ?.readText()
-          .then((text) => term.paste(text))
-          .catch(() => {});
+        // navigator.clipboard.readText requires the page to hold the
+        // "clipboard-read" permission, which Firefox doesn't grant to
+        // ordinary pages at all and which a user can block in Chrome (unlike
+        // clipboard-write, there's no execCommand("paste") fallback left in
+        // modern browsers — it was removed for security). Preempting the key
+        // here would silently eat every Ctrl/Cmd+V forever in that case,
+        // repasting whatever was already on the line instead of the newly
+        // copied text. Bail out and let the browser's native paste event
+        // (see onPaste below, and xterm's own internal paste handler on its
+        // helper textarea) carry it instead — that path needs no permission
+        // at all, though it isn't fully reliable either in practice, which
+        // is what the visible "📋 Einfügen" button (pasteBoxOpen) is for.
+        if (typeof navigator.clipboard?.readText !== "function") return true;
+        pasteFromClipboard();
         event.preventDefault();
         return false;
       }
@@ -154,6 +186,49 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       event.clipboardData?.setData("text/plain", text);
     };
     container.addEventListener("copy", onCopy);
+
+    // Fallback for the Ctrl/Cmd+V case above where navigator.clipboard.readText
+    // isn't usable: a real paste ClipboardEvent carries clipboardData without
+    // needing any Clipboard API permission. Skip it whenever the keydown
+    // handler already served the paste via readText, so text isn't inserted
+    // twice.
+    const onPaste = (event: ClipboardEvent) => {
+      if (typeof navigator.clipboard?.readText === "function") return;
+      const text = event.clipboardData?.getData("text/plain");
+      if (!text) return;
+      event.preventDefault();
+      term.paste(text);
+    };
+    container.addEventListener("paste", onPaste);
+
+    // The terminal surface xterm renders into is a grid of <span>s, not a
+    // real text input, so the browser never offers a working native "Paste"
+    // on right-click there and middle-click (the Linux primary-selection
+    // paste gesture) is silently swallowed the same way — both only do
+    // anything over an actually-focused editable element. Handle them
+    // ourselves via the Clipboard API instead. This still needs a secure
+    // context (HTTPS) to work, same constraint as pasteFromClipboard above;
+    // there is no ClipboardEvent to fall back to here since neither gesture
+    // is a real browser paste action on this element.
+    const onContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      const text = selectedText();
+      if (text) {
+        writeClipboardText(text);
+        term.clearSelection();
+        window.getSelection()?.removeAllRanges();
+      } else {
+        pasteFromClipboard();
+      }
+    };
+    container.addEventListener("contextmenu", onContextMenu);
+
+    const onMouseDown = (event: MouseEvent) => {
+      if (event.button !== 1) return;
+      event.preventDefault();
+      pasteFromClipboard();
+    };
+    container.addEventListener("mousedown", onMouseDown);
 
     // The user-select:text override above (for native iOS selection) can stop
     // xterm's own mousedown->focus() chain from firing reliably on a simple
@@ -203,6 +278,9 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       resizeObserver.disconnect();
       window.visualViewport?.removeEventListener("resize", safeFit);
       container.removeEventListener("copy", onCopy);
+      container.removeEventListener("paste", onPaste);
+      container.removeEventListener("contextmenu", onContextMenu);
+      container.removeEventListener("mousedown", onMouseDown);
       container.removeEventListener("touchend", onTouchEnd);
       term.dispose();
       setTerminal(null);
@@ -214,13 +292,65 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
 
   const status = useTerminalSocket(projectId, terminal);
 
+  // Autofocus the moment the box opens so the very next keystroke (or a
+  // right-click "Paste" on a real, visible textarea) lands there — this is
+  // the guaranteed-to-work escape hatch for browsers/contexts where neither
+  // the Clipboard API nor xterm's own native-paste-event handling on its
+  // off-screen helper textarea comes through (see pasteFromClipboard above).
+  useEffect(() => {
+    if (pasteBoxOpen) pasteTextareaRef.current?.focus();
+  }, [pasteBoxOpen]);
+
+  const submitPasteBox = () => {
+    const text = pasteTextareaRef.current?.value;
+    if (text) terminal?.paste(text);
+    setPasteBoxOpen(false);
+    terminal?.focus();
+  };
+
+  const cancelPasteBox = () => {
+    setPasteBoxOpen(false);
+    terminal?.focus();
+  };
+
   return (
     <div className="terminal-panel-wrapper">
       <div className="terminal-status-bar">
         <span className={`connection-dot connection-${status}`} />
         {STATUS_LABEL[status]}
+        <button type="button" className="terminal-paste-button" onClick={() => setPasteBoxOpen(true)}>
+          📋 Einfügen
+        </button>
       </div>
       <div className="terminal-panel" ref={containerRef} />
+      {pasteBoxOpen && (
+        <div className="terminal-paste-box-backdrop" onClick={cancelPasteBox}>
+          <div className="terminal-paste-box" onClick={(e) => e.stopPropagation()}>
+            <p>Text hier einfügen (Strg/Cmd+V oder Rechtsklick → Einfügen) und Enter drücken:</p>
+            <textarea
+              ref={pasteTextareaRef}
+              rows={4}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submitPasteBox();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancelPasteBox();
+                }
+              }}
+            />
+            <div className="terminal-paste-box-actions">
+              <button type="button" onClick={submitPasteBox}>
+                Einfügen
+              </button>
+              <button type="button" onClick={cancelPasteBox}>
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

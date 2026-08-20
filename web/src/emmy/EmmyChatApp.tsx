@@ -34,6 +34,63 @@ function downloadAsMarkdown(text: string, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Wraps a finished research report in an instruction so the project's agent
+ * implements it instead of treating it as a plain chat message — used for the
+ * "In Projekt umsetzen" action on report/final-document bubbles.
+ */
+function buildImplementationPrompt(reportText: string, chatTitle: string): string {
+  return `Setze das folgende Recherche-Ergebnis aus Emmys Chat „${chatTitle}“ in diesem Projekt um. Lies es aufmerksam durch, leite die relevanten Schritte ab und implementiere sie direkt im Code dieses Projekts.\n\n---\n\n${reportText}`;
+}
+
+/**
+ * Client-side only: prints the already-rendered document body via a hidden
+ * iframe (so the print dialog only shows the report, not the whole app) and
+ * lets the user pick "Save as PDF" — no server round-trip or PDF library needed.
+ */
+function printAsPdf(title: string, bodyHtml: string): void {
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument;
+  if (!doc) {
+    document.body.removeChild(iframe);
+    return;
+  }
+  doc.open();
+  doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>
+    <style>
+      body { font-family: system-ui, sans-serif; color: #111; padding: 2rem; line-height: 1.5; max-width: 800px; margin: 0 auto; }
+      h1, h2, h3 { margin-top: 1.4em; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #ccc; padding: 0.4rem 0.6rem; text-align: left; }
+      pre { background: #f4f4f4; padding: 0.8rem; overflow-x: auto; white-space: pre-wrap; }
+      code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }
+    </style>
+  </head><body>${bodyHtml}</body></html>`);
+  doc.close();
+  const cleanup = () => {
+    if (iframe.parentNode) document.body.removeChild(iframe);
+  };
+  iframe.onload = () => {
+    const win = iframe.contentWindow;
+    if (!win) return cleanup();
+    win.addEventListener("afterprint", cleanup);
+    win.focus();
+    win.print();
+  };
+  window.setTimeout(cleanup, 60_000);
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
 const STATUS_LABEL: Record<EmmyTaskStatus, string> = {
   open: "Offen",
   in_progress: "In Arbeit",
@@ -80,6 +137,24 @@ function formatSince(iso: string, now: number): string {
   if (minutes < 1) return "gerade eben";
   if (minutes < 60) return `seit ${minutes} Min.`;
   return `seit ${Math.floor(minutes / 60)} Std.`;
+}
+
+/**
+ * "nächster Check: in ca. 2 Std." — purely client-side, from
+ * lastRecurringCheckAt (or createdAt, if it has never run yet) + intervalHours.
+ * The scheduler itself decides when a check actually fires; this is only a
+ * display estimate.
+ */
+function nextCheckLabel(chat: EmmyChat, now: number): string {
+  if (!chat.intervalHours) return "";
+  const last = chat.lastRecurringCheckAt ?? chat.createdAt;
+  const dueAt = new Date(last).getTime() + chat.intervalHours * 3_600_000;
+  const minutesLeft = Math.round((dueAt - now) / 60_000);
+  if (minutesLeft <= 0) return "nächster Check: fällig";
+  if (minutesLeft < 60) return `nächster Check: in ${minutesLeft} Min.`;
+  const hoursLeft = Math.round(minutesLeft / 60);
+  if (hoursLeft < 24) return `nächster Check: in ${hoursLeft} Std.`;
+  return `nächster Check: in ${Math.round(hoursLeft / 24)} Tagen`;
 }
 
 /**
@@ -146,7 +221,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
   const [openArchiveEntry, setOpenArchiveEntry] = useState<EmmyArchiveEntry | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [openDocument, setOpenDocument] = useState<{ message: EmmyMessage; chatTitle: string } | null>(null);
-  const [sendToProject, setSendToProject] = useState<EmmyMessage | null>(null);
+  const [projectPickerRequest, setProjectPickerRequest] = useState<{ text: string; heading: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const selectedIdRef = useRef<string | null>(null);
@@ -231,13 +306,15 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
       .catch(() => {});
   }, [selectedId, loadedChats]);
 
-  // Keeps the "seit …" on a running task honest without a render loop when idle.
+  // Keeps "seit …" and "nächster Check …" honest without a render loop when
+  // there's nothing time-based to show.
+  const hasRecurringChat = chats.some((c) => c.kind === "task" && c.category === "recurring");
   useEffect(() => {
-    if (activities.length === 0) return;
+    if (activities.length === 0 && !hasRecurringChat) return;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(timer);
-  }, [activities]);
+  }, [activities, hasRecurringChat]);
 
   const selectedChat = chats.find((c) => c.id === selectedId) ?? null;
   const messages = selectedId ? (messagesByChat[selectedId] ?? []) : [];
@@ -445,7 +522,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                           : category === "research" && c.dueAt
                             ? `bis ${formatDue(c.dueAt)}`
                             : category === "recurring" && c.intervalHours
-                              ? formatInterval(c.intervalHours)
+                              ? `${formatInterval(c.intervalHours)} · ${nextCheckLabel(c, now)}`
                               : STATUS_LABEL[c.status]}
                       </span>
                       <ProgressMeta sourcesSearched={progress.sourcesSearched} knowledgeLevel={progress.knowledgeLevel} />
@@ -478,7 +555,16 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
             onOpenDocument={(message) =>
               openArchiveEntry && setOpenDocument({ message, chatTitle: openArchiveEntry.chat.title })
             }
-            onSendToProject={setSendToProject}
+            onSendToProject={(message) =>
+              setProjectPickerRequest({ text: message.text, heading: "An welches Projekt-Terminal?" })
+            }
+            onImplementInProject={(message) =>
+              openArchiveEntry &&
+              setProjectPickerRequest({
+                text: buildImplementationPrompt(message.text, openArchiveEntry.chat.title),
+                heading: "Recherche-Ergebnis umsetzen in…",
+              })
+            }
             error={error}
           />
         ) : !selectedChat ? (
@@ -596,6 +682,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                   />
                   Stunden
                 </label>
+                <span className="emmy2-chat-sub">{nextCheckLabel(selectedChat, now)}</span>
               </div>
             )}
 
@@ -606,7 +693,15 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                   key={m.id}
                   message={m}
                   onOpenDocument={() => setOpenDocument({ message: m, chatTitle: selectedChat.title })}
-                  onSendToProject={() => setSendToProject(m)}
+                  onSendToProject={() =>
+                    setProjectPickerRequest({ text: m.text, heading: "An welches Projekt-Terminal?" })
+                  }
+                  onImplementInProject={() =>
+                    setProjectPickerRequest({
+                      text: buildImplementationPrompt(m.text, selectedChat.title),
+                      heading: "Recherche-Ergebnis umsetzen in…",
+                    })
+                  }
                 />
               ))}
               {activeActivity && <ActivityBubble activity={activeActivity} now={now} />}
@@ -663,12 +758,13 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
           onClose={() => setOpenDocument(null)}
         />
       )}
-      {sendToProject && (
+      {projectPickerRequest && (
         <ProjectPickerModal
-          message={sendToProject}
-          onClose={() => setSendToProject(null)}
+          text={projectPickerRequest.text}
+          heading={projectPickerRequest.heading}
+          onClose={() => setProjectPickerRequest(null)}
           onSent={(projectId) => {
-            setSendToProject(null);
+            setProjectPickerRequest(null);
             onOpenProject?.(projectId);
           }}
         />
@@ -763,6 +859,7 @@ function ArchiveView({
   onPurge,
   onOpenDocument,
   onSendToProject,
+  onImplementInProject,
   error,
 }: {
   entries: EmmyArchiveSummary[];
@@ -772,6 +869,7 @@ function ArchiveView({
   onPurge: (entry: EmmyArchiveSummary) => void;
   onOpenDocument: (message: EmmyMessage) => void;
   onSendToProject: (message: EmmyMessage) => void;
+  onImplementInProject: (message: EmmyMessage) => void;
   error: string | null;
 }) {
   return (
@@ -795,6 +893,7 @@ function ArchiveView({
               message={m}
               onOpenDocument={() => onOpenDocument(m)}
               onSendToProject={() => onSendToProject(m)}
+              onImplementInProject={() => onImplementInProject(m)}
             />
           ))}
         </div>
@@ -827,19 +926,28 @@ function MessageBubble({
   message,
   onOpenDocument,
   onSendToProject,
+  onImplementInProject,
 }: {
   message: EmmyMessage;
   onOpenDocument: () => void;
   onSendToProject: () => void;
+  onImplementInProject: () => void;
 }) {
   const isFinalDocument = message.role === "emmy" && message.isFinalDocument === true;
+  const needsClarification = message.role === "emmy" && message.needsClarification === true;
   const isLongReport = message.role === "emmy" && (isFinalDocument || message.text.length > LONG_REPORT_CHARS);
   return (
     <div className={`emmy2-bubble emmy2-bubble-${message.role}${isLongReport ? " emmy2-bubble-report" : ""}`}>
+      {needsClarification && <span className="emmy2-clarify-badge">❓ Rückfrage vor der Recherche</span>}
       {isLongReport && (
         <div className="emmy2-report-actions">
           <span className="emmy2-report-badge">{isFinalDocument ? "📘 Abschlussdokument" : "📄 Ausführlicher Bericht"}</span>
-          <button onClick={onOpenDocument}>Als Dokument öffnen</button>
+          <span className="emmy2-report-buttons">
+            <button onClick={onOpenDocument}>Als Dokument öffnen</button>
+            <button className="emmy2-implement-button" onClick={onImplementInProject} title="Recherche-Ergebnis direkt in einem Projekt umsetzen">
+              🚀 In Projekt umsetzen
+            </button>
+          </span>
         </div>
       )}
       {message.text &&
@@ -872,19 +980,24 @@ function MessageBubble({
   );
 }
 
-/** Lets the user pick a project to push one Emmy message's text into as a prompt in that project's terminal. */
+/** Lets the user pick a project to push some text into as a prompt in that project's terminal — either a raw forwarded message or a wrapped "implement this research" instruction. */
 function ProjectPickerModal({
-  message,
+  text,
+  heading,
   onClose,
   onSent,
 }: {
-  message: EmmyMessage;
+  text: string;
+  heading: string;
   onClose: () => void;
   onSent: (projectId: string) => void;
 }) {
   const [projects, setProjects] = useState<{ id: string; dirName: string; name?: string; icon?: string }[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [scaffolding, setScaffolding] = useState(false);
 
   useEffect(() => {
     api
@@ -897,7 +1010,7 @@ function ProjectPickerModal({
     setSendingId(projectId);
     setError(null);
     try {
-      await api.post(`/api/projects/${projectId}/terminal-input`, { text: message.text });
+      await api.post(`/api/projects/${projectId}/terminal-input`, { text });
       onSent(projectId);
     } catch {
       setError("Senden ans Terminal fehlgeschlagen.");
@@ -905,11 +1018,28 @@ function ProjectPickerModal({
     }
   };
 
+  const createAndSend = async () => {
+    const name = newProjectName.trim();
+    if (!name) return;
+    setScaffolding(true);
+    setError(null);
+    try {
+      const project = await api.post<{ id: string }>("/api/projects/scaffold", {
+        name,
+        initialPrompt: text,
+      });
+      onSent(project.id);
+    } catch {
+      setError("Neues Projekt konnte nicht angelegt werden.");
+      setScaffolding(false);
+    }
+  };
+
   return (
     <div className="home-modal-backdrop" onClick={onClose}>
       <div className="emmy2-project-picker" onClick={(e) => e.stopPropagation()}>
         <header className="emmy2-doc-head">
-          <h3>An welches Projekt-Terminal?</h3>
+          <h3>{heading}</h3>
           <button onClick={onClose} title="Schließen">
             ✕
           </button>
@@ -917,12 +1047,12 @@ function ProjectPickerModal({
         {error && <p className="emmy2-error">{error}</p>}
         <div className="emmy2-project-picker-list">
           {projects === null && <p className="empty-hint">Lädt…</p>}
-          {projects?.length === 0 && <p className="empty-hint">Noch keine Projekte angelegt.</p>}
+          {projects?.length === 0 && !showNewProject && <p className="empty-hint">Noch keine Projekte angelegt.</p>}
           {projects?.map((p) => (
             <button
               key={p.id}
               className="emmy2-project-picker-item"
-              disabled={sendingId !== null}
+              disabled={sendingId !== null || scaffolding}
               onClick={() => void send(p.id)}
             >
               <span className="emmy2-project-picker-icon">{p.icon || defaultProjectIcon(p.id)}</span>
@@ -931,6 +1061,29 @@ function ProjectPickerModal({
             </button>
           ))}
         </div>
+        {showNewProject ? (
+          <div className="emmy2-project-picker-new">
+            <input
+              type="text"
+              placeholder="Name des neuen Projekts"
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              disabled={scaffolding}
+              autoFocus
+            />
+            <button onClick={() => void createAndSend()} disabled={scaffolding || newProjectName.trim().length === 0}>
+              {scaffolding ? "Lege an…" : "Anlegen & umsetzen"}
+            </button>
+          </div>
+        ) : (
+          <button
+            className="emmy2-project-picker-new-toggle"
+            disabled={sendingId !== null}
+            onClick={() => setShowNewProject(true)}
+          >
+            + Neues Projekt anlegen
+          </button>
+        )}
       </div>
     </div>
   );
@@ -946,6 +1099,7 @@ function EmmyDocumentViewer({
   chatTitle: string;
   onClose: () => void;
 }) {
+  const bodyRef = useRef<HTMLDivElement>(null);
   return (
     <div className="home-modal-backdrop" onClick={onClose}>
       <div className="emmy2-doc-panel" onClick={(e) => e.stopPropagation()}>
@@ -955,12 +1109,17 @@ function EmmyDocumentViewer({
             <button onClick={() => downloadAsMarkdown(message.text, downloadFilenameFor(chatTitle, message.at))}>
               ⬇️ Herunterladen (.md)
             </button>
+            <button onClick={() => bodyRef.current && printAsPdf(chatTitle, bodyRef.current.innerHTML)}>
+              🖨️ Als PDF exportieren
+            </button>
             <button onClick={onClose} title="Schließen">
               ✕
             </button>
           </div>
         </header>
-        <div className="emmy2-doc-body emmy2-markdown">{renderMiniMarkdown(message.text)}</div>
+        <div ref={bodyRef} className="emmy2-doc-body emmy2-markdown">
+          {renderMiniMarkdown(message.text)}
+        </div>
       </div>
     </div>
   );
