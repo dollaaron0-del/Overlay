@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { EMMY_LONG_REPORT_CHARS } from "@overlay/shared";
 import type {
   EmmyActivity,
   EmmyArchiveEntry,
@@ -15,8 +16,8 @@ import { formatTimestamp } from "../format";
 import { renderMiniMarkdown } from "./miniMarkdown";
 import { defaultProjectIcon } from "../os/project-icon";
 
-/** Above this length a reply gets "open as document"/"download" actions instead of only living in the bubble. */
-const LONG_REPORT_CHARS = 1200;
+/** Above this length a reply gets "open as document"/"download" actions instead of only living in the bubble. Kept in sync with the server's PDF-generation threshold. */
+const LONG_REPORT_CHARS = EMMY_LONG_REPORT_CHARS;
 
 function downloadFilenameFor(chatTitle: string, at: string): string {
   const safeTitle = chatTitle.trim().replace(/[^\p{L}\p{N} _-]/gu, "").replace(/\s+/g, "-").slice(0, 60) || "bericht";

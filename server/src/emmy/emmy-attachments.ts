@@ -51,6 +51,24 @@ function safeExtFromName(originalName: string): string {
   return cleaned || "bin";
 }
 
+/** Saves a server-generated file (e.g. a rendered PDF report) straight from a Buffer — no base64 round-trip needed. */
+export async function saveGeneratedAttachment(
+  chatId: string,
+  buffer: Buffer,
+  originalName: string,
+  mimeType: string,
+): Promise<EmmyAttachment> {
+  const dir = attachmentsDir(chatId);
+  await fs.mkdir(dir, { recursive: true });
+  const known = KNOWN_TYPES[mimeType];
+  const ext = known?.ext ?? safeExtFromName(originalName);
+  const kind: "image" | "document" = known?.kind ?? (mimeType.startsWith("image/") ? "image" : "document");
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const filename = `${stamp}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  await fs.writeFile(path.join(dir, filename), buffer);
+  return { filename, originalName, mimeType, kind };
+}
+
 export async function saveEmmyAttachments(chatId: string, inputs: AttachmentInput[]): Promise<EmmyAttachment[]> {
   if (inputs.length === 0) return [];
   const dir = attachmentsDir(chatId);

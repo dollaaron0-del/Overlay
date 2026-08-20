@@ -6,6 +6,16 @@
 // context per task. Replies come back in via /api/emmy/inbound tagged with
 // the originating chatId (see emmy-inbound.routes.ts).
 
+/**
+ * Above this length an Emmy reply is treated as a long report rather than a
+ * normal chat message: the web UI caps its inline preview and offers a full
+ * reader, and the server generates a PDF version of it as a real attachment
+ * (see emmy-pdf.ts) so the full text is never trapped in a clipped preview.
+ * A reply flagged isFinalDocument always counts as a long report regardless
+ * of its length.
+ */
+export const EMMY_LONG_REPORT_CHARS = 1200;
+
 export type EmmyChatKind = "general" | "task";
 
 /** Only meaningful for task chats; general chats ignore it. */
