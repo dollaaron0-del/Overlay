@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for new commits on the tracked Overlay branch and trigger a deploy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/overlay
+ExecStart=/bin/bash /opt/overlay/deploy/check-and-update.sh
+TimeoutStartSec=60

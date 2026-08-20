@@ -9,6 +9,20 @@ import { PtySession } from "./pty.session.js";
 
 const sessions = new Map<string, PtySession>();
 
+/**
+ * Whether any project terminal currently has a live pty. Exposed so the
+ * root-run auto-update check (deploy/check-and-update.sh) can defer
+ * restarting this process while someone is mid-session instead of always
+ * killing every open terminal — see the comment above about `--continue`
+ * for why that used to be the only mitigation.
+ */
+export function hasActiveSessions(): boolean {
+  for (const session of sessions.values()) {
+    if (session.isAlive) return true;
+  }
+  return false;
+}
+
 export function getOrCreateSession(project: Project): PtySession {
   const existing = sessions.get(project.id);
   if (existing && existing.isAlive) return existing;

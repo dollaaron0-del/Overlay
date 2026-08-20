@@ -1168,6 +1168,40 @@ und PM2-Restart "Alle Daten live" melden. Alternativ direkt
 drei Schritte (Fetch/Merge, Build, Restart) durchlaufen. Im "Aktivität"-Tab
 erscheint ein `overlay_update_triggered`-Eintrag.
 
+**15.3 Automatischer Check (`overlay-check-update.timer`).** Zusätzlich zum
+manuellen Knopf gibt es einen eigenen Timer, der `deploy/check-and-update.sh`
+alle 10 Minuten laufen lässt: der prüft nur per `git fetch` + `rev-parse`, ob
+`@{u}` neue Commits hat, und stößt bei Bedarf exakt dieselbe
+`overlay-update.service` an, die auch der Knopf nutzt — kein separater
+Codepfad. Einrichtung (als root):
+
+```
+install -m 0644 /opt/overlay/deploy/systemd/overlay-check-update.service \
+  /etc/systemd/system/overlay-check-update.service
+install -m 0644 /opt/overlay/deploy/systemd/overlay-check-update.timer \
+  /etc/systemd/system/overlay-check-update.timer
+systemctl daemon-reload
+systemctl enable --now overlay-check-update.timer
+```
+
+**Warum das nicht einfach alle 10 Minuten `pm2 restart overlay` durchzieht,
+ohne zu fragen:** Projekt-Terminals (inkl. eines laufenden `claude`-Prozesses
+darin) sind direkte Kindprozesse dieses Servers — ein Neustart killt sie
+ausnahmslos (siehe `server/src/pty/pty.session.ts`). Bevor
+`check-and-update.sh` ein gefundenes Update tatsächlich auslöst, fragt es
+daher den unauthentifizierten, bewusst minimalen Endpunkt
+`GET /api/health/terminals` (`{"activeSessions": true|false}`, kein
+Projektname, keine Anzahl) und verschiebt den Deploy um einen Tick, solange
+mindestens eine Session offen ist. Das darf ein sicherheitsrelevantes Update
+(Schritt 5/5 erzwingt eine neue Authelia-Session) aber nicht auf unbestimmte
+Zeit blockieren — deshalb ein Zähler in `/run/overlay-update-defer-count`
+(tmpfs, verschwindet also beim nächsten Boot von selbst), der nach
+`MAX_DEFERS=6` Versuchen (~1 Stunde bei 10-Minuten-Takt) das Update trotz
+offener Terminals erzwingt. Ist der Server selbst nicht erreichbar (Update
+während eines Ausfalls, oder ein noch nicht aktualisierter Server ohne
+diesen Endpunkt), läuft das Update sofort durch — die Prüfung blockiert nie
+länger als ihr `curl --max-time 3`.
+
 ## 16. Emmy: Wiederkehrende Aufgaben (Recurring Tasks)
 
 Ein Emmy-Aufgaben-Chat mit `category: "recurring"` (Abschnitt 14.3 — von
