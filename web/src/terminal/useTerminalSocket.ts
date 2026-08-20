@@ -6,21 +6,23 @@ import { ReconnectingSocket, wsUrl } from "../api/ws";
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting";
 
 /**
- * Binds an xterm.js Terminal instance to a project's pty WebSocket. The
- * backend keeps the Claude CLI session alive independent of this connection,
- * so a reconnect (e.g. after the iPad PWA was backgrounded) just resumes:
- * the server replays its scrollback buffer on attach, and ReconnectingSocket
- * already re-establishes on visibilitychange/pageshow.
+ * Binds an xterm.js Terminal instance to a pty WebSocket at `wsPath` (e.g.
+ * `/ws/pty/:projectId` for a project's terminal, `/ws/host-terminal` for the
+ * server's own). The backend keeps the underlying pty session alive
+ * independent of this connection, so a reconnect (e.g. after the iPad PWA was
+ * backgrounded) just resumes: the server replays its scrollback buffer on
+ * attach, and ReconnectingSocket already re-establishes on
+ * visibilitychange/pageshow.
  */
-export function useTerminalSocket(projectId: string | null, terminal: Terminal | null): ConnectionStatus {
+export function useTerminalSocket(wsPath: string | null, terminal: Terminal | null): ConnectionStatus {
   const socketRef = useRef<ReconnectingSocket<PtyServerMessage, PtyClientMessage> | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
 
   useEffect(() => {
-    if (!projectId || !terminal) return;
+    if (!wsPath || !terminal) return;
 
     setStatus("connecting");
-    const socket = new ReconnectingSocket<PtyServerMessage, PtyClientMessage>(wsUrl(`/ws/pty/${projectId}`));
+    const socket = new ReconnectingSocket<PtyServerMessage, PtyClientMessage>(wsUrl(wsPath));
     socketRef.current = socket;
 
     const unsubscribe = socket.onMessage((msg) => {
@@ -71,7 +73,7 @@ export function useTerminalSocket(projectId: string | null, terminal: Terminal |
       socket.close();
       socketRef.current = null;
     };
-  }, [projectId, terminal]);
+  }, [wsPath, terminal]);
 
   return status;
 }

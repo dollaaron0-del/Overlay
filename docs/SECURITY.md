@@ -108,6 +108,16 @@ Gerät.
   stillschweigend ungeschützt zu laufen — siehe `TERMINAL_SANDBOX` in
   `docs/DEPLOYMENT.md` Abschnitt 1/3, falls bwrap auf einem Server nicht
   installierbar ist.
+- **Server-Terminal ist absichtlich NICHT gesandboxt:** Neben den
+  Projekt-Terminals gibt es ein einzelnes, immer verfügbares Terminal auf den
+  Host selbst (`pty/host-terminal.manager.ts`, `/ws/host-terminal`), gedacht
+  für Befehle, die zu keinem einzelnen Projekt gehören (systemctl,
+  journalctl, Speicherplatz, ...). Es läuft mit den vollen Rechten des
+  Overlay-Service-Users — genau das ist der Zweck, eine Sandbox würde ihn
+  zunichtemachen. Dieselbe Auth-Grenze wie jede andere Route gilt trotzdem:
+  Der WebSocket-Upgrade läuft durch dieselbe Session-/Origin-Prüfung wie
+  `/ws/pty/:projectId`, es gibt keinen separaten, schwächer geschützten Weg
+  dorthin.
 - **Kein Schreibzugriff über die Datei-API:** Die Files-API ist in v1
   bewusst nur lesend — Bearbeitung von Code passiert ausschließlich über die
   Claude-Code-CLI-Session selbst, nicht über einen zusätzlichen Web-Editor.

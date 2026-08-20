@@ -11,7 +11,7 @@ const STATUS_LABEL = {
   reconnecting: "Verbindung wird wiederhergestellt…",
 };
 
-export function TerminalPanel({ projectId }: { projectId: string }) {
+export function TerminalPanel({ wsPath }: { wsPath: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const [terminal, setTerminal] = useState<Terminal | null>(null);
@@ -207,12 +207,12 @@ export function TerminalPanel({ projectId }: { projectId: string }) {
       term.dispose();
       setTerminal(null);
     };
-    // projectId change remounts a fresh terminal instance (below via key prop),
-    // so this effect intentionally only runs once per mount.
+    // wsPath change remounts a fresh terminal instance (via a `key` prop on
+    // the caller's side), so this effect intentionally only runs once per mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const status = useTerminalSocket(projectId, terminal);
+  const status = useTerminalSocket(wsPath, terminal);
 
   return (
     <div className="terminal-panel-wrapper">

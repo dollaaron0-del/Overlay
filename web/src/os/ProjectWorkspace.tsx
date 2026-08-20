@@ -31,6 +31,7 @@ interface DeployResult {
 
 export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSummary; onRemoved: () => void }) {
   const [tab, setTab] = useState<Tab>("terminal");
+  const [showHostTerminal, setShowHostTerminal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
@@ -209,9 +210,28 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
         <button className={tab === "obsidian" ? "active" : ""} onClick={() => setTab("obsidian")}>
           Obsidian
         </button>
+        {tab === "terminal" && (
+          <button
+            className={`tab-bar-split-toggle ${showHostTerminal ? "active" : ""}`}
+            onClick={() => setShowHostTerminal((v) => !v)}
+            title="Server-Terminal daneben öffnen"
+          >
+            🖥️ Server
+          </button>
+        )}
       </nav>
       <div className="tab-content">
-        {tab === "terminal" && <TerminalPanel key={project.id} projectId={project.id} />}
+        {tab === "terminal" && (
+          <>
+            <TerminalPanel key={project.id} wsPath={`/ws/pty/${project.id}`} />
+            {showHostTerminal && (
+              <>
+                <div className="terminal-split-divider" />
+                <TerminalPanel key="host-terminal" wsPath="/ws/host-terminal" />
+              </>
+            )}
+          </>
+        )}
         {tab === "logs" && <LogPanel key={project.id} projectId={project.id} />}
         {tab === "files" && (
           <div className="files-tab">
