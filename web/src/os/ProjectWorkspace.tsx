@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { DeployServerMessage, ProjectSummary } from "@overlay/shared";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import { formatBytes } from "../format";
 import { wsUrl } from "../api/ws";
 import { TerminalPanel } from "../terminal/TerminalPanel";
@@ -39,6 +39,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
   const [deployStartedAt, setDeployStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const deployWsRef = useRef<WebSocket | null>(null);
 
   // If the user navigates away (or the project is removed) mid-deploy, the
@@ -62,8 +63,13 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
   const displayName = project.name || project.dirName;
 
   const setIcon = async (icon: string | null) => {
-    await api.patch(`/api/projects/${project.id}`, { icon });
-    setIconPickerOpen(false);
+    setActionError(null);
+    try {
+      await api.patch(`/api/projects/${project.id}`, { icon });
+      setIconPickerOpen(false);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? (err.message ?? "Icon konnte nicht geändert werden") : "Icon konnte nicht geändert werden");
+    }
   };
 
   const renameProject = async () => {
@@ -71,12 +77,38 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
     if (next === null) return;
     const trimmed = next.trim();
     if (!trimmed || trimmed === displayName) return;
-    await api.patch(`/api/projects/${project.id}`, { name: trimmed });
+    setActionError(null);
+    try {
+      await api.patch(`/api/projects/${project.id}`, { name: trimmed });
+    } catch (err) {
+      setActionError(err instanceof ApiError ? (err.message ?? "Umbenennen fehlgeschlagen") : "Umbenennen fehlgeschlagen");
+    }
+  };
+
+  const setExternalUrl = async () => {
+    const next = window.prompt(
+      "Dashboard-URL (leer lassen zum Entfernen):",
+      project.externalUrl ?? "https://",
+    );
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (trimmed === (project.externalUrl ?? "")) return;
+    setActionError(null);
+    try {
+      await api.patch(`/api/projects/${project.id}`, { externalUrl: trimmed || null });
+    } catch (err) {
+      setActionError(err instanceof ApiError ? (err.message ?? "Dashboard-URL konnte nicht gespeichert werden") : "Dashboard-URL konnte nicht gespeichert werden");
+    }
   };
 
   const toggleHomeSection = async () => {
     const next = project.homeSection === "dashboard" ? "terminal" : "dashboard";
-    await api.patch(`/api/projects/${project.id}`, { homeSection: next });
+    setActionError(null);
+    try {
+      await api.patch(`/api/projects/${project.id}`, { homeSection: next });
+    } catch (err) {
+      setActionError(err instanceof ApiError ? (err.message ?? "Konnte nicht verschoben werden") : "Konnte nicht verschoben werden");
+    }
   };
 
   const removeProject = async () => {
@@ -170,6 +202,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
             </button>
           </div>
         )}
+        {actionError && <p className="login-error">{actionError}</p>}
         {project.status === "online" && (project.cpuPercent !== null || project.memoryBytes !== null) && (
           <div className="project-resource-usage">
             {project.cpuPercent !== null && <span>{project.cpuPercent}% CPU</span>}
@@ -185,10 +218,15 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
               {deploying ? "Deployt…" : "🚀 Deploy"}
             </button>
           )}
-          {isExternal && project.externalUrl && (
+          {project.externalUrl && (
             <a className="project-open-external-button" href={project.externalUrl} target="_blank" rel="noreferrer">
               Dashboard öffnen ↗
             </a>
+          )}
+          {!isExternal && (
+            <button onClick={setExternalUrl} title="Dashboard-URL festlegen oder ändern — zeigt eine zusätzliche Kachel im Dashboards-Bereich">
+              {project.externalUrl ? "🔗 Dashboard-URL ändern" : "🔗 Dashboard-URL festlegen"}
+            </button>
           )}
           {isExternal && (
             <button
