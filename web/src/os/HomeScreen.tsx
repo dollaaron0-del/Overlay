@@ -36,6 +36,10 @@ const SMALL_APP_IDS = new Set(["activity", "settings"]);
 // left out of the grid to avoid showing the same destination twice.
 const SIDEBAR_APP_IDS = new Set(["security", "cockpit"]);
 
+// Schnellnotiz is a quick action, not a destination worth its own tile —
+// it stays reachable via Spotlight (Cmd+K) but no longer clutters the grid.
+const SPOTLIGHT_ONLY_APP_IDS = new Set(["quickcapture"]);
+
 // Emmy is the centerpiece of the overlay — it gets the biggest tile on the
 // homescreen, bigger even than project tiles.
 const HERO_APP_IDS = new Set(["emmy"]);
@@ -67,7 +71,7 @@ export function HomeScreen({
       homeSection: p.homeSection,
       externalUrl: p.externalUrl,
     })),
-    ...STATIC_APPS.filter((a) => !SIDEBAR_APP_IDS.has(a.id)).map((a) => ({
+    ...STATIC_APPS.filter((a) => !SIDEBAR_APP_IDS.has(a.id) && !SPOTLIGHT_ONLY_APP_IDS.has(a.id)).map((a) => ({
       id: `app:${a.id}`,
       title: a.title,
       icon: a.icon,
