@@ -1,8 +1,9 @@
 /**
  * The single app-level navigation surface. Replaces the old TopBar icon
  * buttons + bottom Dock, which exposed the same three actions (Suche,
- * Benachrichtigungen, Kontrollzentrum) twice. Also gives Cockpit and
- * Sicherheit a permanent, one-tap slot instead of living as grid tiles.
+ * Benachrichtigungen, Kontrollzentrum) twice. Also gives Sicherheit,
+ * Cockpit, Aktivität and Einstellungen a permanent, one-tap slot instead
+ * of living as grid tiles.
  */
 export function Sidebar({
   onHome,
@@ -35,6 +36,14 @@ export function Sidebar({
           <span className="os-sidebar-icon">🖥️</span>
           <span className="os-sidebar-label">Cockpit</span>
         </button>
+        <button className="os-sidebar-button" onClick={() => onOpenApp("activity")}>
+          <span className="os-sidebar-icon">📋</span>
+          <span className="os-sidebar-label">Aktivität</span>
+        </button>
+        <button className="os-sidebar-button" onClick={() => onOpenApp("settings")}>
+          <span className="os-sidebar-icon">⚙️</span>
+          <span className="os-sidebar-label">Einstellungen</span>
+        </button>
       </div>
 
       <div className="os-sidebar-section os-sidebar-section--push-end">
@@ -47,7 +56,7 @@ export function Sidebar({
             🔔
             {hasAlerts && <span className="os-sidebar-badge" />}
           </span>
-          <span className="os-sidebar-label">Aktivität</span>
+          <span className="os-sidebar-label">Benachrichtigungen</span>
         </button>
         <button className="os-sidebar-button" onClick={onControlCenter} aria-label="Kontrollzentrum">
           <span className="os-sidebar-icon">🎛</span>
