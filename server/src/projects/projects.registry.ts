@@ -40,28 +40,55 @@ async function readFromDisk(): Promise<Project[]> {
   }
 }
 
-async function writeToDisk(projects: Project[]): Promise<void> {
-  writeQueue = writeQueue.then(async () => {
-    await fs.mkdir(path.dirname(REGISTRY_FILE), { recursive: true });
-
-    // Keep one rolling backup generation of the previous state before
-    // overwriting, so a bad write (or a mistake right after) is recoverable.
-    await fs.copyFile(REGISTRY_FILE, BACKUP_FILE).catch((err) => {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    });
-
-    // Write-then-rename instead of writing REGISTRY_FILE directly: rename is
-    // atomic on the same filesystem, so a crash mid-write can never leave
-    // projects.json half-written/corrupted.
-    await fs.writeFile(TMP_FILE, JSON.stringify(projects, null, 2), "utf8");
-    await fs.rename(TMP_FILE, REGISTRY_FILE);
-  });
-  await writeQueue;
-}
-
 async function ensureLoaded(): Promise<Project[]> {
   if (cache === null) cache = await readFromDisk();
   return cache;
+}
+
+/**
+ * Runs a read-modify-write against the registry, fully serialized against
+ * every other mutator through `writeQueue` — `fn` only sees the latest
+ * committed state, computed and persisted atomically before the next queued
+ * mutation can start. This closes a lost-update race that a plain "read
+ * cache, await a write, then reassign cache" sequence has: two concurrent
+ * mutations (e.g. two rapid PATCH calls) would otherwise both compute `next`
+ * from the same pre-write snapshot, and whichever write lands second would
+ * silently discard the first's change.
+ *
+ * `fn` returns the unchanged `current` array (by reference) to signal a
+ * no-op (e.g. "id not found") — skips the disk write entirely in that case.
+ */
+async function mutateProjects<T>(fn: (current: Project[]) => { next: Project[]; result: T }): Promise<T> {
+  const run = writeQueue.then(async () => {
+    const current = cache ?? (await readFromDisk());
+    const { next, result } = fn(current);
+    if (next !== current) {
+      await fs.mkdir(path.dirname(REGISTRY_FILE), { recursive: true });
+
+      // Keep one rolling backup generation of the previous state before
+      // overwriting, so a bad write (or a mistake right after) is recoverable.
+      await fs.copyFile(REGISTRY_FILE, BACKUP_FILE).catch((err) => {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      });
+
+      // Write-then-rename instead of writing REGISTRY_FILE directly: rename is
+      // atomic on the same filesystem, so a crash mid-write can never leave
+      // projects.json half-written/corrupted.
+      await fs.writeFile(TMP_FILE, JSON.stringify(next, null, 2), "utf8");
+      await fs.rename(TMP_FILE, REGISTRY_FILE);
+      cache = next;
+    }
+    return result;
+  });
+  // Keep the queue itself always-resolving so one failed mutation (e.g. a
+  // disk error) doesn't permanently wedge every subsequent mutation behind a
+  // rejected promise — `run` still carries the real outcome to this call's
+  // caller via the `return run` below.
+  writeQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
 /** Resolves a project's absolute directory. Never accepts client-supplied absolute paths. */
@@ -216,41 +243,35 @@ export async function addProject(input: AddProjectInput): Promise<Project> {
     }
   }
 
-  const projects = await ensureLoaded();
-  if (projects.some((p) => p.id === input.id)) {
-    throw new Error(`Project with id "${input.id}" already exists`);
-  }
   const project: Project = { ...input };
-  const next = [...projects, project];
-  await writeToDisk(next);
-  cache = next;
-  return project;
+  return mutateProjects((current) => {
+    if (current.some((p) => p.id === input.id)) {
+      throw new Error(`Project with id "${input.id}" already exists`);
+    }
+    return { next: [...current, project], result: project };
+  });
 }
 
 /** Sets (or clears, with null) a project's custom home-screen icon. */
 export async function updateProjectIcon(id: string, icon: string | null): Promise<Project | undefined> {
-  const projects = await ensureLoaded();
-  const index = projects.findIndex((p) => p.id === id);
-  if (index === -1) return undefined;
-
-  const next = [...projects];
-  next[index] = { ...next[index], icon: icon ?? undefined };
-  await writeToDisk(next);
-  cache = next;
-  return next[index];
+  return mutateProjects((current) => {
+    const index = current.findIndex((p) => p.id === id);
+    if (index === -1) return { next: current, result: undefined };
+    const next = [...current];
+    next[index] = { ...next[index], icon: icon ?? undefined };
+    return { next, result: next[index] };
+  });
 }
 
 /** Sets (or clears, with null) a project's custom display name. */
 export async function updateProjectName(id: string, name: string | null): Promise<Project | undefined> {
-  const projects = await ensureLoaded();
-  const index = projects.findIndex((p) => p.id === id);
-  if (index === -1) return undefined;
-
-  const next = [...projects];
-  next[index] = { ...next[index], name: name ?? undefined };
-  await writeToDisk(next);
-  cache = next;
-  return next[index];
+  return mutateProjects((current) => {
+    const index = current.findIndex((p) => p.id === id);
+    if (index === -1) return { next: current, result: undefined };
+    const next = [...current];
+    next[index] = { ...next[index], name: name ?? undefined };
+    return { next, result: next[index] };
+  });
 }
 
 /** Sets (or clears, with null, back to automatic) a project's home-screen section override. */
@@ -258,15 +279,13 @@ export async function updateProjectHomeSection(
   id: string,
   homeSection: "dashboard" | "terminal" | null,
 ): Promise<Project | undefined> {
-  const projects = await ensureLoaded();
-  const index = projects.findIndex((p) => p.id === id);
-  if (index === -1) return undefined;
-
-  const next = [...projects];
-  next[index] = { ...next[index], homeSection: homeSection ?? undefined };
-  await writeToDisk(next);
-  cache = next;
-  return next[index];
+  return mutateProjects((current) => {
+    const index = current.findIndex((p) => p.id === id);
+    if (index === -1) return { next: current, result: undefined };
+    const next = [...current];
+    next[index] = { ...next[index], homeSection: homeSection ?? undefined };
+    return { next, result: next[index] };
+  });
 }
 
 /** Subdirectories of APPS_ROOT that aren't registered as a project yet. */
@@ -343,10 +362,9 @@ export async function scaffoldProject(name: string): Promise<Project> {
 }
 
 export async function removeProject(id: string): Promise<boolean> {
-  const projects = await ensureLoaded();
-  const next = projects.filter((p) => p.id !== id);
-  if (next.length === projects.length) return false;
-  await writeToDisk(next);
-  cache = next;
-  return true;
+  return mutateProjects((current) => {
+    const next = current.filter((p) => p.id !== id);
+    if (next.length === current.length) return { next: current, result: false };
+    return { next, result: true };
+  });
 }

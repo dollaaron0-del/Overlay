@@ -44,6 +44,10 @@ export function subscribeToLogs(name: string, onLine: (line: LogLine) => void): 
   const child = spawn("sudo", ["/usr/bin/pm2", "logs", name, "--raw", "--lines", "0"], {
     stdio: ["ignore", "pipe", "ignore"],
   });
+  // Without this, a spawn failure (sudo missing, EACCES, EMFILE) fires an
+  // unhandled 'error' event and crashes the whole process — not just this
+  // one subscriber.
+  child.on("error", (err) => console.error(`[pm2root.logbus] Failed to spawn sudo pm2 logs for "${name}":`, err));
   const rl = readline.createInterface({ input: child.stdout });
   rl.on("line", (text) => onLine({ stream: "out", text }));
 

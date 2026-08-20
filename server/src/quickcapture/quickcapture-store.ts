@@ -13,6 +13,12 @@ interface QuickCaptureSettings {
 const DEFAULT_SETTINGS: QuickCaptureSettings = { targetProjectId: null, obsidianMode: false };
 
 let cache: QuickCaptureSettings | null = null;
+// Serializes the read-modify-write cycle below: without this, two concurrent
+// setters (e.g. setQuickCaptureTarget and setQuickCaptureObsidianMode fired
+// close together) both read the same cache and each write clobbers the
+// other's field. Kept always-resolving so one failed write can't wedge every
+// later one behind a permanently-rejected chain.
+let writeQueue: Promise<unknown> = Promise.resolve();
 
 async function readFromDisk(): Promise<QuickCaptureSettings> {
   try {
@@ -29,11 +35,20 @@ async function ensureLoaded(): Promise<QuickCaptureSettings> {
   return cache;
 }
 
-async function persist(settings: QuickCaptureSettings): Promise<void> {
-  await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
-  await fs.writeFile(TMP_FILE, JSON.stringify(settings, null, 2), "utf8");
-  await fs.rename(TMP_FILE, SETTINGS_FILE);
-  cache = settings;
+async function mutate(fn: (current: QuickCaptureSettings) => QuickCaptureSettings): Promise<void> {
+  const run = writeQueue.then(async () => {
+    const current = cache ?? (await readFromDisk());
+    const next = fn(current);
+    await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
+    await fs.writeFile(TMP_FILE, JSON.stringify(next, null, 2), "utf8");
+    await fs.rename(TMP_FILE, SETTINGS_FILE);
+    cache = next;
+  });
+  writeQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  await run;
 }
 
 /**
@@ -48,8 +63,7 @@ export async function getQuickCaptureTarget(): Promise<string | null> {
 }
 
 export async function setQuickCaptureTarget(projectId: string | null): Promise<void> {
-  const settings = await ensureLoaded();
-  await persist({ ...settings, targetProjectId: projectId });
+  await mutate((current) => ({ ...current, targetProjectId: projectId }));
 }
 
 export async function getQuickCaptureObsidianMode(): Promise<boolean> {
@@ -58,6 +72,5 @@ export async function getQuickCaptureObsidianMode(): Promise<boolean> {
 }
 
 export async function setQuickCaptureObsidianMode(obsidianMode: boolean): Promise<void> {
-  const settings = await ensureLoaded();
-  await persist({ ...settings, obsidianMode });
+  await mutate((current) => ({ ...current, obsidianMode }));
 }

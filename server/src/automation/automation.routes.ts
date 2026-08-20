@@ -5,7 +5,7 @@ import { describeProcess, restartProcess, startProcess, statusOf, stopProcess } 
 import { systemdAction, systemdStatus } from "../systemd/systemd.service.js";
 import { pm2RootAction, pm2RootStatus } from "../pm2root/pm2root.service.js";
 import { runDeployScript } from "../projects/deploy-runner.js";
-import { startDeployRun, recordDeployLine, endDeployRun } from "../projects/deploy-log-bus.js";
+import { startDeployRun, recordDeployLine, endDeployRun, isDeployRunning } from "../projects/deploy-log-bus.js";
 import { runBackupJob } from "../backup/backup-job.js";
 import { runCommand } from "../security/run-tool.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
@@ -110,6 +110,10 @@ automationRouter.post("/projects/:id/deploy", async (req, res) => {
   }
   if (!project.deployScript) {
     res.status(400).json({ error: "no_deploy_script" });
+    return;
+  }
+  if (isDeployRunning(project.id)) {
+    res.status(409).json({ error: "deploy_already_running" });
     return;
   }
 

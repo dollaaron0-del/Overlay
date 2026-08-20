@@ -129,6 +129,8 @@ export function rankMemoryEntries(
 type IndexShape = Record<string, MemoryEntry>;
 
 let cache: IndexShape | null = null;
+// Kept always-resolving (see queuedWrite below) so one failed write can't
+// wedge every subsequent one behind a permanently-rejected chain.
 let writeQueue: Promise<unknown> = Promise.resolve();
 
 async function readFromDisk(): Promise<IndexShape> {
@@ -141,18 +143,43 @@ async function readFromDisk(): Promise<IndexShape> {
   }
 }
 
-async function writeToDisk(index: IndexShape): Promise<void> {
-  writeQueue = writeQueue.then(async () => {
-    await fs.mkdir(path.dirname(STORE_FILE), { recursive: true });
-    await fs.writeFile(TMP_FILE, JSON.stringify(index), "utf8");
-    await fs.rename(TMP_FILE, STORE_FILE);
-  });
-  await writeQueue;
+async function writeIndexFile(index: IndexShape): Promise<void> {
+  await fs.mkdir(path.dirname(STORE_FILE), { recursive: true });
+  await fs.writeFile(TMP_FILE, JSON.stringify(index), "utf8");
+  await fs.rename(TMP_FILE, STORE_FILE);
+}
+
+function queuedWrite<T>(task: () => Promise<T>): Promise<T> {
+  const run = writeQueue.then(task);
+  writeQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
 async function ensureLoaded(): Promise<IndexShape> {
   if (cache === null) cache = await readFromDisk();
   return cache;
+}
+
+/**
+ * Runs a read-modify-write against the index, fully serialized through
+ * queuedWrite — without this, indexMessageForMemory (fired unawaited on
+ * every message) racing purgeMessagesFromMemory could silently lose one
+ * side's change to the same underlying cache snapshot.
+ */
+async function mutateIndex<T>(fn: (current: IndexShape) => { next: IndexShape; result: T }): Promise<T> {
+  await ensureLoaded();
+  return queuedWrite(async () => {
+    const current = cache!;
+    const { next, result } = fn(current);
+    if (next !== current) {
+      await writeIndexFile(next);
+      cache = next;
+    }
+    return result;
+  });
 }
 
 // ---- Ollama-backed operations, all best-effort -------------------------------
@@ -203,13 +230,13 @@ export async function indexMessageForMemory(
       config.EMMY_MEMORY_EMBEDDING_TIMEOUT_MS,
     );
 
-    const index = await ensureLoaded();
-    const next = {
-      ...index,
-      [message.id]: { chatId: message.chatId, chatTitle, role: message.role, indexedText, embedding, at: message.at },
-    };
-    await writeToDisk(next);
-    cache = next;
+    await mutateIndex((index) => ({
+      next: {
+        ...index,
+        [message.id]: { chatId: message.chatId, chatTitle, role: message.role, indexedText, embedding, at: message.at },
+      },
+      result: undefined,
+    }));
   } catch (err) {
     console.error(`[emmy-memory] indexing failed for message ${message.id}: ${(err as Error).message}`);
   }
@@ -246,18 +273,17 @@ export async function retrieveMemory(
 /** Best-effort: drops index entries for permanently-deleted messages. Never throws. */
 export async function purgeMessagesFromMemory(messageIds: string[]): Promise<void> {
   try {
-    const index = await ensureLoaded();
-    let changed = false;
-    const next = { ...index };
-    for (const id of messageIds) {
-      if (id in next) {
-        delete next[id];
-        changed = true;
+    await mutateIndex((index) => {
+      let changed = false;
+      const next = { ...index };
+      for (const id of messageIds) {
+        if (id in next) {
+          delete next[id];
+          changed = true;
+        }
       }
-    }
-    if (!changed) return;
-    await writeToDisk(next);
-    cache = next;
+      return { next: changed ? next : index, result: undefined };
+    });
   } catch (err) {
     console.error(`[emmy-memory] purge failed: ${(err as Error).message}`);
   }

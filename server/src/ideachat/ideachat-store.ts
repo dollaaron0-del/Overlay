@@ -7,6 +7,8 @@ const STORE_FILE = path.join(process.cwd(), "data", "idea-chats.json");
 const TMP_FILE = `${STORE_FILE}.tmp`;
 
 let cache: IdeaChat[] | null = null;
+// Kept always-resolving (see queuedWrite below) so one failed write can't
+// wedge every subsequent one behind a permanently-rejected chain.
 let writeQueue: Promise<unknown> = Promise.resolve();
 
 async function readFromDisk(): Promise<IdeaChat[]> {
@@ -19,18 +21,45 @@ async function readFromDisk(): Promise<IdeaChat[]> {
   }
 }
 
-async function writeToDisk(chats: IdeaChat[]): Promise<void> {
-  writeQueue = writeQueue.then(async () => {
-    await fs.mkdir(path.dirname(STORE_FILE), { recursive: true });
-    await fs.writeFile(TMP_FILE, JSON.stringify(chats, null, 2), "utf8");
-    await fs.rename(TMP_FILE, STORE_FILE);
-  });
-  await writeQueue;
+async function writeStoreFile(chats: IdeaChat[]): Promise<void> {
+  await fs.mkdir(path.dirname(STORE_FILE), { recursive: true });
+  await fs.writeFile(TMP_FILE, JSON.stringify(chats, null, 2), "utf8");
+  await fs.rename(TMP_FILE, STORE_FILE);
+}
+
+function queuedWrite<T>(task: () => Promise<T>): Promise<T> {
+  const run = writeQueue.then(task);
+  writeQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
 async function ensureLoaded(): Promise<IdeaChat[]> {
   if (cache === null) cache = await readFromDisk();
   return cache;
+}
+
+/**
+ * Runs a read-modify-write against the store, fully serialized through
+ * queuedWrite — `fn` only ever sees the latest committed state. Without this,
+ * two concurrent mutations (e.g. two rapid turns in the same chat) would both
+ * compute `next` from the same pre-write snapshot, and whichever write lands
+ * second would silently discard the first's change. `fn` returns the
+ * unchanged `current` array (by reference) to signal a no-op.
+ */
+async function mutateStore<T>(fn: (current: IdeaChat[]) => { next: IdeaChat[]; result: T }): Promise<T> {
+  await ensureLoaded();
+  return queuedWrite(async () => {
+    const current = cache!;
+    const { next, result } = fn(current);
+    if (next !== current) {
+      await writeStoreFile(next);
+      cache = next;
+    }
+    return result;
+  });
 }
 
 /** Most-recently-updated first, for the chat list view. */
@@ -50,7 +79,6 @@ function deriveTitle(firstMessage: string): string {
 }
 
 export async function createIdeaChat(projectId: string, firstUserMessage: string): Promise<IdeaChat> {
-  const chats = await ensureLoaded();
   const now = new Date().toISOString();
   const chat: IdeaChat = {
     id: crypto.randomUUID(),
@@ -61,10 +89,7 @@ export async function createIdeaChat(projectId: string, firstUserMessage: string
     createdAt: now,
     updatedAt: now,
   };
-  const next = [...chats, chat];
-  await writeToDisk(next);
-  cache = next;
-  return chat;
+  return mutateStore((chats) => ({ next: [...chats, chat], result: chat }));
 }
 
 /**
@@ -78,19 +103,18 @@ export async function appendIdeaChatMessages(
   newMessages: IdeaChatMessage[],
   claudeSessionId: string | null,
 ): Promise<IdeaChat | undefined> {
-  const chats = await ensureLoaded();
-  const index = chats.findIndex((c) => c.id === id);
-  if (index === -1) return undefined;
+  return mutateStore((chats) => {
+    const index = chats.findIndex((c) => c.id === id);
+    if (index === -1) return { next: chats, result: undefined };
 
-  const updated: IdeaChat = {
-    ...chats[index],
-    messages: [...chats[index].messages, ...newMessages],
-    claudeSessionId,
-    updatedAt: new Date().toISOString(),
-  };
-  const next = [...chats];
-  next[index] = updated;
-  await writeToDisk(next);
-  cache = next;
-  return updated;
+    const updated: IdeaChat = {
+      ...chats[index],
+      messages: [...chats[index].messages, ...newMessages],
+      claudeSessionId,
+      updatedAt: new Date().toISOString(),
+    };
+    const next = [...chats];
+    next[index] = updated;
+    return { next, result: updated };
+  });
 }

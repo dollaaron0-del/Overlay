@@ -12,6 +12,7 @@ export class ReconnectingSocket<TServerMsg, TClientMsg> {
   private closedByUser = false;
   private backoffMs = 500;
   private readonly maxBackoffMs = 5000;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly listeners = new Set<Listener<TServerMsg>>();
   private readonly openListeners = new Set<() => void>();
   private readonly closeListeners = new Set<() => void>();
@@ -31,15 +32,31 @@ export class ReconnectingSocket<TServerMsg, TClientMsg> {
 
   private connect(): void {
     if (this.closedByUser) return;
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    // handleVisible can force a fresh connect() while a stale socket (e.g.
+    // suspended by iOS backgrounding) is still open/connecting — close it so
+    // its belated 'close' event doesn't fire a second, redundant reconnect
+    // on top of the new socket below.
+    this.ws?.close();
+
     const ws = new WebSocket(this.url);
     this.ws = ws;
 
+    // Each listener below is scoped to the socket it was registered on, so a
+    // stale/superseded socket's late-firing events (once `this.ws` has moved
+    // on to a newer one) are ignored instead of corrupting the newer
+    // connection's state or double-scheduling a reconnect.
     ws.addEventListener("open", () => {
+      if (this.ws !== ws) return;
       this.backoffMs = 500;
       for (const l of this.openListeners) l();
     });
 
     ws.addEventListener("message", (event) => {
+      if (this.ws !== ws) return;
       try {
         const msg = JSON.parse(event.data) as TServerMsg;
         for (const l of this.listeners) l(msg);
@@ -49,11 +66,12 @@ export class ReconnectingSocket<TServerMsg, TClientMsg> {
     });
 
     ws.addEventListener("close", () => {
+      if (this.ws !== ws) return;
       for (const l of this.closeListeners) l();
       if (this.closedByUser) return;
       const delay = this.backoffMs;
       this.backoffMs = Math.min(this.maxBackoffMs, this.backoffMs * 2);
-      setTimeout(() => this.connect(), delay);
+      this.reconnectTimer = setTimeout(() => this.connect(), delay);
     });
   }
 
@@ -80,6 +98,10 @@ export class ReconnectingSocket<TServerMsg, TClientMsg> {
     this.closedByUser = true;
     document.removeEventListener("visibilitychange", this.handleVisible);
     window.removeEventListener("pageshow", this.handleVisible);
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.ws?.close();
   }
 }

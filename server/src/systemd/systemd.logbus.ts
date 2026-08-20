@@ -41,6 +41,10 @@ export async function getBacklog(unit: string, maxLines = 200): Promise<LogLine[
 export async function subscribeToLogs(unit: string, onLine: (line: LogLine) => void): Promise<() => void> {
   assertValidUnit(unit);
   const child = spawn("journalctl", ["-u", unit, "-n", "0", "-f", "-o", "cat"], { stdio: ["ignore", "pipe", "ignore"] });
+  // Without this, a spawn failure (journalctl missing, EACCES, EMFILE) fires
+  // an unhandled 'error' event and crashes the whole process — not just this
+  // one subscriber.
+  child.on("error", (err) => console.error(`[systemd.logbus] Failed to spawn journalctl for unit "${unit}":`, err));
   const rl = readline.createInterface({ input: child.stdout });
   rl.on("line", (text) => onLine({ stream: "out", text }));
 
