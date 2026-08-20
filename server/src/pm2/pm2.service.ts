@@ -12,13 +12,6 @@ export function ensureConnected(): Promise<void> {
   return connected;
 }
 
-export async function listProcesses(): Promise<ProcessDescription[]> {
-  await ensureConnected();
-  return new Promise((resolve, reject) => {
-    pm2.list((err, list) => (err ? reject(err) : resolve(list)));
-  });
-}
-
 export async function describeProcess(name: string): Promise<ProcessDescription | undefined> {
   await ensureConnected();
   return new Promise((resolve, reject) => {

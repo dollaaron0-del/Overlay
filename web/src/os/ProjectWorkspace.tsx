@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DeployServerMessage, ProjectSummary } from "@overlay/shared";
 import { api } from "../api/client";
 import { formatBytes } from "../format";
@@ -39,6 +39,16 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
   const [deployStartedAt, setDeployStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const deployWsRef = useRef<WebSocket | null>(null);
+
+  // If the user navigates away (or the project is removed) mid-deploy, the
+  // live-log socket would otherwise keep the connection open until the HTTP
+  // deploy call itself resolves, well after this component is gone.
+  useEffect(() => {
+    return () => {
+      deployWsRef.current?.close();
+    };
+  }, []);
 
   useEffect(() => {
     if (deployStartedAt === null) return;
@@ -90,6 +100,11 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
     // delivered via the server-side backlog, so opening it doesn't need to
     // be awaited before triggering the deploy below.
     const ws = new WebSocket(wsUrl(`/ws/deploy/${project.id}`));
+    deployWsRef.current = ws;
+    // Best-effort live log only — a socket-level failure here must not stop
+    // the deploy itself, which is tracked independently via the HTTP POST
+    // below regardless of whether the live log connected.
+    ws.addEventListener("error", () => {});
     ws.addEventListener("message", (event) => {
       try {
         const msg = JSON.parse(event.data) as DeployServerMessage;
@@ -106,6 +121,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
       setDeploying(false);
       setDeployStartedAt(null);
       ws.close();
+      if (deployWsRef.current === ws) deployWsRef.current = null;
     }
   };
 

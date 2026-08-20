@@ -23,7 +23,7 @@ import { systemdStatus } from "../systemd/systemd.service.js";
 import { pm2RootStatus } from "../pm2root/pm2root.service.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
 import { runDeployScript } from "./deploy-runner.js";
-import { startDeployRun, recordDeployLine, endDeployRun } from "./deploy-log-bus.js";
+import { startDeployRun, recordDeployLine, endDeployRun, isDeployRunning } from "./deploy-log-bus.js";
 import { config } from "../config.js";
 import { getOrCreateSession } from "../pty/pty.manager.js";
 
@@ -255,6 +255,10 @@ projectsRouter.post("/:id/deploy", async (req, res) => {
   }
   if (!project.deployScript) {
     res.status(400).json({ error: "no_deploy_script" });
+    return;
+  }
+  if (isDeployRunning(project.id)) {
+    res.status(409).json({ error: "deploy_already_running" });
     return;
   }
 

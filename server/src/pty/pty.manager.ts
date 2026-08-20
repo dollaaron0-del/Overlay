@@ -59,18 +59,6 @@ export function getOrCreateSession(project: Project): PtySession {
   return session;
 }
 
-export function stopSession(projectId: string): boolean {
-  const session = sessions.get(projectId);
-  if (!session) return false;
-  session.kill();
-  sessions.delete(projectId);
-  return true;
-}
-
-export function getSession(projectId: string): PtySession | undefined {
-  return sessions.get(projectId);
-}
-
 /**
  * A project directory that has gone missing should surface as the spawn
  * failing on a real path, not as this helper throwing first with a less
