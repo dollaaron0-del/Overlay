@@ -26,7 +26,7 @@ export interface AttachmentInput {
   originalName: string;
 }
 
-/** Where a chat's attachments live — inside the project's own directory, like quick-capture's inbox-images. */
+/** Where a chat's attachments live — inside the project's own directory. */
 export function attachmentsDir(project: Project, chatId: string): string {
   return path.join(resolveProjectDir(project), "idea-attachments", chatId);
 }
@@ -34,8 +34,8 @@ export function attachmentsDir(project: Project, chatId: string): string {
 /**
  * Saves each attachment under <project>/idea-attachments/<chatId>/ with a
  * filename built purely from a sanitized timestamp, a random suffix, and a
- * validated extension — never the client-supplied name — same convention as
- * quick-capture's inbox images. originalName is stored only for display.
+ * validated extension — never the client-supplied name. originalName is
+ * stored only for display.
  */
 export async function saveIdeaChatAttachments(
   project: Project,

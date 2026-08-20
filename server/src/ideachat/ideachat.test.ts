@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 // config.ts is a frozen singleton that exits the process if required env
 // vars are missing, and ideachat.ts imports it at module scope even though
 // these two pure functions don't touch it — so set fake env vars and import
-// dynamically, same pattern as quickcapture.test.ts.
+// dynamically instead of statically at the top of this file.
 let buildIdeaChatArgs: typeof import("./ideachat.js").buildIdeaChatArgs;
 let parseClaudeResult: typeof import("./ideachat.js").parseClaudeResult;
 

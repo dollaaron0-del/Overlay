@@ -3,8 +3,8 @@ export interface Project {
   // Every project — including kind "systemd" — has a real dirName under
   // APPS_ROOT, even though a systemd project's is just an empty placeholder
   // Overlay creates itself. This keeps every existing dirName-based feature
-  // (security scan, files/obsidian tabs, idea-chat, quick-capture, terminal)
-  // working unchanged instead of needing a kind-check at each of their call
+  // (security scan, files/obsidian tabs, idea-chat, terminal) working
+  // unchanged instead of needing a kind-check at each of their call
   // sites — they just see an empty directory for a systemd project.
   dirName: string;
   /** "systemd" = controlled via a pre-existing systemd unit (see server/src/systemd/) instead of PM2. "pm2-root" = controlled via a PM2 process that lives in a *different* Linux user's PM2 daemon (see server/src/pm2root/), reached through sudo instead of Overlay's own local PM2 connection. Undefined = "pm2", today's behavior. */

@@ -12,7 +12,6 @@ import { securityRouter } from "./security/security.routes.js";
 import { backupRouter } from "./backup/backup.routes.js";
 import { systemRouter } from "./system.routes.js";
 import { auditRouter } from "./audit/audit.routes.js";
-import { quickCaptureRouter } from "./quickcapture/quickcapture.routes.js";
 import { ideaChatRouter, ideaChatAttachmentsRouter } from "./ideachat/ideachat.routes.js";
 import { obsidianRouter } from "./obsidian/obsidian.routes.js";
 import { automationRouter } from "./automation/automation.routes.js";
@@ -26,14 +25,9 @@ import { emmySchedulerRouter } from "./emmy/emmy-scheduler.routes.js";
 import { apiRateLimiter } from "./rate-limit.js";
 import { hasActiveSessions } from "./pty/pty.manager.js";
 
-// Quick-capture photos arrive as base64 JSON (~33% larger than the raw
-// file) — comfortably covers a real phone photo without raising the body
-// limit for every other endpoint.
-const QUICK_CAPTURE_BODY_LIMIT = "15mb";
-
-// Idea-chat attachments (documents/photos) are also base64 JSON, and a
-// request can carry several files at once — same reasoning as quick-capture
-// above, just a bit more headroom for multi-file uploads.
+// Idea-chat attachments (documents/photos) arrive as base64 JSON (~33%
+// larger than the raw file) — a request can carry several files at once, so
+// this needs more headroom than the default body-size limit.
 const IDEA_CHAT_ATTACHMENT_BODY_LIMIT = "40mb";
 
 // Emmy chat attachments (any file type, up to 25mb each, up to 10 per send) —
@@ -106,17 +100,12 @@ export function createApp() {
     res.json({ activeSessions: hasActiveSessions() });
   });
 
-  // Own, larger body-size limit for quick-capture photos — must be
+  // Own, larger body-size limit for idea-chat attachments — must be
   // registered (and consume the request body) before the default-limit
   // express.json() below, since only the first body parser a request
-  // reaches ever gets to read the stream.
-  app.use("/api/quick-capture", express.json({ limit: QUICK_CAPTURE_BODY_LIMIT }), requireAuth, quickCaptureRouter);
-
-  // Must be registered (and consume the request body) before the
-  // default-limit express.json() below — see the quick-capture mount above
-  // for why. Non-attachment idea-chat requests hitting this prefix (e.g.
-  // POST /messages) simply fall through unmatched to the protectedApi mount
-  // further down, body already parsed.
+  // reaches ever gets to read the stream. Non-attachment idea-chat requests
+  // hitting this prefix (e.g. POST /messages) simply fall through unmatched
+  // to the protectedApi mount further down, body already parsed.
   app.use("/api/idea-chats", express.json({ limit: IDEA_CHAT_ATTACHMENT_BODY_LIMIT }), requireAuth, ideaChatAttachmentsRouter);
 
   // Emmy chat message-send + attachment download. Mounted at the "/chats"

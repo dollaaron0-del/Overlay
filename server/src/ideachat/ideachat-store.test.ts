@@ -5,8 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 // The store file path is computed at module-import time from process.cwd()
-// (same pattern as quickcapture-store.ts) — import dynamically, after
-// chdir, not statically at the top of this file.
+// — import dynamically, after chdir, not statically at the top of this file.
 let tmpCwd: string;
 let originalCwd: string;
 let store: typeof import("./ideachat-store.js");
