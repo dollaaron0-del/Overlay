@@ -20,6 +20,8 @@ import { requireAutomationToken } from "./automation/automation.middleware.js";
 import { emmyRouter, emmySendRouter } from "./emmy/emmy.routes.js";
 import { emmyInboundRouter } from "./emmy/emmy-inbound.routes.js";
 import { requireEmmyInboundToken } from "./emmy/emmy-inbound.middleware.js";
+import { agentDecisionsRouter } from "./agent-decisions/agent-decisions.routes.js";
+import { agentDecisionsInboundRouter } from "./agent-decisions/agent-decisions-inbound.routes.js";
 import { apiRateLimiter } from "./rate-limit.js";
 
 // Quick-capture photos arrive as base64 JSON (~33% larger than the raw
@@ -127,6 +129,17 @@ export function createApp() {
     emmyInboundRouter,
   );
 
+  // Same trust boundary and token as the emmy inbound mount above — an agent
+  // process reporting a decision has no browser session either. Own body
+  // limit for headroom on the reasoning field (up to 20,000 chars, see
+  // agent-decisions-inbound.routes.ts's schema).
+  app.use(
+    "/api/agent-decisions/inbound",
+    express.json({ limit: "512kb" }),
+    requireEmmyInboundToken,
+    agentDecisionsInboundRouter,
+  );
+
   app.use(express.json());
   app.use("/api", authRouter);
 
@@ -147,6 +160,7 @@ export function createApp() {
   protectedApi.use("/audit", auditRouter);
   protectedApi.use("/idea-chats", ideaChatRouter);
   protectedApi.use("/emmy", emmyRouter);
+  protectedApi.use("/agent-decisions", agentDecisionsRouter);
   app.use("/api", protectedApi);
 
   if (config.isProduction) {

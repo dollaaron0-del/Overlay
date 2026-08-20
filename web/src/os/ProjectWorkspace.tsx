@@ -9,9 +9,10 @@ import { FileTree } from "../files/FileTree";
 import { FileViewer } from "../files/FileViewer";
 import { PlansTab } from "./PlansTab";
 import { ObsidianTab } from "./ObsidianTab";
+import { DecisionBoard } from "./DecisionBoard";
 import { defaultProjectIcon } from "./project-icon";
 
-type Tab = "terminal" | "logs" | "files" | "plans" | "obsidian";
+type Tab = "terminal" | "logs" | "files" | "plans" | "obsidian" | "decisions";
 
 const ICON_PRESETS = ["📁", "🚀", "💻", "🌐", "🔧", "📦", "🗂", "⚙️", "📊", "🔒", "🎨", "🛠", "📡", "🧩", "☁️", "🐳", "🔥", "📈"];
 
@@ -209,6 +210,9 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
         <button className={tab === "obsidian" ? "active" : ""} onClick={() => setTab("obsidian")}>
           Obsidian
         </button>
+        <button className={tab === "decisions" ? "active" : ""} onClick={() => setTab("decisions")}>
+          Entscheidungen
+        </button>
       </nav>
       <div className="tab-content">
         {tab === "terminal" && <TerminalPanel key={project.id} projectId={project.id} />}
@@ -221,6 +225,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
         )}
         {tab === "plans" && <PlansTab key={project.id} projectId={project.id} />}
         {tab === "obsidian" && <ObsidianTab key={project.id} projectId={project.id} projectDirName={project.dirName} />}
+        {tab === "decisions" && <DecisionBoard key={project.id} projectId={project.id} />}
       </div>
     </div>
   );
