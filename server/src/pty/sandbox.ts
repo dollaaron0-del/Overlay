@@ -8,9 +8,9 @@ import path from "node:path";
  *
  * Every project terminal runs as the same unprivileged user, so without this
  * a session opened for one project could read and write every other project,
- * the Overlay installation itself (including the .env with SESSION_SECRET and
- * the admin password hash) and the shared Claude Code home. Giving each
- * project its own config directory separates the *data*, but nothing stopped
+ * the Overlay installation itself (including any tokens/secrets in its .env)
+ * and the shared Claude Code home. Giving each project its own config
+ * directory separates the *data*, but nothing stopped
  * a shell command from simply walking to a neighbour — this is what turns
  * that separation into a boundary.
  *

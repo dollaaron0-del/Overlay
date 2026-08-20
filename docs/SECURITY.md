@@ -8,50 +8,37 @@ Gleichzeitig soll das Dashboard auch von unterwegs erreichbar sein.
 
 ## Schutzschichten
 
-1. **Netzwerk-Layer (primär): Tailscale.** Der Server bindet ausschließlich an
-   die Tailscale-Interface-Adresse (`BIND_ADDRESS`), nie an `0.0.0.0` oder die
-   LAN-Adresse. Nur Geräte im eigenen Tailnet (iPad + Homeserver) können das
-   Dashboard überhaupt erreichen — weder Mitbewohner im selben WLAN noch das
-   öffentliche Internet. `tailscale funnel` wird bewusst nicht verwendet, da
-   das den Server öffentlich exponieren würde.
-2. **App-Layer (sekundär): Login.** Ein einzelner Benutzer
-   (Benutzername/bcrypt-Passwort-Hash aus `.env`), signierter httpOnly-
-   Session-Cookie. Dient als zweite Verteidigungslinie, falls die
-   Netzwerkschicht versagt (z.B. Fehlkonfiguration), nicht als alleiniger
-   Schutz.
+1. **Netzwerk-Layer (primär): Tailscale.** Nur **Caddy** bindet an die
+   Tailscale-Interface-Adresse, nie an `0.0.0.0` oder die LAN-Adresse —
+   Overlays eigener Node-Prozess bindet ausschließlich an `127.0.0.1`
+   (`BIND_ADDRESS`, siehe Schicht 2). Nur Geräte im eigenen Tailnet (iPad +
+   Homeserver) können das Dashboard überhaupt erreichen — weder Mitbewohner
+   im selben WLAN noch das öffentliche Internet. `tailscale funnel` wird
+   bewusst nicht verwendet, da das den Server öffentlich exponieren würde.
+2. **App-Layer: Authelia + Caddy (2FA, inkl. WebAuthn/Fingerabdruck).**
+   Overlay hat **kein eigenes Login mehr** — jede Route vertraut
+   ausschließlich dem `Remote-User`-Header, den Caddys `forward_auth` nach
+   einer erfolgreichen Authelia-Anmeldung setzt (`auth/auth.middleware.ts`,
+   siehe `docs/DEPLOYMENT.md` Abschnitt 9). Zwei-Faktor ist dabei Pflicht
+   (`policy: two_factor`, `default_policy: deny`), per TOTP-App oder per
+   FIDO2/WebAuthn-Security-Key mit Fingerabdrucksensor (z.B. YubiKey Bio) —
+   `user_verification: preferred` im `webauthn:`-Block sorgt dafür, dass der
+   Key tatsächlich einen Finger verlangt, nicht nur "eingesteckt" akzeptiert.
+   Das ist damit die **einzige** Anmeldeschicht, nicht mehr redundant zu
+   einem separaten Overlay-Passwort — dieser Schicht kann daher nicht mehr
+   ausgewichen werden, wenn Schicht 1 versagt (z.B. Fehlkonfiguration), denn
+   es gibt keine zweite mehr dahinter.
 
    Diese Schicht — und nur diese — lässt sich mit `AUTH_DISABLED=1` in der
-   `.env` abschalten: `requireAuth`, der WebSocket-Upgrade-Check und die
-   Antwort von `/api/session` werden dann zu No-Ops. Das ist ausschließlich
-   dann vertretbar, wenn Schicht 3 tatsächlich davorsteht und *jede* Route
-   abdeckt, denn sonst ist der Effekt: Dashboard, jedes Projekt-Terminal und
-   die `.env` dieses Servers ohne jede Anmeldung für jeden erreichbar, der
-   den Port erreicht. Standardmäßig aus; ist es an, sagt das der Server bei
+   `.env` abschalten: `requireAuth` und der WebSocket-Upgrade-Check werden
+   dann zu No-Ops und `/api/session` meldet immer `authenticated: true`. Das
+   ist ausschließlich für lokale Entwicklung ohne Authelia/Caddy vertretbar,
+   denn der Effekt ist sonst: Dashboard, jedes Projekt-Terminal und die
+   `.env` dieses Servers ohne jede Anmeldung für jeden erreichbar, der den
+   Port erreicht. Standardmäßig aus; ist es an, sagt das der Server bei
    jedem Start mit einer Warnung im Log (`[auth] AUTH_DISABLED=1 …`), damit
-   ein "nur mal kurz zum Debuggen" nicht unbemerkt liegen bleibt. Ein
-   abgeschaltetes Overlay-Login heißt außerdem, dass der Sperrbildschirm aus
-   Schicht 4 nichts mehr prüfen kann (`/api/verify-password` bestätigt dann
-   jede Eingabe).
-3. **2FA-Layer (optional, empfohlen): Authelia + Caddy.** Siehe
-   `docs/DEPLOYMENT.md` Abschnitt 9. Schaltet einen TOTP-2FA-Login *vor*
-   Overlays eigenem Login, über einen Caddy-Reverse-Proxy, der als einziger
-   Dienst noch direkt an die Tailscale-Adresse bindet — Overlay selbst
-   wandert dann auf `127.0.0.1`. Nicht standardmäßig eingerichtet (größerer
-   Konfigurationsaufwand als die ersten beiden Schichten), aber die
-   naheliegende nächste Härtungsstufe, seit sensible Daten gehostet werden:
-   selbst ein geleaktes Overlay-Passwort reicht dann allein nicht mehr.
-4. **Geräte-Layer (optional): automatische Sperre nach Inaktivität.**
-   Schützt gegen ein anderes Szenario als die drei Schichten oben — nicht
-   unbefugten *Netzwerk*-Zugriff, sondern ein physisch zugängliches,
-   bereits entsperrtes iPad. Nach einstellbarer Inaktivität (Einstellungen,
-   Standard 5 Minuten, "Nie" abwählbar) verlangt ein Sperrbildschirm das
-   Passwort erneut, bevor die Oberfläche wieder bedienbar ist. Rein
-   client-seitig: die eigentliche Session/Cookie bleibt währenddessen gültig,
-   laufende Terminal-Sessions oder WebSocket-Verbindungen werden nicht
-   unterbrochen — es ist also kein Ersatz für Login/2FA, sondern eine
-   zusätzliche Hürde gegen "kurz das Zimmer verlassen, Gerät lag entsperrt
-   herum".
-5. **Dateisystem-Layer: Code gehört root, nicht dem Dienst-User.** Der
+   ein "nur mal kurz zum Debuggen" nicht unbemerkt liegen bleibt.
+3. **Dateisystem-Layer: Code gehört root, nicht dem Dienst-User.** Der
    Checkout (inkl. `.git`, `.env`, `server/dist`) gehört root und ist für den
    unprivilegierten Dienst-User nur lesbar; ihm gehört ausschließlich `data/`,
    wohin der laufende Prozess schreibt. Hergestellt wird das von
@@ -62,18 +49,12 @@ Gleichzeitig soll das Dashboard auch von unterwegs erreichbar sein.
    ein Agent, ein kompromittierter Prozess — `server/dist` direkt
    überschreiben und das Gate vollständig umgehen, während der
    "Jetzt aktualisieren"-Knopf (Abschnitt 15) nur bereits gemergten Code
-   ausrollt. Sie repariert außerdem Alt-Modi unter `data/`: `session.ts` legt
-   `sessions.json` bewusst mit `0600` an, weil die Session-IDs zusammen mit
-   `SESSION_SECRET` ein gültiges Cookie ergeben — ein Modus gilt aber nur
-   beim *Erstellen*, früher entstandene Dateien blieben lesbar für jeden
-   lokalen Account.
+   ausrollt.
 
-Alle Schichten sind bewusst redundant: Tailscale schützt vor Netzwerk-
-Exposure, der App-Login vor unbefugtem Zugriff durch andere Tailnet-Mitglieder
-oder falls der Bind-Adresse-Schutz versehentlich umgangen wird, Authelia
-zusätzlich vor einem kompromittierten/erratenen Overlay-Passwort allein, die
-automatische Sperre vor einem physisch zugänglichen, bereits eingeloggten
-Gerät.
+Die Schichten sind bewusst redundant: Tailscale schützt vor Netzwerk-Exposure
+(niemand außerhalb des Tailnets erreicht auch nur Caddy), Authelia+Caddy vor
+unbefugtem Zugriff durch andere Tailnet-Mitglieder oder falls Schicht 1
+versagt (z.B. Fehlkonfiguration von `BIND_ADDRESS`).
 
 ## Angriffsflächen im Detail
 
@@ -83,11 +64,11 @@ Gerät.
   Absolutpfad. Die Datei-API validiert zusätzlich in
   `files/safe-path.ts`, dass ein aufgelöster Pfad (inkl. Symlink-Auflösung)
   innerhalb des Projekt-Roots bleibt.
-- **Session-Fixation/-Diebstahl:** Session-Cookie ist `httpOnly` (kein
-  JS-Zugriff), `SameSite=Lax`, und (produktiv) `Secure`. Session-IDs sind
-  kryptographisch zufällig (32 Byte) und zusätzlich HMAC-signiert.
-- **Brute-Force auf Login:** Einfaches In-Memory-Backoff pro IP mit
-  exponentiell wachsender Sperrzeit.
+- **Session-Fixation/-Diebstahl, Brute-Force auf Login:** Overlay hat kein
+  eigenes Session-Cookie und kein eigenes Login mehr — beides liegt jetzt
+  komplett bei Authelia (httpOnly/SameSite=Lax-Cookie, Backoff nach
+  Fehlversuchen). Overlay selbst prüft nur noch, ob der von Caddy gesetzte
+  `Remote-User`-Header vorhanden ist.
 - **Command Injection über PM2/pty:** `startScript` wird nur beim
   Registrieren eines Projekts akzeptiert (Admin-Aktion, kein öffentlicher
   Endpunkt), nicht bei jedem Start neu vom Client geliefert. Der pty-Prozess
@@ -96,8 +77,8 @@ Gerät.
 - **Projekt-Terminals sind gegeneinander sandboxed:** Alle Projekt-Terminals
   laufen als derselbe unprivilegierte Service-User. Ohne weitere Maßnahme
   könnte eine Session, die für Projekt A geöffnet wurde, jedes andere Projekt
-  sowie die Overlay-Installation selbst (inkl. `.env` mit `SESSION_SECRET`
-  und Admin-Passwort-Hash) lesen und schreiben. `pty/sandbox.ts` startet den
+  sowie die Overlay-Installation selbst (inkl. `.env` mit allen dort
+  hinterlegten Tokens/Secrets) lesen und schreiben. `pty/sandbox.ts` startet den
   `claude`/`CLAUDE_COMMAND`-Prozess deshalb standardmäßig
   (`TERMINAL_SANDBOX=true`) in einer bubblewrap-Sandbox, die per Mount-Reihenfolge
   (zuerst alles verstecken, danach nur das eigene Projektverzeichnis und sein
@@ -111,24 +92,25 @@ Gerät.
 - **Kein Schreibzugriff über die Datei-API:** Die Files-API ist in v1
   bewusst nur lesend — Bearbeitung von Code passiert ausschließlich über die
   Claude-Code-CLI-Session selbst, nicht über einen zusätzlichen Web-Editor.
-- **Cross-Site-Angriffe auf eingeloggte Sessions:** `SameSite=Lax` verhindert
-  bereits, dass der Session-Cookie bei plumpen Cross-Site-POSTs (klassisches
-  CSRF) oder bei einem WebSocket-Verbindungsaufbau von einer fremden Seite aus
-  mitgeschickt wird. Zusätzlich prüft der WebSocket-Upgrade-Handler
-  (`ws/origin-check.ts`) explizit den `Origin`-Header gegen den tatsächlichen
-  Host — eine zweite, unabhängige Sperre für den Fall, dass sich
-  Cookie-Verhalten in einem Browser mal anders verhält als erwartet.
+- **Cross-Site-Angriffe auf eingeloggte Sessions:** Authelias
+  `SameSite=Lax`-Cookie verhindert bereits, dass er bei plumpen
+  Cross-Site-POSTs (klassisches CSRF) oder bei einem
+  WebSocket-Verbindungsaufbau von einer fremden Seite aus mitgeschickt wird.
+  Zusätzlich prüft der WebSocket-Upgrade-Handler (`ws/origin-check.ts`)
+  explizit den `Origin`-Header gegen den tatsächlichen Host — eine zweite,
+  unabhängige Sperre für den Fall, dass sich Cookie-Verhalten in einem
+  Browser mal anders verhält als erwartet.
 - **Security-Header:** `helmet` setzt eine strikte Content-Security-Policy
   (`default-src 'self'`, kein Inline-JavaScript erlaubt), `X-Frame-Options:
   DENY` (Overlay lässt sich nicht in ein `<iframe>` einbetten) und HSTS
   (wirkt erst, sobald über echtes HTTPS via `tailscale cert` ausgeliefert
   wird — über Klartext-HTTP ignorieren Browser den Header ohnehin).
-- **Allgemeines Rate-Limiting:** Zusätzlich zum gezielten Login-Backoff
-  begrenzt `express-rate-limit` alle `/api`-Routen pauschal (120
-  Anfragen/Minute/IP) — eine großzügige, aber vorhandene Grenze gegen
-  fehlerhafte Clients oder Wiederholungsschleifen.
+- **Allgemeines Rate-Limiting:** `express-rate-limit` begrenzt alle
+  `/api`-Routen pauschal (120 Anfragen/Minute/IP) — eine großzügige, aber
+  vorhandene Grenze gegen fehlerhafte Clients oder Wiederholungsschleifen.
+  Login-Brute-Force-Schutz liegt separat bei Authelia.
 - **`GET /api/health` ist absichtlich unauthentifiziert**, damit ein externer
-  Uptime-Check ohne Login-Session funktioniert. Die Antwort ist bewusst auf
+  Uptime-Check ohne Anmeldung funktioniert. Die Antwort ist bewusst auf
   `{"status":"ok","uptimeSeconds":...}` minimiert — keine Projekt-, Versions-
   oder Konfigurationsdetails, die für einen Angreifer nützlich wären.
 - **Korruptionsschutz der Projekt-Registry:** `projects.json` wird per
@@ -291,8 +273,8 @@ externen Platte) überlebt.
 
 ## Aktivitätsprotokoll (Audit-Log)
 
-Jeder Login/fehlgeschlagene Login/Logout sowie jede Projekt-Aktion
-(hinzufügen, entfernen, starten, stoppen, neu starten) wird append-only in
+Jede Projekt-Aktion (hinzufügen, entfernen, starten, stoppen, neu starten)
+wird append-only in
 `server/data/audit.jsonl` protokolliert und ist im "Aktivität"-Tab des
 Dashboards einsehbar — vorher gab es dafür keinerlei Nachvollziehbarkeit.
 Kein separater Dienst, keine zusätzliche Konfiguration: läuft im
@@ -444,10 +426,9 @@ separat betriebenes [OpenClaw](https://openclaw.ai/)-Gateway:
 - **Eingehende Automatisierungs-API** (`server/src/automation/`): eine
   eigene, **token-basierte** Authentifizierung
   (`Authorization: Bearer AUTOMATION_TOKEN`), bewusst getrennt vom
-  Session-Cookie-Login der Browser-UI — ein Skript/Gateway hat keine
-  Browser-Session. Der Vergleich läuft zeitkonstant
-  (`crypto.timingSafeEqual`, gleiches Muster wie die Session-Signatur-
-  Prüfung in `auth/session.ts`). Leerer `AUTOMATION_TOKEN` lässt den
+  `Remote-User`-Header-Vertrauen der Browser-UI — ein Skript/Gateway hat
+  keine Authelia-Session. Der Vergleich läuft zeitkonstant
+  (`crypto.timingSafeEqual`). Leerer `AUTOMATION_TOKEN` lässt den
   gesamten `/api/automation/*`-Router durchgehend **404** statt 401
   liefern — die Existenz des Routers wird also gar nicht erst offengelegt,
   solange niemand ihn bewusst aktiviert. Jede Aktion (Start/Stop/Restart/
@@ -530,15 +511,15 @@ Architektur passenden Mechanismus:
 - Ein Neustart des Overlay-Servers beendet alle laufenden `claude`-pty-
   Sessions und deren In-Memory-Scrollback. Das ist ein akzeptiertes Trade-off
   für v1, keine Sicherheitslücke.
-- Es gibt genau einen Benutzer/ein Passwort — kein Mehrbenutzerkonzept, keine
+- Es gibt genau ein Authelia-Konto — kein Mehrbenutzerkonzept, keine
   granularen Rollen. Für ein persönliches Homeserver-Dashboard angemessen.
 
 ## Dependency-Audit-Status
 
 Alle Laufzeit-Abhängigkeiten (`npm audit --omit=dev`) sind aktuell frei von
-bekannten Schwachstellen (`pm2` auf `7.x` und `bcrypt` auf `6.x` angehoben,
-danach funktional erneut gegen Login/PM2-Start-Stop-Restart/Log-Streaming
-getestet). Verbleibend sind ausschließlich Build-Zeit-Funde in
+bekannten Schwachstellen (`pm2` auf `7.x` angehoben, danach funktional
+erneut gegen PM2-Start-Stop-Restart/Log-Streaming getestet). Verbleibend
+sind ausschließlich Build-Zeit-Funde in
 `vite-plugin-pwa`s Workbox-Toolchain (`workbox-build` → ein Rollup-Plugin-Fork
 → `ejs`/`jake`/`minimatch`/`brace-expansion`, DoS-Klasse) — dieser Pfad läuft
 nur während `vite build`, landet nie im ausgelieferten Code, und ist auch in

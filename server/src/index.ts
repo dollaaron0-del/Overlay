@@ -2,7 +2,6 @@ import http from "node:http";
 import { config } from "./config.js";
 import { createApp } from "./server.js";
 import { attachWebSocketServer } from "./ws/ws.server.js";
-import { loadSessions } from "./auth/session.js";
 import { reconcileMemoryIndex } from "./emmy/emmy-memory.js";
 
 // Defense in depth: Express 4 does not catch a rejected promise thrown by an
@@ -19,8 +18,6 @@ process.on("uncaughtException", (err) => {
   console.error("[uncaughtException]", err);
 });
 
-await loadSessions();
-
 // Best-effort, not awaited: backfills Emmy's memory index for any message
 // (live or archived) that predates this feature or was sent while Ollama was
 // unreachable. Never blocks server startup and can never take the process down.
@@ -36,7 +33,7 @@ server.listen(config.PORT, config.BIND_ADDRESS, () => {
   // being forgotten: it is only safe while an auth proxy really is in front.
   if (config.AUTH_DISABLED) {
     console.warn(
-      "[auth] AUTH_DISABLED=1 — Overlay's own login is OFF. Every route is unauthenticated unless a proxy (Authelia) enforces auth in front of this process.",
+      "[auth] AUTH_DISABLED=1 — the Remote-User header check is OFF. Every route is unauthenticated unless a proxy (Authelia) enforces auth in front of this process.",
     );
   }
 });

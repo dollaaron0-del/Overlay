@@ -18,18 +18,15 @@ const schema = z.object({
   PORT: z.coerce.number().int().positive().default(4317),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   APPS_ROOT: z.string().min(1, "APPS_ROOT must be set"),
-  SESSION_SECRET: z.string().min(16, "SESSION_SECRET must be set to a long random string"),
-  ADMIN_USERNAME: z.string().min(1, "ADMIN_USERNAME must be set"),
-  ADMIN_PASSWORD_HASH: z.string().min(1, "ADMIN_PASSWORD_HASH must be set (run: npm run set-password -w server)"),
-  // Turns off Overlay's OWN session-cookie login: "1"/"true" makes
-  // requireAuth, the WebSocket upgrade check and the /api/session answer
-  // no-ops. Only defensible when a real authentication proxy sits in front of
-  // every route (the intended setup is Authelia behind Caddy's forward_auth
-  // with two_factor + default deny, see docs/DEPLOYMENT.md section 9) — this
-  // drops the redundant second layer, not the only one. With Overlay exposed
-  // directly, this hands the whole dashboard, every project terminal and this
-  // machine's .env to anyone who can reach the port. Empty/unset = normal
-  // login, which is what every fresh install gets.
+  // Overlay has no login of its own: every route trusts the Remote-User
+  // header that Caddy's forward_auth sets once Authelia has approved a
+  // two_factor session (see docs/DEPLOYMENT.md section 9 and
+  // auth/auth.middleware.ts). AUTH_DISABLED skips that header check
+  // entirely — only defensible for local dev, when no Authelia/Caddy sits
+  // in front at all. With Overlay reachable directly, this hands the whole
+  // dashboard, every project terminal and this machine's .env to anyone who
+  // can reach the port, with zero authentication. Empty/unset = normal
+  // behaviour, which is what every fresh install gets.
   AUTH_DISABLED: z
     .string()
     .default("")
@@ -187,10 +184,6 @@ const schema = z.object({
   // turn, independent of the embedding tier above — this alone is what fixes
   // Emmy forgetting mid-task even with no Ollama configured at all.
   EMMY_MEMORY_RECENT_MESSAGES: z.coerce.number().int().positive().default(10),
-  COOKIE_SECURE: z
-    .string()
-    .default("false")
-    .transform((v) => v === "true"),
 });
 
 function loadConfig() {

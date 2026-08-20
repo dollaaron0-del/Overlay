@@ -3,36 +3,44 @@ import { api } from "../api/client";
 
 interface AuthContextValue {
   authenticated: boolean;
+  user: string | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// Authelia's own portal, one hostname over on port 9091 (see
+// deploy/caddy/Caddyfile and docs/DEPLOYMENT.md section 9) — Overlay has no
+// login/logout of its own to call. NOTE: not verified against Authelia's
+// live docs from this dev sandbox; confirm the exact logout path
+// (https://www.authelia.com/configuration/session/introduction/) still
+// matches before relying on it.
+function autheliaPortalUrl(path: string): string {
+  return `https://${window.location.hostname}:9091${path}`;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
+  const [user, setUser] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api
-      .get<{ authenticated: boolean }>("/api/session")
-      .then((res) => setAuthenticated(res.authenticated))
+      .get<{ authenticated: boolean; user: string | null }>("/api/session")
+      .then((res) => {
+        setAuthenticated(res.authenticated);
+        setUser(res.user);
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (username: string, password: string) => {
-    await api.post("/api/login", { username, password });
-    setAuthenticated(true);
-  };
-
   const logout = async () => {
-    await api.post("/api/logout");
-    setAuthenticated(false);
+    window.location.href = autheliaPortalUrl("/logout");
   };
 
   return (
-    <AuthContext.Provider value={{ authenticated, loading, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ authenticated, user, loading, logout }}>{children}</AuthContext.Provider>
   );
 }
 
