@@ -416,6 +416,28 @@ button.active {
   flex-direction: column;
 }
 
+.tab-bar-split-toggle {
+  margin-left: auto;
+}
+
+.terminal-split-divider {
+  width: 1px;
+  flex-shrink: 0;
+  background: var(--c-surface-2);
+}
+
+/* Two terminals side by side get cramped below this width — stack them
+   instead so each still has a usable number of columns. */
+@media (max-width: 720px) {
+  .tab-content:has(.terminal-split-divider) {
+    flex-direction: column;
+  }
+  .terminal-split-divider {
+    width: auto;
+    height: 1px;
+  }
+}
+
 .terminal-status-bar {
   display: flex;
   align-items: center;

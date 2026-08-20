@@ -32,6 +32,7 @@ interface DeployResult {
 export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSummary; onRemoved: () => void }) {
   const isExternal = project.kind === "systemd" || project.kind === "pm2-root";
   const [tab, setTab] = useState<Tab>(isExternal ? "logs" : "terminal");
+  const [showHostTerminal, setShowHostTerminal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
@@ -289,9 +290,28 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
             </button>
           </>
         )}
+        {!isExternal && tab === "terminal" && (
+          <button
+            className={`tab-bar-split-toggle ${showHostTerminal ? "active" : ""}`}
+            onClick={() => setShowHostTerminal((v) => !v)}
+            title="Server-Terminal daneben öffnen"
+          >
+            🖥️ Server
+          </button>
+        )}
       </nav>
       <div className="tab-content">
-        {!isExternal && tab === "terminal" && <TerminalPanel key={project.id} projectId={project.id} />}
+        {!isExternal && tab === "terminal" && (
+          <>
+            <TerminalPanel key={project.id} wsPath={`/ws/pty/${project.id}`} />
+            {showHostTerminal && (
+              <>
+                <div className="terminal-split-divider" />
+                <TerminalPanel key="host-terminal" wsPath="/ws/host-terminal" />
+              </>
+            )}
+          </>
+        )}
         {tab === "logs" && <LogPanel key={project.id} projectId={project.id} />}
         {!isExternal && tab === "files" && (
           <div className="files-tab">

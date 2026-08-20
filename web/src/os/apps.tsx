@@ -5,6 +5,7 @@ import { SettingsApp } from "../settings/SettingsApp";
 import { QuickCaptureApp } from "../quickcapture/QuickCaptureApp";
 import { EmmyChatApp } from "../emmy/EmmyChatApp";
 import { CockpitApp } from "./CockpitApp";
+import { TerminalPanel } from "../terminal/TerminalPanel";
 
 /**
  * Static, always-present apps (as opposed to project apps, which are
@@ -23,6 +24,12 @@ export const STATIC_APPS: AppDef[] = [
   { id: "quickcapture", title: "Schnellnotiz", icon: "📝", render: () => <QuickCaptureApp /> },
   { id: "emmy", title: "Emmy", icon: "🦊", render: (nav) => <EmmyChatApp onOpenProject={nav.openProject} /> },
   { id: "cockpit", title: "Cockpit", icon: "🖥️", render: () => <CockpitApp /> },
+  {
+    id: "server-terminal",
+    title: "Server-Terminal",
+    icon: "⌨️",
+    render: () => <TerminalPanel key="host-terminal" wsPath="/ws/host-terminal" />,
+  },
   { id: "settings", title: "Einstellungen", icon: "⚙️", render: () => <SettingsApp /> },
 ];
 

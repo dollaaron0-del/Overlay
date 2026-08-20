@@ -1,7 +1,7 @@
 import type { Server as HttpServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { isAuthenticatedUpgradeRequest } from "../auth/auth.middleware.js";
-import { handlePtyConnection } from "../pty/pty.ws.js";
+import { handlePtyConnection, handleHostPtyConnection } from "../pty/pty.ws.js";
 import { handleLogsConnection } from "../pm2/pm2.ws.js";
 import { handleStatusConnection } from "./status.ws.js";
 import { handleBackupProgressConnection } from "../backup/backup.ws.js";
@@ -41,6 +41,8 @@ export function attachWebSocketServer(server: HttpServer): WebSocketServer {
     wss.handleUpgrade(req, socket, head, (ws) => {
       if (segments[1] === "pty" && segments[2]) {
         void handlePtyConnection(ws, segments[2]);
+      } else if (segments[1] === "host-terminal") {
+        handleHostPtyConnection(ws);
       } else if (segments[1] === "logs" && segments[2]) {
         void handleLogsConnection(ws, segments[2]);
       } else if (segments[1] === "status") {
