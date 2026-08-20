@@ -179,8 +179,8 @@ function assertValidExternalUrl(url: string): void {
 /**
  * A systemd- or pm2-root-kind project's dirName is an empty placeholder, not
  * real app code — Overlay creates it itself so every existing dirName-based
- * feature (security scan, files/obsidian tabs, quick-capture, idea-chat,
- * terminal) keeps working unchanged, just seeing an empty directory. Real app
+ * feature (security scan, files/obsidian tabs, idea-chat, terminal) keeps
+ * working unchanged, just seeing an empty directory. Real app
  * code for these projects lives elsewhere (e.g. a different Linux user's home
  * dir) and stays untouched by Overlay.
  */

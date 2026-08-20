@@ -7,7 +7,6 @@ export type AuditEventType =
   | "project_deployed"
   | "scan_triggered"
   | "backup_triggered"
-  | "quick_capture"
   | "idea_plan_saved"
   | "idea_attachment_added"
   | "overlay_update_triggered"

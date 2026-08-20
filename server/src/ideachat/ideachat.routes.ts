@@ -15,8 +15,7 @@ export const ideaChatRouter = Router();
 /**
  * Separate router for attachment upload/download, mounted at the same
  * "/api/idea-chats" prefix but earlier in server.ts with its own larger
- * body-size limit — same reasoning as the quick-capture router (base64 JSON
- * runs ~33% bigger than the raw file).
+ * body-size limit (base64 JSON runs ~33% bigger than the raw file).
  */
 export const ideaChatAttachmentsRouter = Router();
 

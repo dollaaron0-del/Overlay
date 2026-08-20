@@ -8,7 +8,7 @@ import { buildFrontmatter } from "../obsidian/obsidian-note.js";
 
 // Re-exported for backward compatibility — plan-writer.test.ts and any
 // other existing importer still get it from here; the implementation now
-// lives in util/slug.ts so quickcapture.ts can share it too.
+// lives in util/slug.ts.
 export { slugify } from "../util/slug.js";
 import { slugify } from "../util/slug.js";
 

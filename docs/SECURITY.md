@@ -292,28 +292,6 @@ Overlay-Webserver-Prozess selbst mit, genau wie die restige API. Die letzten
 2000 Einträge werden aufbewahrt (mehr als genug für ein persönliches
 Homelab-Dashboard), ältere werden automatisch verworfen.
 
-## Schnellnotiz (Quick Capture)
-
-Die "Schnellnotiz"-App ist für unterwegs (z.B. vom iPhone) gedacht: Text,
-Link und/oder Foto landen als neuer Abschnitt in der `inbox.md` eines
-einmalig gewählten Ziel-Projekts (Bilder zusätzlich als Datei in dessen
-`inbox-images/`-Unterordner). Sicherheitsrelevant:
-
-- Das Ziel-Projekt wird serverseitig in `server/data/quick-capture-settings.json`
-  gespeichert (nicht im Browser), damit es geräteübergreifend gilt — es ist
-  aber weiterhin nur der Projekt-Registrierungseintrag (ID), kein Pfad.
-- Erfasste Notizen/Bilder werden als **unverschlüsselte Klartext-Dateien**
-  direkt im Verzeichnis des Ziel-Projekts abgelegt. Sie genießen also exakt
-  das gleiche Vertrauens-/Zugriffsniveau wie alle anderen Dateien dieses
-  Projekts (Dateisystem-Rechte des Server-Nutzers, restic-Backups falls
-  konfiguriert) — keine eigene Verschlüsselung oder Zugriffskontrolle.
-- Bild-Uploads werden als Base64 in JSON (nicht multipart) übertragen, um
-  keine zusätzliche Abhängigkeit einzuführen; die Route hat dafür ein
-  eigenes, höheres Body-Size-Limit (15 MB) statt eines global erhöhten
-  Limits. Nur ein Whitelist an Bildtypen (jpeg/png/webp/heic) wird
-  akzeptiert, der Dateiname wird serverseitig aus Zeitstempel + Zufallswert
-  erzeugt (nie aus Client-Eingaben) — Path-Traversal ist damit ausgeschlossen.
-
 ## Ideen-Chat
 
 Die "Ideen"-App bespricht Verbesserungsideen für ein gewähltes Projekt mit
@@ -408,10 +386,6 @@ bei Bild-Uploads (Base64 statt `multer`). Sicherheitsrelevant:
   gibt React-Elemente zurück statt HTML-Strings zu bauen — kein
   `dangerouslySetInnerHTML`, kein XSS-Risiko über Notizinhalte, selbst wenn
   eine Notiz absichtlich präparierten Text enthält.
-- Der Obsidian-Modus der Schnellnotiz (atomare Notiz-Dateien statt
-  `inbox.md`-Anhängen) teilt sich dieselbe Bild-Validierung/Dateinamens-
-  Erzeugung wie der bisherige Modus (Whitelist an Bildtypen, Dateiname aus
-  Zeitstempel + Zufallswert) — siehe Abschnitt "Schnellnotiz" oben.
 - Das "In Obsidian öffnen"-Deeplink (`obsidian://open?...`) ist reines
   URL-Scheme-Handling im Browser/Betriebssystem des Nutzers; Overlay selbst
   spricht dabei keine Obsidian-Instanz an und braucht dafür keinen Zugriff.

@@ -13,7 +13,6 @@ const EVENT_LABEL: Record<AuditEventType, string> = {
   project_deployed: "Projekt deployt",
   scan_triggered: "Sicherheits-Scan manuell gestartet",
   backup_triggered: "Backup manuell gestartet",
-  quick_capture: "Schnellnotiz gespeichert",
   idea_plan_saved: "Ideen-Plan gespeichert",
   idea_attachment_added: "Anhang zu Idee hinzugefügt",
   overlay_update_triggered: "Overlay-Update ausgelöst",

@@ -23,11 +23,6 @@ Länger laufende Aktionen zeigen ihren tatsächlichen Fortschritt statt nur
 Status-Zeilen), der Security-Scan "Schritt X von Y: <Tool>", und ein Deploy
 sein Live-Output plus Timer statt nur des Endergebnisses.
 
-Für unterwegs (z.B. vom iPhone) gibt es eine eigene "Schnellnotiz"-App:
-Text, Link und/oder Foto in Sekunden erfassen, landet als Eintrag in der
-`inbox.md` eines frei wählbaren Projekts (z.B. dem eigenen Second Brain) —
-das Ziel-Projekt ist serverseitig gespeichert, gilt also geräteübergreifend.
-
 Für Ideen, die tatsächlich Rückmeldung brauchen, gibt es zusätzlich die
 "Ideen"-App: eine Idee eintippen, ein Projekt auswählen, und die echte
 Claude Code CLI (derselbe Login wie im Terminal) liest sich lesend in das
@@ -40,13 +35,11 @@ lesen. Jedes Projekt hat dafür im Dashboard einen eigenen "Pläne"-Tab
 (neben Terminal/Logs/Dateien), der alle so gespeicherten Pläne auflistet —
 später am eigentlichen Rechner reicht dann "setz das aus plans/... um".
 
-Wer sein "Second Brain" in Obsidian führt, kann die Schnellnotiz
-zusätzlich in einen Obsidian-Modus schalten (jede Notiz eine eigene Datei
-mit YAML-Frontmatter statt Anhängen an eine `inbox.md`), Ideenpläne
-bekommen ohnehin automatisch passendes Frontmatter. Ein "Obsidian"-Tab pro
-Projekt zeigt alle Notizen mit Tag-Filter, Backlinks und einem einfachen
-Markdown-Renderer (kein neues Obsidian-Plugin, keine neue Abhängigkeit
-nötig). Optional lässt sich zusätzlich ein selbst gehostetes
+Wer sein "Second Brain" in Obsidian führt: Ideenpläne bekommen automatisch
+passendes YAML-Frontmatter, und ein "Obsidian"-Tab pro Projekt zeigt alle
+Notizen mit Tag-Filter, Backlinks und einem einfachen Markdown-Renderer
+(kein neues Obsidian-Plugin, keine neue Abhängigkeit nötig). Optional lässt
+sich zusätzlich ein selbst gehostetes
 [OpenClaw](https://openclaw.ai/)-Gateway anbinden: Overlay meldet
 kritische Scan-Funde/Backup-Fehler/gespeicherte Pläne per Webhook dorthin
 weiter (zusätzlich zu ntfy), und eine token-authentifizierte

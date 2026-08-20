@@ -970,16 +970,7 @@ Overlay arbeitet direkt auf den `.md`-Dateien im Projektverzeichnis; ob
 parallel dazu die echte Obsidian-App (Desktop/Mobile, per Syncthing/iCloud/
 Obsidian Sync) auf denselben Dateien läuft, ist Overlay egal.
 
-**1. Schnellnotiz im Obsidian-Modus.** In der "Schnellnotiz"-App (Ziel-
-Projekt-Auswahl, Zahnrad-Symbol) den Schalter "Obsidian-Modus" aktivieren.
-Danach landet jede Notiz als eigene Datei unter `<projekt>/inbox/` (mit
-YAML-Frontmatter `tags`, `created`, ggf. eingebettetem Bild via
-`![[datei]]`) statt an eine gemeinsame `inbox.md` angehängt zu werden —
-das idiomatische Obsidian/Second-Brain-Muster (ein verlinkbarer, taggbarer
-Knoten pro Gedanke). Standardmäßig aus, um bestehendes Verhalten nicht zu
-brechen.
-
-**2. Mini-Vault-Browser.** Jedes Projekt hat im Dashboard einen "Obsidian"-
+**1. Mini-Vault-Browser.** Jedes Projekt hat im Dashboard einen "Obsidian"-
 Tab: alle `.md`-Dateien des Projekts (rekursiv, `node_modules`/`.git`
 ausgenommen) mit Tag-Filter, Frontmatter-Anzeige, gerendertem Inhalt
 (Überschriften/Fett/Kursiv/Links/Wikilinks/Listen) und Backlinks ("wer
@@ -990,13 +981,13 @@ Deeplink-Schema; das funktioniert nur, wenn der lokale Obsidian-Vault-Name
 mit dem Overlay-Projektnamen übereinstimmt (Obsidian selbst wird dabei
 nicht angesprochen, das ist reines URL-Scheme-Handling im Betriebssystem).
 
-**3. Direkte Anbindung an ein laufendes Obsidian (optional, außerhalb
+**2. Direkte Anbindung an ein laufendes Obsidian (optional, außerhalb
 dieses Repos).** Wer zusätzlich das Obsidian-Plugin "Local REST API"
 nutzt, kann von woanders (z.B. einem eigenen Skript oder OpenClaw, siehe
 Abschnitt 14) direkt mit der laufenden Obsidian-Instanz sprechen — das ist
 unabhängig von Overlay und braucht keine Konfiguration hier.
 
-Keine der drei Optionen erfordert einen neuen Dienst oder Port auf dem
+Keine der beiden Optionen erfordert einen neuen Dienst oder Port auf dem
 Server; alles läuft im bestehenden Overlay-Prozess mit.
 
 ## 14. OpenClaw-Integration (optional)
