@@ -208,6 +208,12 @@ type AddProjectInput =
       pm2Name: string;
       startScript: string;
       deployScript?: string;
+      // Optional even for a normal PM2 project: lets a project that Overlay
+      // itself runs (terminal, logs, start/stop/restart) *also* show a
+      // second, synthetic Dashboard-section tile that links straight to its
+      // own UI — e.g. a bot with both a web dashboard and a codebase you
+      // want a terminal in. See HomeScreen.tsx's dashboardLinkItems.
+      externalUrl?: string;
     }
   | {
       kind: "systemd";
@@ -241,6 +247,7 @@ export async function addProject(input: AddProjectInput): Promise<Project> {
     if (!stat || !stat.isDirectory()) {
       throw new Error(`Directory does not exist under APPS_ROOT: ${input.dirName}`);
     }
+    if (input.externalUrl) assertValidExternalUrl(input.externalUrl);
   }
 
   const project: Project = { ...input };
@@ -259,6 +266,25 @@ export async function updateProjectIcon(id: string, icon: string | null): Promis
     if (index === -1) return { next: current, result: undefined };
     const next = [...current];
     next[index] = { ...next[index], icon: icon ?? undefined };
+    return { next, result: next[index] };
+  });
+}
+
+/**
+ * Sets (or clears, with null) a project's dashboard link. For a "systemd"/
+ * "pm2-root" project this is its only UI, already required at creation. For
+ * a normal PM2 project it's optional and additive — set it to grow a second
+ * home-screen Dashboard-section tile alongside the existing Terminal one
+ * (see HomeScreen.tsx's dashboardLinkItems), without turning the project
+ * itself into a link-only tile.
+ */
+export async function updateProjectExternalUrl(id: string, url: string | null): Promise<Project | undefined> {
+  if (url) assertValidExternalUrl(url);
+  return mutateProjects((current) => {
+    const index = current.findIndex((p) => p.id === id);
+    if (index === -1) return { next: current, result: undefined };
+    const next = [...current];
+    next[index] = { ...next[index], externalUrl: url ?? undefined };
     return { next, result: next[index] };
   });
 }

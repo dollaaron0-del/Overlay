@@ -17,7 +17,17 @@ export interface Project {
   systemdUnit?: string;
   /** Required when kind is "pm2-root": the exact process name in root's own PM2 daemon (e.g. `pm2 list` shows it under `user: root`). Must have a matching sudoers rule on the real server, see docs/DEPLOYMENT.md. */
   pm2RootName?: string;
-  /** Required when kind is "systemd" or "pm2-root": the app isn't served through Overlay, so its tile links out to this URL instead (e.g. behind the same Tailscale+Authelia Caddy layer as Overlay itself). */
+  /**
+   * Required when kind is "systemd" or "pm2-root": the app isn't served
+   * through Overlay, so its (only) tile links out to this URL instead (e.g.
+   * behind the same Tailscale+Authelia Caddy layer as Overlay itself).
+   *
+   * Optional for a normal PM2 project: set via PATCH /:id to *additionally*
+   * show a second, synthetic Dashboard-section tile that links straight to
+   * this URL, alongside the project's own Terminal-section tile — for a
+   * project Overlay runs (terminal/logs/start-stop) that also has its own
+   * web UI worth a one-click link. See HomeScreen.tsx's dashboardLinkItems.
+   */
   externalUrl?: string;
   /** Optional shell command run by POST /:id/deploy, e.g. "git pull && npm install && npm run build". Not applicable to kind "systemd". */
   deployScript?: string;

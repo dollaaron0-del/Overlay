@@ -171,6 +171,50 @@ test("updateProjectIcon on an unknown id returns undefined", async () => {
   assert.equal(result, undefined);
 });
 
+test("updateProjectExternalUrl sets and clears a normal PM2 project's dashboard link", async () => {
+  await fs.mkdir(path.join(appsRoot, "app-url-test"), { recursive: true });
+  await registry.addProject({
+    id: "app-url-test",
+    dirName: "app-url-test",
+    pm2Name: "app-url-test",
+    startScript: "npm start",
+  });
+
+  const updated = await registry.updateProjectExternalUrl("app-url-test", "https://server.tail2388d0.ts.net:9093/");
+  assert.equal(updated?.externalUrl, "https://server.tail2388d0.ts.net:9093/");
+  assert.equal((await registry.getProject("app-url-test"))?.externalUrl, "https://server.tail2388d0.ts.net:9093/");
+
+  const cleared = await registry.updateProjectExternalUrl("app-url-test", null);
+  assert.equal(cleared?.externalUrl, undefined);
+});
+
+test("updateProjectExternalUrl rejects a non-https URL", async () => {
+  await fs.mkdir(path.join(appsRoot, "app-url-insecure"), { recursive: true });
+  await registry.addProject({
+    id: "app-url-insecure",
+    dirName: "app-url-insecure",
+    pm2Name: "app-url-insecure",
+    startScript: "npm start",
+  });
+
+  await assert.rejects(
+    () => registry.updateProjectExternalUrl("app-url-insecure", "http://server.tail2388d0.ts.net:9093/"),
+    registry.InvalidExternalUrlError,
+  );
+});
+
+test("addProject for a normal PM2 project accepts an optional externalUrl", async () => {
+  await fs.mkdir(path.join(appsRoot, "app-with-dashboard"), { recursive: true });
+  const project = await registry.addProject({
+    id: "app-with-dashboard",
+    dirName: "app-with-dashboard",
+    pm2Name: "app-with-dashboard",
+    startScript: "npm start",
+    externalUrl: "https://server.tail2388d0.ts.net:9093/",
+  });
+  assert.equal(project.externalUrl, "https://server.tail2388d0.ts.net:9093/");
+});
+
 test("addProject with kind systemd creates an empty stub dir instead of requiring one to pre-exist", async () => {
   const project = await registry.addProject({
     kind: "systemd",
