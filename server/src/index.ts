@@ -30,7 +30,7 @@ void reconcileMemoryIndex();
 
 const app = createApp();
 const server = http.createServer(app);
-attachWebSocketServer(server);
+const wss = attachWebSocketServer(server);
 
 server.listen(config.PORT, config.BIND_ADDRESS, () => {
   console.log(`Overlay server listening on http://${config.BIND_ADDRESS}:${config.PORT} (${config.NODE_ENV})`);
@@ -56,6 +56,13 @@ server.listen(config.PORT, config.BIND_ADDRESS, () => {
 });
 
 function shutdown(): void {
+  // http.Server#close() only stops accepting new connections and waits for
+  // existing ones to end on their own — a long-lived WS client (terminal,
+  // status poll, log stream) would otherwise keep this callback from ever
+  // firing, so a restart/deploy hangs until PM2's SIGKILL timeout instead of
+  // exiting cleanly. Terminating every live WS connection up front makes
+  // server.close()'s callback actually fire.
+  for (const client of wss.clients) client.terminate();
   server.close(() => process.exit(0));
 }
 process.on("SIGINT", shutdown);
