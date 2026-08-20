@@ -1,0 +1,17 @@
+[Unit]
+Description=Overlay auto-update check (one tick)
+# Same pattern as overlay-emmy-scheduler.service: a separate oneshot unit,
+# not part of overlay.service itself. Runs as root (unlike the scheduler
+# tick) because it needs `systemctl start overlay-update.service`, which an
+# unprivileged user can't do.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/overlay
+ExecStart=/bin/bash /opt/overlay/deploy/check-and-update.sh
+
+[Install]
+WantedBy=multi-user.target

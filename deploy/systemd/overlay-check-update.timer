@@ -1,0 +1,14 @@
+[Unit]
+Description=Check every 10 minutes for a pending Overlay update
+
+[Timer]
+OnCalendar=*:0/10
+# Short window, same reasoning as the emmy-scheduler timer: a tick is a
+# cheap `git fetch` + rev-parse, not a multi-minute job.
+RandomizedDelaySec=30
+# If the machine was off/asleep at a scheduled tick, run one as soon as it's
+# back instead of silently letting a whole interval slip.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
