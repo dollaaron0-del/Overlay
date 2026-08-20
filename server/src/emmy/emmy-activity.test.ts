@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { markWorking, markIdle, listActivities, getActivity, resetActivityForTests, DEFAULT_NOTE } from "./emmy-activity.js";
+import { markWorking, markIdle, listActivities, resetActivityForTests, DEFAULT_NOTE } from "./emmy-activity.js";
 import { subscribeToEmmyActivity } from "./emmy-bus.js";
 import type { EmmyActivity } from "@overlay/shared";
 
@@ -20,14 +20,13 @@ afterEach(() => {
 
 test("nothing is busy until a turn is dispatched", () => {
   assert.deepEqual(listActivities(), []);
-  assert.equal(getActivity("chat-1"), undefined);
 });
 
 test("markWorking records a chat with a default note and broadcasts it", () => {
   const activity = markWorking("chat-1");
   assert.equal(activity.chatId, "chat-1");
   assert.equal(activity.note, DEFAULT_NOTE);
-  assert.equal(getActivity("chat-1")?.note, DEFAULT_NOTE);
+  assert.equal(listActivities().find((a) => a.chatId === "chat-1")?.note, DEFAULT_NOTE);
   assert.equal(published.length, 1);
   assert.equal(published[0][0].chatId, "chat-1");
 });

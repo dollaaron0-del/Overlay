@@ -53,7 +53,14 @@ export function AddProjectForm({ onClose, onAdded }: { onClose: () => void; onAd
         // daemon.
         await api.post("/api/projects", { kind: "pm2-root", id, dirName: id, pm2RootName, externalUrl });
       } else {
-        await api.post("/api/projects", { id, dirName, pm2Name, startScript, deployScript: deployScript || undefined });
+        await api.post("/api/projects", {
+          id,
+          dirName,
+          pm2Name,
+          startScript,
+          deployScript: deployScript || undefined,
+          externalUrl: externalUrl || undefined,
+        });
       }
       onAdded();
       onClose();
@@ -197,6 +204,20 @@ export function AddProjectForm({ onClose, onAdded }: { onClose: () => void; onAd
               placeholder="git pull && npm install && npm run build"
             />
           </label>
+          <label>
+            Dashboard-URL (optional)
+            <input
+              type="url"
+              value={externalUrl}
+              onChange={(e) => setExternalUrl(e.target.value)}
+              placeholder="https://server.tailnet.ts.net:9093/"
+            />
+          </label>
+          <p className="empty-hint">
+            Falls das Projekt zusätzlich zu Terminal/Logs auch eine eigene Web-Oberfläche hat, zeigt Overlay dafür
+            eine zweite Kachel im Dashboards-Bereich, die direkt dorthin verlinkt. Kann auch später im Projekt
+            nachgetragen werden.
+          </p>
           {error && <p className="login-error">{error}</p>}
           <button type="submit" disabled={submitting}>
             {submitting ? "Wird hinzugefügt…" : "Hinzufügen"}

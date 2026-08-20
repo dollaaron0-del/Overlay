@@ -544,6 +544,44 @@ button.active {
   overflow: hidden;
 }
 
+.terminal-paste-button {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+}
+
+.terminal-paste-box-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--c-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+
+.terminal-paste-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--c-surface-1);
+  border: 1px solid var(--c-surface-2);
+  border-radius: var(--radius-2);
+  padding: var(--space-3);
+  width: min(480px, 90vw);
+}
+
+.terminal-paste-box textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-mono, monospace);
+}
+
+.terminal-paste-box-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 /* xterm.css sets `user-select: none` on `.xterm` and re-implements selection
    itself (a `.xterm-selection` overlay driven by mouse drag) so it can snap to
    the cell grid. The cost is that iOS has no DOM selection to work with, so

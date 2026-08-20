@@ -1211,6 +1211,21 @@ bricht mit einer klaren Fehlermeldung ab, statt still nichts zu tun.
 
 ### 16.2 systemd-Timer einrichten
 
+Seit dem Fix für "wiederkehrende Checks laufen nie automatisch" installiert
+`deploy/update.sh` (Schritt 5/6) die Unit **automatisch** bei jedem Update,
+falls `/etc/systemd/system/overlay-emmy-scheduler.timer` noch fehlt — der
+zuvor rein manuelle Schritt unten war genau die Lücke, die auf diesem
+Server dazu geführt hat, dass der Timer nie existierte und Checks
+dadurch nie automatisch ausgeführt wurden, obwohl die Fälligkeits-Logik
+selbst korrekt war. Nach einem Update per "Jetzt aktualisieren" oder dem
+Auto-Update-Timer sollte die Unit also bereits aktiv sein — mit
+`systemctl status overlay-emmy-scheduler.timer` prüfen.
+
+Nur falls das automatische Nachziehen aus irgendeinem Grund nicht greift
+(z. B. abweichender Server-Pfad, dann muss vorher
+`deploy/systemd/overlay-emmy-scheduler.service` entsprechend angepasst
+werden), hier der manuelle Weg:
+
 ```
 cp deploy/systemd/overlay-emmy-scheduler.service /etc/systemd/system/
 cp deploy/systemd/overlay-emmy-scheduler.timer /etc/systemd/system/

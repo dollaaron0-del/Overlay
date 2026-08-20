@@ -20,8 +20,16 @@ interface IconItem {
   kind: "project" | "app";
   /** Only set for projects — which home-screen section this tile belongs in. */
   homeSection?: ProjectSummary["homeSection"];
-  /** Only set for projects of kind "systemd"/"pm2-root" — where a Dashboard tile links out to. */
+  /** Where a Dashboard tile links out to — always set for systemd/pm2-root, optionally set for a normal project too (see dashboardLinkItems). */
   externalUrl?: string;
+  /**
+   * True for the synthetic second tile a normal project gets in the
+   * Dashboards section when it has both a Terminal-section tile and an
+   * externalUrl (see dashboardLinkItems below) — distinguishes it from that
+   * project's own Terminal-section tile so delete/rename always act on the
+   * real project, never on this link-only view of it.
+   */
+  isDashboardLink?: boolean;
 }
 
 function isFolderId(id: string): boolean {
@@ -61,6 +69,25 @@ export function HomeScreen({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [openFolderId, setOpenFolderId] = useState<string | null>(null);
 
+  // A project Overlay itself runs (Terminal-section tile) can *also* carry a
+  // dashboard link — e.g. a bot with both a codebase worth a terminal and its
+  // own web UI worth a one-click link. Rather than forcing a choice between
+  // the two (like systemd/pm2-root projects, whose one tile only ever links
+  // out — see openItem below), it keeps its Terminal-section tile and gets a
+  // second, synthetic tile in the Dashboards section for the link.
+  const dashboardLinkItems: IconItem[] = projects
+    .filter((p) => p.homeSection === "terminal" && p.externalUrl)
+    .map((p) => ({
+      id: `dashlink:${p.id}`,
+      title: p.name || p.dirName,
+      icon: p.icon || defaultProjectIcon(p.id),
+      statusDot: p.status,
+      kind: "project" as const,
+      homeSection: "dashboard" as const,
+      externalUrl: p.externalUrl,
+      isDashboardLink: true,
+    }));
+
   const items: IconItem[] = [
     ...projects.map((p) => ({
       id: `project:${p.id}`,
@@ -71,6 +98,7 @@ export function HomeScreen({
       homeSection: p.homeSection,
       externalUrl: p.externalUrl,
     })),
+    ...dashboardLinkItems,
     ...STATIC_APPS.filter((a) => !SIDEBAR_APP_IDS.has(a.id) && !SPOTLIGHT_ONLY_APP_IDS.has(a.id)).map((a) => ({
       id: `app:${a.id}`,
       title: a.title,
@@ -130,10 +158,13 @@ export function HomeScreen({
     if (item.kind === "project") {
       // Dashboard tiles link straight out to the app they represent instead
       // of detouring through the project's internal workspace — that's the
-      // whole point of a Dashboard tile (see ProjectSummary.externalUrl).
-      // Management (start/stop/logs) is still reachable via Spotlight.
-      if (item.homeSection === "dashboard" && item.externalUrl) {
-        window.open(item.externalUrl, "_blank", "noopener,noreferrer");
+      // whole point of a Dashboard tile, whether it's a systemd/pm2-root
+      // project's only tile or a normal project's synthetic second tile (see
+      // dashboardLinkItems above). Management (start/stop/logs/terminal) is
+      // still reachable via the project's own Terminal-section tile, if it
+      // has one, or Spotlight.
+      if (item.isDashboardLink || (item.homeSection === "dashboard" && item.externalUrl)) {
+        if (item.externalUrl) window.open(item.externalUrl, "_blank", "noopener,noreferrer");
         return;
       }
       onOpenProject(id.slice("project:".length));
@@ -202,7 +233,11 @@ export function HomeScreen({
         onClick={() => openItem(id)}
         onLongPress={() => setEditMode(true)}
         onHide={() => hide(id)}
-        onDelete={item.kind === "project" ? () => deleteProject(id.slice("project:".length), item.title) : undefined}
+        onDelete={
+          item.kind === "project" && !item.isDashboardLink
+            ? () => deleteProject(id.slice("project:".length), item.title)
+            : undefined
+        }
         onDragStart={setDraggingId}
       />
     );

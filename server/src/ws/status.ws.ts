@@ -68,6 +68,7 @@ async function buildSummary(p: Awaited<ReturnType<typeof listProjects>>[number])
     id: p.id,
     dirName: p.dirName,
     pm2Name: p.pm2Name,
+    externalUrl: p.externalUrl,
     status: statusOf(desc),
     uptimeMs: env?.pm_uptime ? Date.now() - env.pm_uptime : null,
     restarts: env?.restart_time ?? null,
