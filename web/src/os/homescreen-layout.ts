@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export const HOMESCREEN_LAYOUT_STORAGE_KEY = "overlay-homescreen-layout";
 const STORAGE_KEY = HOMESCREEN_LAYOUT_STORAGE_KEY;
@@ -58,26 +58,45 @@ function topLevelIds(allIds: string[], folders: HomescreenFolder[]): string[] {
 export function useHomescreenLayout(allIds: string[]) {
   const [layout, setLayout] = useState<StoredLayout>(readStored);
 
+  // The caller recomputes `allIds` fresh every render (it's a live `.map()`
+  // over projects/apps), so its reference changes even when its content
+  // doesn't — e.g. on every status-websocket tick. Keying off the joined
+  // content instead of the array reference keeps `stableIds` (and anything
+  // that depends on it, like `reorder` below) referentially stable across
+  // renders that don't actually add/remove/reorder an icon.
+  const idsKey = allIds.join("|");
+  // eslint/exhaustive-deps would normally want `allIds` here, but the whole
+  // point is to depend on its content (`idsKey`), not its reference.
+  const stableIds = useMemo(() => allIds, [idsKey]);
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
   }, [layout]);
 
-  const ordered = applyOrder(topLevelIds(allIds, layout.folders), layout.order);
+  const ordered = applyOrder(topLevelIds(stableIds, layout.folders), layout.order);
   const visibleIds = ordered.filter((id) => !layout.hidden.includes(id));
   const hiddenIds = ordered.filter((id) => layout.hidden.includes(id));
 
-  const reorder = (draggedId: string, targetId: string) => {
-    setLayout((prev) => {
-      const current = applyOrder(topLevelIds(allIds, prev.folders), prev.order);
-      const from = current.indexOf(draggedId);
-      const to = current.indexOf(targetId);
-      if (from === -1 || to === -1 || from === to) return prev;
-      const next = [...current];
-      next.splice(from, 1);
-      next.splice(to, 0, draggedId);
-      return { ...prev, order: next };
-    });
-  };
+  // Wrapped in useCallback (keyed off the now-stable `stableIds`) because
+  // HomeScreen puts this in a useEffect dependency array to track a drag
+  // gesture across pointer moves — without a stable reference, that effect
+  // would tear down and re-attach its window pointermove/pointerup listeners
+  // on every unrelated re-render that happens mid-drag.
+  const reorder = useCallback(
+    (draggedId: string, targetId: string) => {
+      setLayout((prev) => {
+        const current = applyOrder(topLevelIds(stableIds, prev.folders), prev.order);
+        const from = current.indexOf(draggedId);
+        const to = current.indexOf(targetId);
+        if (from === -1 || to === -1 || from === to) return prev;
+        const next = [...current];
+        next.splice(from, 1);
+        next.splice(to, 0, draggedId);
+        return { ...prev, order: next };
+      });
+    },
+    [stableIds],
+  );
 
   const hide = (id: string) => {
     setLayout((prev) => (prev.hidden.includes(id) ? prev : { ...prev, hidden: [...prev.hidden, id] }));

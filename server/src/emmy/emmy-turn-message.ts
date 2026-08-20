@@ -105,10 +105,16 @@ export function buildEmmyTurnMessage(
   lines.push("");
   lines.push("--- Länge & Formatierung deiner Antwort ---");
   lines.push(
-    `Kürz nicht künstlich ein. Wenn Aaron nach einem ausführlichen/vollständigen Bericht fragt oder das Thema es hergibt, schreib ein vollständiges, seitenlanges Dokument mit allen Erkenntnissen statt einer kurzen Zusammenfassung — lieber zu ausführlich als zu knapp. Eine kurze Nachfrage verdient trotzdem eine kurze Antwort; die Länge soll zur Frage passen, nicht immer maximal sein.`,
+    `Antworte standardmäßig kurz und im Ton eines echten Chats, nicht wie ein Bericht — ein bis drei Sätze reichen für die meisten Antworten. Schreib nur dann lang und vollständig ausformuliert, wenn du gerade eine Recherche-Aufgabe abschließt, ein Abschlussdokument gefragt ist, oder Aaron explizit um eine ausführliche/vollständige Darstellung bittet.`,
   );
   lines.push(
-    `Formatier lange Antworten mit Markdown (# Überschriften, **fett**, Listen, Tabellen, Codeblöcke) — Overlay stellt das im Chat entsprechend dar, und ab einer gewissen Länge bekommt Aaron zusätzlich einen "Als Dokument öffnen"-Button. Schick den ganzen Bericht als ein "text"-Feld in einem POST, nicht aufgeteilt in mehrere Nachrichten.`,
+    `Formatier nur dann mit Markdown (# Überschriften, **fett**, Listen, Tabellen, Codeblöcke), wenn die Antwort tatsächlich lang ist — Overlay stellt das im Chat entsprechend dar, und ab einer gewissen Länge bekommt Aaron zusätzlich einen "Als Dokument öffnen"-Button. Schick deine Antwort als ein "text"-Feld in einem POST, nicht aufgeteilt in mehrere Nachrichten.`,
+  );
+  lines.push(
+    `Wenn ein Diagramm die Antwort klarer macht als Fließtext, häng es als Codeblock an, statt Zahlen nur in Prosa aufzuzählen: ein Ablauf-/Beziehungsdiagramm als \`\`\`mermaid (Mermaid-Syntax, z. B. flowchart/sequenceDiagram), eine Größenverteilung über Kategorien oder Zeit als \`\`\`chart mit JSON-Inhalt {"type":"bar"|"line","title":"optional","series":[{"name":"optional","data":[{"label":"...","value":<Zahl>}]}]} — beide werden im Chat direkt gerendert, nicht als Rohtext. Setz das gezielt ein, nicht bei jeder Antwort mit einer Zahl drin.`,
+  );
+  lines.push(
+    `Für Formeln nutz LaTeX in $$...$$ (auch einzeilig, z. B. "$$E = mc^2$$") — wird über KaTeX sauber gesetzt statt als Rohtext angezeigt.`,
   );
   if (requestFinalDocument) {
     lines.push("");
@@ -119,9 +125,24 @@ export function buildEmmyTurnMessage(
     lines.push(
       `Leg dabei besonderen Fokus auf die Punkte, die im Gesprächsverlauf mit Aaron als wichtig hervorgingen — nicht nur auf deine ursprüngliche Recherche. Das ist der Abschluss dieser Aufgabe, also lieber zu vollständig als zu knapp.`,
     );
+  } else if (category === "research" && researchPhase !== "discussion" && dueAt && new Date(dueAt).getTime() <= Date.now()) {
+    lines.push("");
+    lines.push("--- Status-Check: Dein Zeitfenster ist abgelaufen ---");
+    lines.push(
+      `Das für diese Recherche vereinbarte Zeitfenster endete bereits am ${new Date(dueAt).toLocaleString("de-DE", { dateStyle: "full", timeStyle: "short" })}. Aaron fragt jetzt nach dem Stand — antworte konkret auf genau eine der beiden folgenden Arten, nicht einfach mit einer weiteren Zwischenstand-Meldung ohne echte Antwort:`,
+    );
+    lines.push(
+      `  1. Du brauchst noch mehr Zeit: Schick eine Zwischenstand-Meldung (activity, OHNE "text") und nenn darin konkret, woran es noch hängt und wie viel länger du ungefähr brauchst (grobe Schätzung reicht, z. B. "brauche noch ca. 2 Stunden für X"). Das zählt nicht als Abschluss, recherchier danach direkt weiter.`,
+    );
+    lines.push(
+      `  2. Du hast das Wesentliche zusammen: Schick jetzt mit "text" die vollständige, ausführliche Zusammenfassung inklusive deiner eigenen Einschätzung — das ist dann der Abschluss der Recherche-Phase, danach steigen wir ins Gespräch darüber ein.`,
+    );
   } else if (category === "research" && researchPhase !== "discussion") {
     lines.push("");
     lines.push("--- Das hier ist eine Recherche-Aufgabe ---");
+    lines.push(
+      `Ist die Aufgabenstellung noch zu ungenau, um zielgerichtet zu recherchieren (unklarer Fokus, mehrdeutiger Begriff, fehlender Kontext, mehrere plausible Interpretationen)? Dann fang nicht einfach drauflos raten, sondern schick zuerst 1-3 knappe, konkrete Rückfragen — genau wie eine normale Antwort mit "text", aber zusätzlich mit "needsClarification":true im selben POST. Das zählt nicht als deine Recherche-Zusammenfassung, die Mindestzeit läuft weiter und die Phase bleibt offen; sobald Aarons Antwort im Verlauf steht, gehst du direkt in die eigentliche Recherche. Ist die Aufgabenstellung klar genug, überspring diesen Schritt und leg direkt los.`,
+    );
     lines.push(
       `Nimm dir dafür so viel Zeit wie nötig — mehrere Stunden oder über Nacht sind ausdrücklich erwünscht, nicht nur erlaubt. Arbeite dich wirklich tief ein: mehrere unabhängige Quellen statt nur der ersten Treffer, gegenläufige Positionen einholen, Zahlen/Fakten querchecken. Hör nicht auf, sobald du "genug" zu haben glaubst — schick stattdessen weitere Zwischenstand-Meldungen (activity/sourcesSearched/knowledgeLevel) und recherchiere weiter, bis dein knowledgeLevel wirklich hoch ist.`,
     );

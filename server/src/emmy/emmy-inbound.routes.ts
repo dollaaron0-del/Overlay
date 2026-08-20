@@ -45,6 +45,8 @@ const inboundSchema = z
     sourcesSearched: z.number().int().nonnegative().max(10_000).optional(),
     /** Her own 0-100 estimate of how well she now knows the topic. */
     knowledgeLevel: z.number().min(0).max(100).optional(),
+    /** Set alongside "text" when this reply is a clarifying question, not the research summary — see buildEmmyTurnMessage's research branch. */
+    needsClarification: z.boolean().optional(),
   })
   .refine(
     (body) =>
@@ -62,7 +64,8 @@ emmyInboundRouter.post("/", async (req, res) => {
     res.status(400).json({ error: "invalid_request", details: parsed.error.issues });
     return;
   }
-  const { chatId, text, activity, category, dueAt, intervalHours, sourcesSearched, knowledgeLevel } = parsed.data;
+  const { chatId, text, activity, category, dueAt, intervalHours, sourcesSearched, knowledgeLevel, needsClarification } =
+    parsed.data;
 
   const chat = await getChat(chatId);
   if (!chat) {
@@ -91,13 +94,17 @@ emmyInboundRouter.post("/", async (req, res) => {
     return;
   }
 
-  const isFinalDocument = chat.pendingFinalDocument === true;
+  // A clarifying question is never the final document, even if Aaron had one
+  // pending — the pending request stays queued for whenever she actually
+  // delivers the summary (see pendingFinalDocument handling below).
+  const isFinalDocument = chat.pendingFinalDocument === true && needsClarification !== true;
   // Same "long report" threshold the web UI uses to clip the inline preview
   // (see EMMY_LONG_REPORT_CHARS) — whenever that preview would kick in, a
   // real PDF is generated alongside it so the full text is never trapped
   // behind the clipped bubble, only a click away as an actual document.
+  // Clarifying questions are conversation, not reports — never a PDF.
   let attachments: EmmyAttachment[] | undefined;
-  if (isFinalDocument || text.length > EMMY_LONG_REPORT_CHARS) {
+  if (needsClarification !== true && (isFinalDocument || text.length > EMMY_LONG_REPORT_CHARS)) {
     try {
       const pdf = await renderMarkdownToPdf(text, chat.title);
       const filename = pdfFilenameFor(chat.title, new Date().toISOString());
@@ -108,7 +115,7 @@ emmyInboundRouter.post("/", async (req, res) => {
     }
   }
 
-  const message = await appendMessage(chatId, "emmy", text, attachments, isFinalDocument);
+  const message = await appendMessage(chatId, "emmy", text, attachments, isFinalDocument, needsClarification === true);
   publishEmmyMessage(message);
   void indexMessageForMemory(message, chat.title).catch(() => {});
   // The answer is here, so she is no longer working on this chat.
@@ -120,9 +127,14 @@ emmyInboundRouter.post("/", async (req, res) => {
   // the task's own stated time window (see minResearchDurationMs), keep it as
   // an interim message and send her straight back in rather than accepting it
   // as the researched summary. Final-document replies are exempt — those are
-  // an explicit wrap-up Aaron asked for, not the initial dig-in.
+  // an explicit wrap-up Aaron asked for, not the initial dig-in. Clarifying
+  // questions are exempt too: she hasn't started digging in yet, so the floor
+  // (and the phase flip below) doesn't apply until she actually answers.
   const isFirstResearchSummary =
-    effectiveCategory === "research" && chat.researchPhase !== "discussion" && chat.pendingFinalDocument !== true;
+    effectiveCategory === "research" &&
+    chat.researchPhase !== "discussion" &&
+    chat.pendingFinalDocument !== true &&
+    needsClarification !== true;
   if (isFirstResearchSummary) {
     const windowMs = chat.dueAt
       ? new Date(chat.dueAt).getTime() - new Date(chat.createdAt).getTime()
@@ -161,9 +173,11 @@ emmyInboundRouter.post("/", async (req, res) => {
   // Her first full answer in a research chat is the summary that moves the
   // conversation from the deep-research phase into Q&A/feedback — and any
   // pending final-document request has now been fulfilled by this reply.
+  // A clarifying question is neither: she's still pre-research, so the phase
+  // stays put and a pending final-document request stays queued.
   await updateChat(chatId, {
-    pendingFinalDocument: false,
-    ...(effectiveCategory === "research" && chat.researchPhase !== "discussion"
+    pendingFinalDocument: needsClarification === true ? chat.pendingFinalDocument : false,
+    ...(effectiveCategory === "research" && chat.researchPhase !== "discussion" && needsClarification !== true
       ? { researchPhase: "discussion" as const }
       : {}),
   });

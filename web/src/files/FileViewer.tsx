@@ -13,10 +13,18 @@ export function FileViewer({ projectId, path }: { projectId: string; path: strin
     }
     setContent(null);
     setError(null);
+    let cancelled = false;
     api
       .get<string>(`/api/projects/${projectId}/file?path=${encodeURIComponent(path)}`)
-      .then(setContent)
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Fehler beim Laden"));
+      .then((data) => {
+        if (!cancelled) setContent(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof ApiError ? err.message : "Fehler beim Laden");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [projectId, path]);
 
   if (!path) return <div className="file-viewer empty-hint">Datei aus dem Baum auswählen</div>;

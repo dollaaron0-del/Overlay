@@ -2,8 +2,10 @@ import { Router } from "express";
 import { config } from "../config.js";
 import { getProject, resolveProjectDir } from "../projects/projects.registry.js";
 import { describeProcess, restartProcess, startProcess, statusOf, stopProcess } from "../pm2/pm2.service.js";
+import { systemdAction, systemdStatus } from "../systemd/systemd.service.js";
+import { pm2RootAction, pm2RootStatus } from "../pm2root/pm2root.service.js";
 import { runDeployScript } from "../projects/deploy-runner.js";
-import { startDeployRun, recordDeployLine, endDeployRun } from "../projects/deploy-log-bus.js";
+import { startDeployRun, recordDeployLine, endDeployRun, isDeployRunning } from "../projects/deploy-log-bus.js";
 import { runBackupJob } from "../backup/backup-job.js";
 import { runCommand } from "../security/run-tool.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
@@ -24,7 +26,15 @@ automationRouter.get("/projects/:id/status", async (req, res) => {
     res.status(404).json({ error: "not_found" });
     return;
   }
-  const desc = await describeProcess(project.pm2Name);
+  if (project.kind === "systemd") {
+    res.json({ status: await systemdStatus(project.systemdUnit!) });
+    return;
+  }
+  if (project.kind === "pm2-root") {
+    res.json({ status: await pm2RootStatus(project.pm2RootName!) });
+    return;
+  }
+  const desc = await describeProcess(project.pm2Name!);
   res.json({ status: statusOf(desc) });
 });
 
@@ -35,12 +45,18 @@ automationRouter.post("/projects/:id/start", async (req, res) => {
     return;
   }
   try {
-    const [script, ...args] = project.startScript.split(" ");
-    await startProcess({ name: project.pm2Name, script, args, cwd: resolveProjectDir(project) });
+    if (project.kind === "systemd") {
+      await systemdAction(project.systemdUnit!, "start");
+    } else if (project.kind === "pm2-root") {
+      await pm2RootAction(project.pm2RootName!, "start");
+    } else {
+      const [script, ...args] = project.startScript!.split(" ");
+      await startProcess({ name: project.pm2Name!, script, args, cwd: resolveProjectDir(project) });
+    }
     await appendAuditEntry({ type: "project_start", actor: ACTOR, detail: project.id });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: "pm2_error", message: (err as Error).message });
+    res.status(500).json({ error: "start_failed", message: (err as Error).message });
   }
 });
 
@@ -51,11 +67,17 @@ automationRouter.post("/projects/:id/stop", async (req, res) => {
     return;
   }
   try {
-    await stopProcess(project.pm2Name);
+    if (project.kind === "systemd") {
+      await systemdAction(project.systemdUnit!, "stop");
+    } else if (project.kind === "pm2-root") {
+      await pm2RootAction(project.pm2RootName!, "stop");
+    } else {
+      await stopProcess(project.pm2Name!);
+    }
     await appendAuditEntry({ type: "project_stop", actor: ACTOR, detail: project.id });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: "pm2_error", message: (err as Error).message });
+    res.status(500).json({ error: "stop_failed", message: (err as Error).message });
   }
 });
 
@@ -66,11 +88,17 @@ automationRouter.post("/projects/:id/restart", async (req, res) => {
     return;
   }
   try {
-    await restartProcess(project.pm2Name);
+    if (project.kind === "systemd") {
+      await systemdAction(project.systemdUnit!, "restart");
+    } else if (project.kind === "pm2-root") {
+      await pm2RootAction(project.pm2RootName!, "restart");
+    } else {
+      await restartProcess(project.pm2Name!);
+    }
     await appendAuditEntry({ type: "project_restart", actor: ACTOR, detail: project.id });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ error: "pm2_error", message: (err as Error).message });
+    res.status(500).json({ error: "restart_failed", message: (err as Error).message });
   }
 });
 
@@ -84,6 +112,10 @@ automationRouter.post("/projects/:id/deploy", async (req, res) => {
     res.status(400).json({ error: "no_deploy_script" });
     return;
   }
+  if (isDeployRunning(project.id)) {
+    res.status(409).json({ error: "deploy_already_running" });
+    return;
+  }
 
   startDeployRun(project.id);
   const result = await runDeployScript(project.deployScript, resolveProjectDir(project), config.DEPLOY_TIMEOUT_MS, (line) => {
@@ -92,7 +124,9 @@ automationRouter.post("/projects/:id/deploy", async (req, res) => {
 
   const success = result.exitCode === 0;
   endDeployRun(project.id, { type: "exit", success, exitCode: result.exitCode });
-  if (success) await restartProcess(project.pm2Name).catch(() => undefined);
+  // deployScript (checked above) is never set on a systemd- or pm2-root-kind
+  // project, so pm2Name is guaranteed here even though the type is optional.
+  if (success) await restartProcess(project.pm2Name!).catch(() => undefined);
 
   await appendAuditEntry({
     type: "project_deployed",

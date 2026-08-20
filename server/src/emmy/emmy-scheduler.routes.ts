@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { runRecurringTasksTick } from "./emmy-scheduler.js";
+import { runRecurringTasksTick, runResearchDueChecksTick } from "./emmy-scheduler.js";
 import { listChats } from "./emmy-store.js";
 import { publishEmmyChats } from "./emmy-bus.js";
 
@@ -11,9 +11,12 @@ export const emmySchedulerRouter = Router();
 
 emmySchedulerRouter.post("/run-now", async (_req, res) => {
   try {
-    const result = await runRecurringTasksTick();
-    if (result.triggered.length > 0) publishEmmyChats(await listChats());
-    res.json(result);
+    const recurring = await runRecurringTasksTick();
+    const researchDueChecks = await runResearchDueChecksTick();
+    if (recurring.triggered.length > 0 || researchDueChecks.triggered.length > 0) {
+      publishEmmyChats(await listChats());
+    }
+    res.json({ recurring, researchDueChecks });
   } catch (err) {
     res.status(500).json({ error: "scheduler_tick_failed", message: (err as Error).message });
   }

@@ -16,12 +16,21 @@ interface DeployRunState {
 }
 const runs = new Map<string, DeployRunState>();
 
+// A runaway/looping deploy script (e.g. a build step stuck retrying) must
+// not buffer its output forever — cap the backlog the same way
+// pm2.logbus.ts caps its live-log backlog.
+const MAX_BACKLOG_LINES = 2000;
+
 export function startDeployRun(projectId: string): void {
   runs.set(projectId, { running: true, lines: [] });
 }
 
 export function recordDeployLine(projectId: string, message: DeployServerMessage): void {
-  runs.get(projectId)?.lines.push(message);
+  const run = runs.get(projectId);
+  if (run) {
+    run.lines.push(message);
+    if (run.lines.length > MAX_BACKLOG_LINES) run.lines.shift();
+  }
   emitter.emit(projectId, message);
 }
 
@@ -34,6 +43,11 @@ export function endDeployRun(projectId: string, exitMessage: DeployServerMessage
 export function getDeployBacklog(projectId: string): { running: boolean; lines: DeployServerMessage[] } {
   const run = runs.get(projectId);
   return run ? { running: run.running, lines: run.lines } : { running: false, lines: [] };
+}
+
+/** True while a deploy for this project is in flight — used to reject a second concurrent deploy request instead of interleaving two runs' output and racing the trailing restart. */
+export function isDeployRunning(projectId: string): boolean {
+  return runs.get(projectId)?.running ?? false;
 }
 
 export function subscribeToDeployMessages(projectId: string, onMessage: (message: DeployServerMessage) => void): () => void {
