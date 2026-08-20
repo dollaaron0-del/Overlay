@@ -1,16 +1,24 @@
 import type { NextFunction, Request, Response } from "express";
-import * as cookie from "cookie";
 import type { IncomingMessage } from "node:http";
-import { SESSION_COOKIE_NAME, validateSessionCookie } from "./session.js";
 import { config } from "../config.js";
+
+// Set by Caddy's forward_auth (copy_headers Remote-User ...) once Authelia
+// has approved a two_factor session — see docs/DEPLOYMENT.md section 9 and
+// deploy/caddy/Caddyfile. Node lowercases incoming header names.
+const REMOTE_USER_HEADER = "remote-user";
+
+function remoteUser(headers: IncomingMessage["headers"]): string | undefined {
+  const value = headers[REMOTE_USER_HEADER];
+  const single = Array.isArray(value) ? value[0] : value;
+  return single && single.length > 0 ? single : undefined;
+}
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   if (config.AUTH_DISABLED) {
     next();
     return;
   }
-  const raw = req.headers.cookie ? cookie.parse(req.headers.cookie)[SESSION_COOKIE_NAME] : undefined;
-  if (!validateSessionCookie(raw)) {
+  if (!remoteUser(req.headers)) {
     res.status(401).json({ error: "unauthenticated" });
     return;
   }
@@ -19,6 +27,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
 export function isAuthenticatedUpgradeRequest(req: IncomingMessage): boolean {
   if (config.AUTH_DISABLED) return true;
-  const raw = req.headers.cookie ? cookie.parse(req.headers.cookie)[SESSION_COOKIE_NAME] : undefined;
-  return validateSessionCookie(raw);
+  return remoteUser(req.headers) !== undefined;
+}
+
+export function getRemoteUser(req: Request): string | undefined {
+  return remoteUser(req.headers);
 }

@@ -5,9 +5,6 @@ import { formatTimestamp } from "../format";
 import { markActivityViewed } from "../os/activity-badge";
 
 const EVENT_LABEL: Record<AuditEventType, string> = {
-  login: "Login",
-  login_failed: "Fehlgeschlagener Login",
-  logout: "Logout",
   project_added: "Projekt hinzugefügt",
   project_removed: "Projekt entfernt",
   project_start: "Projekt gestartet",
@@ -16,7 +13,6 @@ const EVENT_LABEL: Record<AuditEventType, string> = {
   project_deployed: "Projekt deployt",
   scan_triggered: "Sicherheits-Scan manuell gestartet",
   backup_triggered: "Backup manuell gestartet",
-  unlock_failed: "Fehlgeschlagener Entsperr-Versuch",
   quick_capture: "Schnellnotiz gespeichert",
   idea_plan_saved: "Ideen-Plan gespeichert",
   idea_attachment_added: "Anhang zu Idee hinzugefügt",
@@ -26,7 +22,6 @@ const EVENT_LABEL: Record<AuditEventType, string> = {
 };
 
 function eventClass(entry: AuditEntry): string {
-  if (entry.type === "login_failed" || entry.type === "unlock_failed") return "activity-event-warn";
   if (entry.type === "project_deployed" && entry.detail?.includes("(failed)")) return "activity-event-warn";
   return "activity-event-normal";
 }

@@ -1,7 +1,4 @@
 export type AuditEventType =
-  | "login"
-  | "login_failed"
-  | "logout"
   | "project_added"
   | "project_removed"
   | "project_start"
@@ -10,7 +7,6 @@ export type AuditEventType =
   | "project_deployed"
   | "scan_triggered"
   | "backup_triggered"
-  | "unlock_failed"
   | "quick_capture"
   | "idea_plan_saved"
   | "idea_attachment_added"

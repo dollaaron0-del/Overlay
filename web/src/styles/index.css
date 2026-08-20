@@ -167,91 +167,11 @@ body {
   line-height: 1.5;
 }
 
-.loading-screen,
-.login-page {
+.loading-screen {
   height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.login-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  width: min(320px, 90vw);
-}
-
-.login-card h1 {
-  margin: 0 0 var(--space-2);
-  font-size: var(--fs-xl);
-}
-
-.login-card label {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: var(--fs-sm);
-  color: var(--c-text-2);
-}
-
-.login-card input {
-  background: var(--c-bg);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  color: var(--c-text);
-  font-size: var(--fs-base);
-}
-
-.login-card button {
-  margin-top: var(--space-2);
-}
-
-.login-error {
-  color: var(--c-danger);
-  font-size: var(--fs-sm);
-  margin: 0;
-}
-
-.lock-screen {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  background: var(--c-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.lock-screen-card {
-  align-items: center;
-  text-align: center;
-}
-
-.lock-screen-icon {
-  font-size: 2.5rem;
-}
-
-.lock-screen-card h1 {
-  margin: 0;
-  font-size: var(--fs-lg);
-}
-
-.lock-screen-card label {
-  width: 100%;
-}
-
-.lock-screen-logout {
-  background: transparent;
-  border-color: transparent;
-  color: var(--c-text-3);
-  font-size: var(--fs-xs);
-  padding: var(--space-1) var(--space-2);
 }
 
 .settings-hint {
