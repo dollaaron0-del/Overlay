@@ -20,7 +20,9 @@ import { requireAutomationToken } from "./automation/automation.middleware.js";
 import { emmyRouter, emmySendRouter } from "./emmy/emmy.routes.js";
 import { emmyInboundRouter } from "./emmy/emmy-inbound.routes.js";
 import { requireEmmyInboundToken } from "./emmy/emmy-inbound.middleware.js";
+import { emmySchedulerRouter } from "./emmy/emmy-scheduler.routes.js";
 import { apiRateLimiter } from "./rate-limit.js";
+import { hasActiveSessions } from "./pty/pty.manager.js";
 
 // Quick-capture photos arrive as base64 JSON (~33% larger than the raw
 // file) — comfortably covers a real phone photo without raising the body
@@ -92,6 +94,16 @@ export function createApp() {
     res.json({ status: "ok", uptimeSeconds: Math.floor(process.uptime()) });
   });
 
+  // Also unauthenticated and deliberately minimal (a boolean, nothing that
+  // identifies which project or how many) — read by deploy/check-and-update.sh
+  // over localhost, as root, before it restarts this very process. Without
+  // this, every auto-update kills every open project terminal (and any
+  // `claude` process running inside it) the moment new commits land, no
+  // matter how frequently that happens.
+  app.get("/api/health/terminals", (_req, res) => {
+    res.json({ activeSessions: hasActiveSessions() });
+  });
+
   // Own, larger body-size limit for quick-capture photos — must be
   // registered (and consume the request body) before the default-limit
   // express.json() below, since only the first body parser a request
@@ -134,6 +146,11 @@ export function createApp() {
   // automation.middleware.ts. Deliberately its own mount, outside
   // protectedApi/requireAuth below.
   app.use("/api/automation", requireAutomationToken, automationRouter);
+
+  // Hit by the overlay-emmy-scheduler systemd timer (via emmy-scheduler.cli.ts),
+  // which has no browser session — same token/trust model as /api/automation
+  // above, deliberately reusing requireAutomationToken rather than a new token.
+  app.use("/api/emmy/scheduler", requireAutomationToken, emmySchedulerRouter);
 
   const protectedApi = express.Router();
   protectedApi.use(requireAuth);

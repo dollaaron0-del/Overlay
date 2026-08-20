@@ -81,10 +81,6 @@ export function listActivities(): EmmyActivity[] {
   return [...activities.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export function getActivity(chatId: string): EmmyActivity | undefined {
-  return listActivities().find((a) => a.chatId === chatId);
-}
-
 /**
  * Marks a chat as being worked on. Re-marking an already-busy chat keeps the
  * original `since` (the UI shows one continuous "seit …") and only refreshes

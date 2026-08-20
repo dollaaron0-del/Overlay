@@ -81,6 +81,14 @@ Dann in `.env`:
   `.env.example` und `docs/SECURITY.md`
 - `CLAUDE_COMMAND=claude` (Standard) — nur für lokale Tests ohne echten
   `claude`-Login auf z.B. `bash` ändern
+- `CLAUDE_SHARED_HOME` setzen, **falls** Overlay als eigener Service-User
+  (z.B. `overlay`) läuft, `claude login` aber unter einem anderen Linux-User
+  (z.B. der eigene SSH-Login) ausgeführt wurde/wird. Ohne diese Angabe sucht
+  Overlay das Login unter dem `~/.claude` des Service-Users — dort liegt
+  nichts, und jede Projekt-Session verlangt erneut `/login`, obwohl anderswo
+  bereits eingeloggt ist. Wert: das `.claude`-Verzeichnis des Users mit dem
+  echten Login, z.B. `/home/aaron/.claude`. Leer lassen, wenn Overlay als
+  derselbe User läuft, der bei Claude eingeloggt ist.
 - `TERMINAL_SANDBOX=true` (Standard) belassen, sofern bubblewrap installiert
   ist (siehe Abschnitt 1). Nur auf `false` setzen, wenn bwrap auf diesem
   Server nicht installierbar ist — dann läuft die Terminalsession mit den
@@ -187,6 +195,115 @@ PM2-Restart, damit der neue Build sofort aktiv wird. Ohne gesetztes
 `deployScript` erscheint kein Deploy-Button. Bewusst **kein** automatischer
 Trigger (z.B. per Webhook) — der Button verlangt einen expliziten Klick im
 Dashboard, jede Ausführung landet im "Aktivität"-Tab.
+
+### 5.1 Extern verwaltete Projekte (systemd statt PM2)
+
+Für Apps, die bereits eigenständig über systemd laufen — typischerweise unter
+einem *anderen* Linux-User als dem, der Overlay selbst betreibt, und oft mit
+mehreren zusammenhängenden Units (Hauptprozess, Dashboard, ggf. eigene Timer
+für Backups/geplante Jobs) — eignet sich das normale PM2-Modell aus Abschnitt
+5 nicht: Overlays PM2 kennt nur "ein Prozess, Start/Stop/Restart/Logs", keine
+Timer, und PM2 läuft als der Overlay-Service-User, nicht als der Owner der
+fremden App.
+
+Für genau diesen Fall gibt es einen zweiten Projekt-"Kind": `kind: "systemd"`.
+Statt PM2 zu starten, ruft Overlay `systemctl start/stop/restart <unit>` für
+eine einzelne, beim Registrieren fest hinterlegte systemd-Unit auf — die
+eigentlichen Dateien/Rechte der fremden App bleiben dabei komplett
+unangetastet, es ändert sich kein Owner, keine Gruppe, kein Verzeichnis.
+
+**Was ein systemd-Projekt NICHT hat**, anders als ein normales PM2-Projekt:
+kein Terminal-Tab, kein Dateien-Tab, keine Pläne, kein Obsidian-Tab, kein
+Deploy-Button — all das setzt echten Lese-/Schreibzugriff auf den
+Projekt-Ordner unter `APPS_ROOT` voraus, den es hier bewusst nicht gibt
+(`dirName` ist nur ein leerer, von Overlay selbst angelegter Platzhalter,
+siehe `ensureStubDir` in `projects.registry.ts`). Was es stattdessen hat: ein
+"Dashboard öffnen"-Knopf zur `externalUrl` (der eigentlichen, extern
+gehosteten Oberfläche der App) sowie einen Logs-Tab live über `journalctl`.
+
+**Einrichtung auf dem echten Server, pro Unit:**
+
+1. Eine eng gefasste `sudoers`-Regel, exakt nach demselben Muster wie der
+   bestehende Security-Scan-Trigger (Abschnitt 7.5) — für *jede* Unit, die
+   Overlay steuern soll, einzeln:
+   ```
+   # /etc/sudoers.d/overlay-<projekt-id> (mit `visudo -f` anlegen, nicht direkt editieren!)
+   overlay ALL=(root) NOPASSWD: /usr/bin/systemctl start <unit>.service, /usr/bin/systemctl stop <unit>.service, /usr/bin/systemctl restart <unit>.service
+   ```
+   `overlay` durch den tatsächlichen Service-User ersetzen (Abschnitt 1).
+   Ohne passende Regel liefert Start/Stop/Restart im Dashboard einen klaren
+   Fehler statt eines stillen Fehlschlags — der reine Status (`systemctl
+   is-active`) funktioniert dagegen immer, unabhängig von dieser Regel, weil
+   das Lesen des Status keine Root-Rechte braucht.
+2. Für den Logs-Tab: den Overlay-Service-User in die `systemd-journal`-Gruppe
+   aufnehmen, sonst sieht `journalctl` nur die eigenen Units:
+   ```
+   usermod -aG systemd-journal overlay
+   ```
+   Danach den Overlay-Prozess einmal neu starten (`pm2 restart overlay`),
+   damit die neue Gruppenmitgliedschaft greift.
+3. Registrieren über die "Hinzufügen"-Kachel (Umschalter "Extern") oder per
+   API:
+   ```
+   curl -b cookie.txt -X POST https://<tailscale-host>/api/projects \
+     -H "Content-Type: application/json" \
+     -d '{"kind":"systemd","id":"mein-dienst","dirName":"mein-dienst","systemdUnit":"mein-dienst.service","externalUrl":"https://<tailscale-host>:<port>/"}'
+   ```
+   `externalUrl` muss `https://` sein — sie zeigt typischerweise auf einen
+   eigenen Caddy-Block hinter derselben Tailscale+Authelia-2FA-Schicht wie
+   Overlay selbst (siehe Abschnitt 9), nicht auf einen offenen, unauthentifizierten Port.
+
+### 5.2 PM2-Prozesse unter fremdem User (pm2-root)
+
+Manche Apps laufen zwar über PM2, aber unter einer *anderen* PM2-Instanz als
+der, die Overlay selbst benutzt — z.B. unter `root` (`pm2-root.service`),
+während Overlay unter einem eigenen Service-User läuft. `pm2 restart <name>`
+als Overlay-User findet diesen Prozess dann nicht, weil jede PM2-Instanz nur
+die Prozesse ihres eigenen `PM2_HOME` kennt; Abschnitt 5.1s `systemd`-Kind
+greift hier ebenfalls nicht, weil es gar keinen eigenen systemd-Unit dafür
+gibt.
+
+Für genau diesen Fall gibt es einen dritten Projekt-"Kind": `kind:
+"pm2-root"`. Statt der eigenen PM2-Verbindung ruft Overlay `sudo pm2
+start/stop/restart <name>` bzw. `sudo pm2 jlist`/`sudo pm2 logs <name>` für
+einen einzelnen, beim Registrieren fest hinterlegten Prozessnamen auf — die
+eigentlichen Dateien/Rechte der fremden App bleiben dabei komplett
+unangetastet.
+
+**Was ein pm2-root-Projekt NICHT hat**, wie bei `systemd` (Abschnitt 5.1):
+kein Terminal-Tab, kein Dateien-Tab, keine Pläne, kein Obsidian-Tab, kein
+Deploy-Button. Was es stattdessen hat: ein "Dashboard öffnen"-Knopf zur
+`externalUrl` sowie einen Logs-Tab live über `sudo pm2 logs`.
+
+**Einrichtung auf dem echten Server, pro Prozessname:**
+
+1. Eine eng gefasste `sudoers`-Regel, exakt nach demselben Muster wie der
+   `systemd`-Kind in Abschnitt 5.1 — für *jeden* Prozessnamen, den Overlay
+   steuern soll, einzeln:
+   ```
+   # /etc/sudoers.d/overlay-<projekt-id> (mit `visudo -f` anlegen, nicht direkt editieren!)
+   overlay ALL=(root) NOPASSWD: /usr/bin/pm2 start <name>, /usr/bin/pm2 stop <name>, /usr/bin/pm2 restart <name>, /usr/bin/pm2 jlist, /usr/bin/pm2 logs <name> --lines 200 --nostream --raw, /usr/bin/pm2 logs <name> --raw --lines 0
+   ```
+   `overlay` durch den tatsächlichen Service-User ersetzen (Abschnitt 1),
+   `<name>` durch den echten PM2-Prozessnamen (z.B. aus `sudo pm2 list`).
+   Ohne passende Regel liefert jede Aktion — inklusive Status und Logs, denn
+   `pm2 jlist`/`pm2 logs` sind hier (anders als `systemctl is-active` beim
+   `systemd`-Kind) selbst schon privilegierte Lesevorgänge — einen klaren
+   Fehler statt eines stillen Fehlschlags.
+
+   Achtung: `/usr/bin/pm2 jlist` liefert den Status *aller* Prozesse der
+   fremden PM2-Instanz zurück, nicht nur des einen registrierten Namens —
+   Overlay filtert selbst auf den gesuchten Namen heraus, aber die
+   sudoers-Regel selbst kann diesen Lesezugriff nicht auf einen einzelnen
+   Prozess einschränken.
+2. Registrieren über die "Hinzufügen"-Kachel (Umschalter "PM2-Prozess unter
+   anderem User") oder per API:
+   ```
+   curl -b cookie.txt -X POST https://<tailscale-host>/api/projects \
+     -H "Content-Type: application/json" \
+     -d '{"kind":"pm2-root","id":"mein-dienst","dirName":"mein-dienst","pm2RootName":"mein-dienst","externalUrl":"https://<tailscale-host>:<port>/"}'
+   ```
+   `externalUrl` muss `https://` sein, gleiche Begründung wie in Abschnitt 5.1.
 
 ## 6. Log-Rotation und Monitoring
 
@@ -639,7 +756,29 @@ systemctl enable --now caddy
 systemctl restart overlay   # bzw. `pm2 restart overlay`, je nachdem wie Overlay selbst läuft
 ```
 
-### 9.4 Manuelle Verifikation
+### 9.4 Zwei Sitzungen, zwei Timeouts
+
+Ab hier laufen **zwei** unabhängige Sitzungen nebeneinander:
+
+| | Läuft ab nach | Sperrt |
+|---|---|---|
+| Authelia (2FA-Portal) | `session.inactivity` (Standard `15m`), spätestens `session.expiration` (`1h`) | den kompletten Zugriff, schon vor Overlay |
+| Overlay-Login | 30 Tage (Cookie), plus optionaler Idle-Lock (Einstellungen, Standard 5 min) | nur die Oberfläche |
+
+Wenn Authelias Sitzung abläuft, beantwortet das Portal **jeden** Request —
+auch die `fetch`-Aufrufe der laufenden Overlay-Oberfläche. Overlay erkennt
+das (`web/src/api/client.ts`) und lädt die Seite neu, weil nur eine echte
+Navigation zum Portal weitergeleitet werden kann; danach erscheint wieder
+der Authelia-Login. Damit das funktioniert, darf der Service Worker
+Navigationen **nicht** aus dem Cache beantworten — siehe den Kommentar zu
+`navigateFallback`/`directoryIndex` in `web/vite.config.ts`.
+
+Wer nicht alle 15 Minuten neu durch 2FA will: `session.inactivity` und
+`session.expiration` in `/etc/authelia/configuration.yml` hochsetzen (im
+Tailnet mit einem einzigen Nutzer ein vertretbarer Kompromiss) und
+`systemctl restart authelia`.
+
+### 9.5 Manuelle Verifikation
 
 - [ ] `https://<tailscale-host>` zeigt zuerst die Authelia-Login-Seite
       (Passwort + 2FA-Wahl) — Overlay selbst zeigt **kein** eigenes Login
@@ -669,6 +808,10 @@ systemctl restart overlay   # bzw. `pm2 restart overlay`, je nachdem wie Overlay
       (`journalctl -u caddy`) als Erstes hier nachsehen
 - [ ] iPad-PWA-Login separat testen (bekannter Cache-Stolperstein — im
       Zweifel App entfernen und neu "Zum Home-Bildschirm hinzufügen")
+- [ ] Nach Ablauf von `session.inactivity` (zum Testen kurz auf `1m` setzen)
+      landet eine geöffnete Overlay-Oberfläche von selbst wieder im
+      Authelia-Portal — ein eigenes Overlay-Login, das dazwischenfunken
+      könnte, gibt es nicht mehr
 
 ## 10. Manuelle Verifikation nach dem Deployment
 
@@ -1087,3 +1230,153 @@ und PM2-Restart "Alle Daten live" melden. Alternativ direkt
 `journalctl -u overlay-update.service -f` mitlesen; der Lauf sollte die
 drei Schritte (Fetch/Merge, Build, Restart) durchlaufen. Im "Aktivität"-Tab
 erscheint ein `overlay_update_triggered`-Eintrag.
+
+**15.3 Automatischer Check (`overlay-check-update.timer`).** Zusätzlich zum
+manuellen Knopf gibt es einen eigenen Timer, der `deploy/check-and-update.sh`
+alle 10 Minuten laufen lässt: der prüft nur per `git fetch` + `rev-parse`, ob
+`@{u}` neue Commits hat, und stößt bei Bedarf exakt dieselbe
+`overlay-update.service` an, die auch der Knopf nutzt — kein separater
+Codepfad. Seit dem Fix für "wiederkehrende Checks laufen nie automatisch"
+installiert `deploy/update.sh` (Schritt 6/7) die Unit **automatisch** bei
+jedem Update, falls `/etc/systemd/system/overlay-check-update.timer` noch
+fehlt — derselbe zuvor rein manuelle Schritt, der beim Emmy-Scheduler-Timer
+(Abschnitt 16.2) genau diese Lücke war. Mit
+`systemctl status overlay-check-update.timer` prüfen. Nur falls das
+automatische Nachziehen aus irgendeinem Grund nicht greift, hier der
+manuelle Weg (als root):
+
+```
+install -m 0644 /opt/overlay/deploy/systemd/overlay-check-update.service \
+  /etc/systemd/system/overlay-check-update.service
+install -m 0644 /opt/overlay/deploy/systemd/overlay-check-update.timer \
+  /etc/systemd/system/overlay-check-update.timer
+systemctl daemon-reload
+systemctl enable --now overlay-check-update.timer
+```
+
+**Warum das nicht einfach alle 10 Minuten `pm2 restart overlay` durchzieht,
+ohne zu fragen:** Projekt-Terminals (inkl. eines laufenden `claude`-Prozesses
+darin) sind direkte Kindprozesse dieses Servers — ein Neustart killt sie
+ausnahmslos (siehe `server/src/pty/pty.session.ts`). Bevor
+`check-and-update.sh` ein gefundenes Update tatsächlich auslöst, fragt es
+daher den unauthentifizierten, bewusst minimalen Endpunkt
+`GET /api/health/terminals` (`{"activeSessions": true|false}`, kein
+Projektname, keine Anzahl) und verschiebt den Deploy um einen Tick, solange
+mindestens eine Session offen ist. Das darf ein sicherheitsrelevantes Update
+(Schritt 7/7 erzwingt eine neue Authelia-Session) aber nicht auf unbestimmte
+Zeit blockieren — deshalb ein Zähler in `/run/overlay-update-defer-count`
+(tmpfs, verschwindet also beim nächsten Boot von selbst), der nach
+`MAX_DEFERS=6` Versuchen (~1 Stunde bei 10-Minuten-Takt) das Update trotz
+offener Terminals erzwingt. Ist der Server selbst nicht erreichbar (Update
+während eines Ausfalls, oder ein noch nicht aktualisierter Server ohne
+diesen Endpunkt), läuft das Update sofort durch — die Prüfung blockiert nie
+länger als ihr `curl --max-time 3`.
+
+## 16. Emmy: Wiederkehrende Aufgaben (Recurring Tasks)
+
+Ein Emmy-Aufgaben-Chat mit `category: "recurring"` (Abschnitt 14.3 — von
+Emmy selbst gesetzt oder im Dashboard über die Kategorie-Auswahl im
+Chat-Kopf) soll sich von selbst alle `intervalHours` Stunden erneut melden,
+ohne dass Aaron jedes Mal manuell nachfragen muss. Dafür läuft, unabhängig
+vom Hauptprozess getaktet, ein eigener systemd-Timer — dasselbe Muster wie
+der nächtliche Backup-Timer (Abschnitt 8), nur alle 15 Minuten statt einmal
+täglich.
+
+**Wie es funktioniert:** Jeder Tick prüft alle `recurring`-Aufgaben-Chats,
+deren Intervall seit dem letzten Check (oder seit ihrer Erstellung, falls
+noch nie gelaufen) abgelaufen ist, und stößt für jeden fälligen Chat genau
+den Turn an, den auch eine manuelle Nachricht auslösen würde
+(`sendEmmyHookTurn`/`/api/emmy/inbound`) — mit einem automatisch generierten
+Hinweistext statt Aarons eigener Nachricht. Ein `status: "done"` gesetzter
+Chat wird dabei übersprungen; das ist der bestehende Aus-Schalter, ein
+gesondertes Pausieren gibt es in dieser Version nicht.
+
+**Wichtig — kein direkter Datei-Zugriff aus einem zweiten Prozess:** Anders
+als der Backup-Job liest/schreibt der Scheduler-Tick NICHT direkt die
+Emmy-Store-Datei. `emmy-store.ts` hält seinen Inhalt pro Prozess im
+Speicher gecacht und aktualisiert diesen Cache nur bei eigenen Schreib-
+zugriffen — ein zweiter Prozess, der direkt in die Datei schreibt, würde
+beim nächsten Schreibzugriff des echten (langlaufenden) Overlay-Servers
+stillschweigend wieder überschrieben. Der Tick läuft deshalb **innerhalb**
+des laufenden Servers, angestoßen über einen eigenen, token-
+authentifizierten Endpunkt; `emmy-scheduler.cli.ts` (das, was systemd
+tatsächlich ausführt) ist nur ein dünner HTTP-Client dafür. Das bedeutet:
+**der Overlay-Server muss laufen (PM2), damit der Timer etwas bewirkt** —
+ist er down, schlägt der Tick fehl, wird geloggt, und der nächste Tick
+15 Minuten später versucht es erneut (kein dauerhaft verlorener Check).
+
+### 16.1 Voraussetzung
+
+Der Scheduler nutzt denselben `AUTOMATION_TOKEN` wie die
+Automatisierungs-API (Abschnitt 14.2) — falls dort noch nicht gesetzt,
+zuerst dort einrichten. Ohne `AUTOMATION_TOKEN` bleibt der Endpunkt (wie
+`/api/automation/*`) mit 404 unerreichbar und `emmy-scheduler.cli.ts`
+bricht mit einer klaren Fehlermeldung ab, statt still nichts zu tun.
+
+### 16.2 systemd-Timer einrichten
+
+Seit dem Fix für "wiederkehrende Checks laufen nie automatisch" installiert
+`deploy/update.sh` (Schritt 5/7) die Unit **automatisch** bei jedem Update,
+falls `/etc/systemd/system/overlay-emmy-scheduler.timer` noch fehlt — der
+zuvor rein manuelle Schritt unten war genau die Lücke, die auf diesem
+Server dazu geführt hat, dass der Timer nie existierte und Checks
+dadurch nie automatisch ausgeführt wurden, obwohl die Fälligkeits-Logik
+selbst korrekt war. Nach einem Update per "Jetzt aktualisieren" oder dem
+Auto-Update-Timer sollte die Unit also bereits aktiv sein — mit
+`systemctl status overlay-emmy-scheduler.timer` prüfen.
+
+Nur falls das automatische Nachziehen aus irgendeinem Grund nicht greift
+(z. B. abweichender Server-Pfad, dann muss vorher
+`deploy/systemd/overlay-emmy-scheduler.service` entsprechend angepasst
+werden), hier der manuelle Weg:
+
+```
+cp deploy/systemd/overlay-emmy-scheduler.service /etc/systemd/system/
+cp deploy/systemd/overlay-emmy-scheduler.timer /etc/systemd/system/
+```
+
+In `overlay-emmy-scheduler.service` anpassen:
+- `WorkingDirectory` auf den echten Pfad zu `server/` setzen
+- `EnvironmentFile` auf den Pfad zur echten `.env` setzen
+- `User`/`Group` auf den Benutzer setzen, unter dem Overlay selbst läuft
+  (siehe Abschnitt 1) — standardmäßig `overlay`
+
+Dann aktivieren:
+```
+systemctl daemon-reload
+systemctl enable --now overlay-emmy-scheduler.timer
+```
+
+Takt ist alle 15 Minuten — grob genug, um Last/Log-Rauschen klein zu
+halten, aber fein genug für den kleinsten sinnvollen `intervalHours`-Wert
+(praktisch 1h).
+
+Manuell testen, ohne auf den nächsten Tick zu warten:
+```
+systemctl start overlay-emmy-scheduler.service
+journalctl -u overlay-emmy-scheduler.service -f
+```
+
+Alternativ direkt gegen den laufenden Server, ohne systemd:
+```
+curl -X POST -H "Authorization: Bearer <AUTOMATION_TOKEN>" \
+  https://<overlay-host>/api/emmy/scheduler/run-now
+```
+Antwort: `{"triggered": ["<chatId>", ...], "failed": [...]}`.
+
+### 16.3 Manuelle Verifikation
+
+- [ ] Einen Test-Aufgaben-Chat auf `category: "recurring"` mit
+      `intervalHours: 1` setzen (im Dashboard über die Kategorie-Auswahl im
+      Chat-Kopf, oder per `PATCH /api/emmy/chats/:id`)
+- [ ] `systemctl start overlay-emmy-scheduler.service` (oder der `curl`-Aufruf
+      oben) auslösen — direkt nach Anlegen ist der Chat sofort fällig
+      (`lastRecurringCheckAt` fehlt noch, `createdAt` liegt in der
+      Vergangenheit)
+- [ ] `journalctl -u overlay-emmy-scheduler.service -n 20` zeigt
+      `triggered=1 failed=0`
+- [ ] Im "Aktivität"-Tab erscheint ein `recurring_task_triggered`-Eintrag
+- [ ] Sobald Emmys Antwort über `/api/emmy/inbound` zurückkommt, erscheint
+      sie als neue Nachricht im Chat, ohne dass Aaron etwas geschickt hat
+- [ ] Ein zweiter Tick innerhalb derselben Stunde löst denselben Chat NICHT
+      erneut aus (`lastRecurringCheckAt` wurde nach dem ersten Tick gesetzt)

@@ -26,9 +26,14 @@ export function buildFrontmatter(fields: FrontmatterFields): string {
 
 function yamlScalar(value: string): string {
   // Quote if it contains characters that would otherwise change YAML's
-  // parsing (colons, quotes, leading/trailing whitespace) — good enough for
-  // the plain dates/tags/titles this app ever writes into frontmatter.
-  if (/^[\w\-./: ]*$/.test(value) && value === value.trim() && value.length > 0) {
+  // parsing (quotes, leading/trailing whitespace) — good enough for the
+  // plain dates/tags/titles this app ever writes into frontmatter. A bare
+  // colon (e.g. inside an ISO timestamp's "12:00:00") is fine unquoted —
+  // YAML only treats ": " (colon followed by whitespace) or a trailing ":"
+  // as the start of a new key, so only those two specifically force
+  // quoting, not every colon.
+  const hasAmbiguousColon = /: |:$/.test(value);
+  if (/^[\w\-./: ]*$/.test(value) && value === value.trim() && value.length > 0 && !hasAmbiguousColon) {
     return value;
   }
   return `"${value.replace(/"/g, '\\"')}"`;

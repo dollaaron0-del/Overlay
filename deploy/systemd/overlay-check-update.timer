@@ -1,0 +1,13 @@
+[Unit]
+Description=Periodically check for Overlay updates
+
+[Timer]
+# 10 minutes after boot, then every 10 minutes — matches the cadence the
+# live server has actually been running at (see journalctl history), just
+# now checked into the repo instead of only existing as a manual setup step
+# on the server (the same gap that once bit the Emmy recurring-task timer).
+OnBootSec=10min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

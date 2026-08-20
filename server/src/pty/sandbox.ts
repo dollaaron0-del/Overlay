@@ -114,8 +114,3 @@ export function buildSandboxCommand(
 
   return { command: bwrapPath, args: sandboxArgs };
 }
-
-/** Directories a sandboxed session must not be able to see, for tests and docs. */
-export function hiddenPathsFor(target: SandboxTarget): string[] {
-  return [target.appsRoot, target.serverDir, "/home"].map((p) => path.resolve(p));
-}

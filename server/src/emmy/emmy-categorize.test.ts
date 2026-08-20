@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classifyTask, detectDueAt, detectIntervalHours, DEFAULT_INTERVAL_HOURS } from "./emmy-categorize.js";
+import {
+  classifyTask,
+  detectDueAt,
+  detectIntervalHours,
+  minResearchDurationMs,
+  DEFAULT_INTERVAL_HOURS,
+} from "./emmy-categorize.js";
 
 // A fixed Monday so weekday and week-window maths stay deterministic.
 const MONDAY = new Date(2026, 7, 10, 9, 0, 0); // 2026-08-10, a Monday
@@ -123,4 +129,22 @@ test("hour-granular windows keep their exact time instead of snapping to end of 
   const due = detectDueAt("in 3 stunden", MONDAY)!;
   assert.equal(due.getHours(), 12);
   assert.equal(due.getMinutes(), 0);
+});
+
+test("'über Nacht' means done by tomorrow morning, not just sometime tomorrow", () => {
+  const due = detectDueAt("schau dir das über nacht an", MONDAY)!;
+  assert.equal(due.getDate(), 11);
+  assert.equal(due.getHours(), 8);
+  assert.equal(due.getMinutes(), 0);
+
+  assert.equal(detectDueAt("look at this overnight", MONDAY)!.getHours(), 8);
+});
+
+test("minResearchDurationMs is half the window, capped at 3h and floored at 10min", () => {
+  // Short explicit window: half of it, no cap or floor kicking in.
+  assert.equal(minResearchDurationMs(4 * 3_600_000), 2 * 3_600_000);
+  // Very short window: the 10-minute floor wins over half of it.
+  assert.equal(minResearchDurationMs(10 * 60_000), 10 * 60_000);
+  // Long/default window (e.g. the one-week default): the 3-hour cap wins.
+  assert.equal(minResearchDurationMs(7 * 24 * 3_600_000), 3 * 3_600_000);
 });

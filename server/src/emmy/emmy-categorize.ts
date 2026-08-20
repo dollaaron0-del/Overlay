@@ -19,6 +19,26 @@ export const DEFAULT_INTERVAL_HOURS = 24;
 /** Research with no deadline in the text gets a one-week window. */
 export const DEFAULT_RESEARCH_WINDOW_HOURS = 24 * 7;
 
+/**
+ * How much of the stated research window ("bis heute Abend", "über Nacht", …)
+ * Emmy must actually use before her first summary is accepted as ending the
+ * deep-research phase. The prompt already asks her to take her time — this is
+ * the hard floor under that ask, so a fast reply can't just skip past it (see
+ * emmy-inbound.routes.ts).
+ */
+export const MIN_RESEARCH_FRACTION = 0.5;
+/** Ceiling on that floor: a week-long default window shouldn't force days of
+ * research, only enough to rule out a five-minute pass. */
+export const MIN_RESEARCH_CAP_HOURS = 3;
+/** Never require less than this, even for a very short explicit deadline. */
+export const MIN_RESEARCH_FLOOR_MINUTES = 10;
+
+/** The minimum time Emmy must spend before `windowMs` (dueAt - createdAt) counts as "done". */
+export function minResearchDurationMs(windowMs: number): number {
+  const capped = Math.min(windowMs * MIN_RESEARCH_FRACTION, MIN_RESEARCH_CAP_HOURS * 3_600_000);
+  return Math.max(capped, MIN_RESEARCH_FLOOR_MINUTES * 60_000);
+}
+
 export interface EmmyClassification {
   category: EmmyCategory;
   /** Only set for "research". */
@@ -166,6 +186,12 @@ export function detectDueAt(text: string, now: Date): Date | undefined {
     if (!Number.isNaN(parsed.getTime()) && parsed.getMonth() === month) return endOfDay(parsed);
   }
 
+  // "über Nacht" — done by tomorrow morning, not just "sometime tomorrow".
+  if (/(über nacht|ueber nacht|\bovernight\b)/.test(text)) {
+    const next = addDays(now, 1);
+    next.setHours(8, 0, 0, 0);
+    return next;
+  }
   if (/(übermorgen|uebermorgen)/.test(text)) return endOfDay(addDays(now, 2));
   if (/\bmorgen\b/.test(text) && !/\bjeden morgen\b/.test(text)) return endOfDay(addDays(now, 1));
   if (/\bheute\b|\bbis heute abend\b/.test(text)) return endOfDay(now);

@@ -1,20 +1,4 @@
-export function TopBar({
-  title,
-  showBack,
-  onBack,
-  onSearch,
-  onNotifications,
-  onControlCenter,
-  hasAlerts,
-}: {
-  title: string;
-  showBack: boolean;
-  onBack: () => void;
-  onSearch: () => void;
-  onNotifications: () => void;
-  onControlCenter: () => void;
-  hasAlerts: boolean;
-}) {
+export function TopBar({ title, showBack, onBack }: { title: string; showBack: boolean; onBack: () => void }) {
   return (
     <header className="os-topbar">
       <div className="os-topbar-left">
@@ -27,28 +11,7 @@ export function TopBar({
         )}
       </div>
       <div className="os-topbar-title">{showBack ? title : ""}</div>
-      <div className="os-topbar-right">
-        <button className="os-topbar-icon-button" onClick={onSearch} title="Suche" aria-label="Suche">
-          🔍
-        </button>
-        <button
-          className="os-topbar-icon-button"
-          onClick={onNotifications}
-          title="Benachrichtigungen"
-          aria-label="Benachrichtigungen"
-        >
-          🔔
-          {hasAlerts && <span className="os-topbar-badge" />}
-        </button>
-        <button
-          className="os-topbar-icon-button"
-          onClick={onControlCenter}
-          title="Kontrollzentrum"
-          aria-label="Kontrollzentrum"
-        >
-          🎛
-        </button>
-      </div>
+      <div className="os-topbar-right" />
     </header>
   );
 }

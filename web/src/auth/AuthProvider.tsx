@@ -32,6 +32,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthenticated(res.authenticated);
         setUser(res.user);
       })
+      // A probe that never reaches Overlay (server down, or the 2FA portal in
+      // front of it intercepting) is not an answer of "logged in" — fall back
+      // to the unauthenticated state rather than leaving the rejection unhandled.
+      .catch(() => setAuthenticated(false))
       .finally(() => setLoading(false));
   }, []);
 
