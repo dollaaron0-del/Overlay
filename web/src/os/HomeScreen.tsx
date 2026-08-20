@@ -20,6 +20,8 @@ interface IconItem {
   kind: "project" | "app";
   /** Only set for projects — which home-screen section this tile belongs in. */
   homeSection?: ProjectSummary["homeSection"];
+  /** Only set for projects of kind "systemd"/"pm2-root" — where a Dashboard tile links out to. */
+  externalUrl?: string;
 }
 
 function isFolderId(id: string): boolean {
@@ -63,6 +65,7 @@ export function HomeScreen({
       statusDot: p.status,
       kind: "project" as const,
       homeSection: p.homeSection,
+      externalUrl: p.externalUrl,
     })),
     ...STATIC_APPS.filter((a) => !SIDEBAR_APP_IDS.has(a.id)).map((a) => ({
       id: `app:${a.id}`,
@@ -120,8 +123,19 @@ export function HomeScreen({
   const openItem = (id: string) => {
     const item = itemsById.get(id);
     if (!item) return;
-    if (item.kind === "project") onOpenProject(id.slice("project:".length));
-    else onOpenApp(id.slice("app:".length));
+    if (item.kind === "project") {
+      // Dashboard tiles link straight out to the app they represent instead
+      // of detouring through the project's internal workspace — that's the
+      // whole point of a Dashboard tile (see ProjectSummary.externalUrl).
+      // Management (start/stop/logs) is still reachable via Spotlight.
+      if (item.homeSection === "dashboard" && item.externalUrl) {
+        window.open(item.externalUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+      onOpenProject(id.slice("project:".length));
+    } else {
+      onOpenApp(id.slice("app:".length));
+    }
   };
 
   const toggleSelect = (id: string) => {

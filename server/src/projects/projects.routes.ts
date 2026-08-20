@@ -195,6 +195,17 @@ projectsRouter.patch("/:id", async (req, res) => {
   if (parsed.data.icon !== undefined) updated = await updateProjectIcon(req.params.id, parsed.data.icon);
   if (updated && parsed.data.name !== undefined) updated = await updateProjectName(req.params.id, parsed.data.name);
   if (updated && parsed.data.homeSection !== undefined) {
+    // The Dashboards section always links a tile straight to its
+    // externalUrl — only kind "systemd"/"pm2-root" projects have one, so a
+    // plain pm2 project can't be moved there (it would be an unreachable
+    // dashboard tile with nowhere to link).
+    if (parsed.data.homeSection === "dashboard" && updated.kind !== "systemd" && updated.kind !== "pm2-root") {
+      res.status(400).json({
+        error: "dashboard_requires_external_url",
+        message: "Nur extern verlinkte Projekte (systemd/pm2-root) können ins Dashboard-Segment verschoben werden.",
+      });
+      return;
+    }
     updated = await updateProjectHomeSection(req.params.id, parsed.data.homeSection);
   }
   if (!updated) {

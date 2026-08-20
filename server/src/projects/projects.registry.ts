@@ -72,9 +72,18 @@ export function resolveProjectDir(project: Pick<Project, "dirName">): string {
 // Undefined homeSection = automatic: external (link-out) projects default to
 // the Dashboards section, everything else defaults to Projekt-Terminals —
 // the user can flip either way via PATCH /:id.
+//
+// A Dashboard tile always links straight to a project's externalUrl (see
+// HomeScreen.tsx), and only kind "systemd"/"pm2-root" projects have one.
+// PATCH /:id already refuses to set "dashboard" on any other kind (see
+// projects.routes.ts), but this also guards a stale/hand-edited
+// projects.json with an override predating that check — otherwise it'd
+// resurface as an unreachable Dashboard tile with nowhere to link.
 export function resolveHomeSection(project: Pick<Project, "kind" | "homeSection">): "dashboard" | "terminal" {
+  const isExternal = project.kind === "systemd" || project.kind === "pm2-root";
+  if (project.homeSection === "dashboard") return isExternal ? "dashboard" : "terminal";
   if (project.homeSection) return project.homeSection;
-  return project.kind === "systemd" || project.kind === "pm2-root" ? "dashboard" : "terminal";
+  return isExternal ? "dashboard" : "terminal";
 }
 
 export async function listProjects(): Promise<Project[]> {
