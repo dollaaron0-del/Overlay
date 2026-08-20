@@ -32,6 +32,8 @@ interface StoreShape {
 export const GENERAL_CHAT_ID = "general";
 
 let cache: StoreShape | null = null;
+// Kept always-resolving (see queuedWrite below) so one failed write can't
+// wedge every subsequent one behind a permanently-rejected chain.
 let writeQueue: Promise<unknown> = Promise.resolve();
 
 async function readFromDisk(): Promise<StoreShape> {
@@ -45,13 +47,42 @@ async function readFromDisk(): Promise<StoreShape> {
   }
 }
 
-async function writeToDisk(store: StoreShape): Promise<void> {
-  writeQueue = writeQueue.then(async () => {
-    await fs.mkdir(path.dirname(STORE_FILE), { recursive: true });
-    await fs.writeFile(TMP_FILE, JSON.stringify(store, null, 2), "utf8");
-    await fs.rename(TMP_FILE, STORE_FILE);
+async function writeStoreFile(store: StoreShape): Promise<void> {
+  await fs.mkdir(path.dirname(STORE_FILE), { recursive: true });
+  await fs.writeFile(TMP_FILE, JSON.stringify(store, null, 2), "utf8");
+  await fs.rename(TMP_FILE, STORE_FILE);
+}
+
+/** Runs `task` serialized behind every other queued write, so no two mutations ever race each other's read-modify-write cycle. */
+function queuedWrite<T>(task: () => Promise<T>): Promise<T> {
+  const run = writeQueue.then(task);
+  writeQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+/**
+ * Runs a read-modify-write against the store, fully serialized through
+ * queuedWrite — `fn` only ever sees the latest committed state. Without this,
+ * two concurrent mutations (e.g. two rapid messages, or the recurring-tasks
+ * scheduler ticking a chat while a user edits it) would both compute `next`
+ * from the same pre-write snapshot, and whichever write lands second would
+ * silently discard the first's change. `fn` returns the unchanged `current`
+ * object (by reference) to signal a no-op — skips the disk write entirely.
+ */
+async function mutateStore<T>(fn: (current: StoreShape) => { next: StoreShape; result: T }): Promise<T> {
+  await ensureLoaded();
+  return queuedWrite(async () => {
+    const current = cache!;
+    const { next, result } = fn(current);
+    if (next !== current) {
+      await writeStoreFile(next);
+      cache = next;
+    }
+    return result;
   });
-  await writeQueue;
 }
 
 async function ensureLoaded(): Promise<StoreShape> {
@@ -59,17 +90,24 @@ async function ensureLoaded(): Promise<StoreShape> {
   // The general chat is guaranteed to exist so the UI always has a home for
   // casual, non-task messages — created lazily on first access.
   if (!cache.chats.some((c) => c.id === GENERAL_CHAT_ID)) {
-    const now = new Date().toISOString();
-    const general: EmmyChat = {
-      id: GENERAL_CHAT_ID,
-      kind: "general",
-      title: "Allgemein",
-      status: "open",
-      createdAt: now,
-      updatedAt: now,
-    };
-    cache.chats = [general, ...cache.chats];
-    await writeToDisk(cache);
+    return queuedWrite(async () => {
+      // Re-check inside the queue: another concurrent ensureLoaded() call may
+      // have already created it while this one was waiting its turn.
+      if (cache!.chats.some((c) => c.id === GENERAL_CHAT_ID)) return cache!;
+      const now = new Date().toISOString();
+      const general: EmmyChat = {
+        id: GENERAL_CHAT_ID,
+        kind: "general",
+        title: "Allgemein",
+        status: "open",
+        createdAt: now,
+        updatedAt: now,
+      };
+      const next = { ...cache!, chats: [general, ...cache!.chats] };
+      await writeStoreFile(next);
+      cache = next;
+      return next;
+    });
   }
   return cache;
 }
@@ -106,7 +144,6 @@ export async function createChat(
   title: string,
   categorization?: EmmyCategoryPatch,
 ): Promise<EmmyChat> {
-  const store = await ensureLoaded();
   const now = new Date().toISOString();
   const chat: EmmyChat = {
     id: crypto.randomUUID(),
@@ -116,13 +153,13 @@ export async function createChat(
     createdAt: now,
     updatedAt: now,
   };
-  const next = {
-    ...store,
-    chats: [...store.chats, kind === "task" ? applyPatch(chat, categorization ?? {}) : chat],
-  };
-  await writeToDisk(next);
-  cache = next;
-  return next.chats[next.chats.length - 1];
+  return mutateStore((store) => {
+    const next = {
+      ...store,
+      chats: [...store.chats, kind === "task" ? applyPatch(chat, categorization ?? {}) : chat],
+    };
+    return { next, result: next.chats[next.chats.length - 1] };
+  });
 }
 
 /** Merges a patch onto a chat: `undefined` keeps the current value, `null` removes the field. */
@@ -151,19 +188,18 @@ export async function updateChat(
     dueCheckSentAt?: string;
   } & EmmyCategoryPatch,
 ): Promise<EmmyChat | undefined> {
-  const store = await ensureLoaded();
-  const chat = store.chats.find((c) => c.id === id);
-  if (!chat) return undefined;
-  const { title, ...rest } = patch;
-  const updated: EmmyChat = {
-    ...applyPatch(chat, rest),
-    ...(title !== undefined ? { title: title.trim() || chat.title } : {}),
-    updatedAt: new Date().toISOString(),
-  };
-  const next = { ...store, chats: store.chats.map((c) => (c.id === id ? updated : c)) };
-  await writeToDisk(next);
-  cache = next;
-  return updated;
+  return mutateStore((store) => {
+    const chat = store.chats.find((c) => c.id === id);
+    if (!chat) return { next: store, result: undefined };
+    const { title, ...rest } = patch;
+    const updated: EmmyChat = {
+      ...applyPatch(chat, rest),
+      ...(title !== undefined ? { title: title.trim() || chat.title } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    const next = { ...store, chats: store.chats.map((c) => (c.id === id ? updated : c)) };
+    return { next, result: updated };
+  });
 }
 
 /**
@@ -179,28 +215,27 @@ export async function updateChat(
  * Returns false only if there is no such chat.
  */
 export async function deleteChat(id: string): Promise<boolean> {
-  const store = await ensureLoaded();
-  const chat = store.chats.find((c) => c.id === id);
-  if (!chat) return false;
+  return mutateStore((store) => {
+    const chat = store.chats.find((c) => c.id === id);
+    if (!chat) return { next: store, result: false };
 
-  const messages = store.messages.filter((m) => m.chatId === id);
-  const now = new Date().toISOString();
-  const archive =
-    messages.length > 0
-      ? [...store.archive, { id: crypto.randomUUID(), chat, messages, archivedAt: now }]
-      : store.archive;
+    const messages = store.messages.filter((m) => m.chatId === id);
+    const now = new Date().toISOString();
+    const archive =
+      messages.length > 0
+        ? [...store.archive, { id: crypto.randomUUID(), chat, messages, archivedAt: now }]
+        : store.archive;
 
-  const next: StoreShape = {
-    chats:
-      id === GENERAL_CHAT_ID
-        ? store.chats.map((c) => (c.id === id ? { ...c, updatedAt: now } : c))
-        : store.chats.filter((c) => c.id !== id),
-    messages: store.messages.filter((m) => m.chatId !== id),
-    archive,
-  };
-  await writeToDisk(next);
-  cache = next;
-  return true;
+    const next: StoreShape = {
+      chats:
+        id === GENERAL_CHAT_ID
+          ? store.chats.map((c) => (c.id === id ? { ...c, updatedAt: now } : c))
+          : store.chats.filter((c) => c.id !== id),
+      messages: store.messages.filter((m) => m.chatId !== id),
+      archive,
+    };
+    return { next, result: true };
+  });
 }
 
 export async function listMessages(chatId: string): Promise<EmmyMessage[]> {
@@ -214,8 +249,8 @@ export async function appendMessage(
   text: string,
   attachments?: EmmyAttachment[],
   isFinalDocument?: boolean,
+  needsClarification?: boolean,
 ): Promise<EmmyMessage> {
-  const store = await ensureLoaded();
   const message: EmmyMessage = {
     id: crypto.randomUUID(),
     chatId,
@@ -224,12 +259,13 @@ export async function appendMessage(
     at: new Date().toISOString(),
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
     ...(isFinalDocument ? { isFinalDocument: true } : {}),
+    ...(needsClarification ? { needsClarification: true } : {}),
   };
-  const chats = store.chats.map((c) => (c.id === chatId ? { ...c, updatedAt: message.at } : c));
-  const next = { ...store, chats, messages: [...store.messages, message] };
-  await writeToDisk(next);
-  cache = next;
-  return message;
+  return mutateStore((store) => {
+    const chats = store.chats.map((c) => (c.id === chatId ? { ...c, updatedAt: message.at } : c));
+    const next = { ...store, chats, messages: [...store.messages, message] };
+    return { next, result: message };
+  });
 }
 
 // ---- archive -----------------------------------------------------------------
@@ -263,10 +299,9 @@ export async function listArchivedMessages(chatId: string): Promise<EmmyMessage[
 
 /** Permanent removal — the one call that really does throw a conversation away. */
 export async function purgeArchiveEntry(id: string): Promise<boolean> {
-  const store = await ensureLoaded();
-  if (!store.archive.some((e) => e.id === id)) return false;
-  const next = { ...store, archive: store.archive.filter((e) => e.id !== id) };
-  await writeToDisk(next);
-  cache = next;
-  return true;
+  return mutateStore((store) => {
+    if (!store.archive.some((e) => e.id === id)) return { next: store, result: false };
+    const next = { ...store, archive: store.archive.filter((e) => e.id !== id) };
+    return { next, result: true };
+  });
 }

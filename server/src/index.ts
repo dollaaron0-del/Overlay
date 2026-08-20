@@ -1,9 +1,11 @@
+import fs from "node:fs";
 import http from "node:http";
 import { config } from "./config.js";
 import { createApp } from "./server.js";
 import { attachWebSocketServer } from "./ws/ws.server.js";
 import { loadSessions } from "./auth/session.js";
 import { reconcileMemoryIndex } from "./emmy/emmy-memory.js";
+import { sharedCredentialsFile } from "./pty/claude-home.js";
 
 // Defense in depth: Express 4 does not catch a rejected promise thrown by an
 // async route handler on its own — without this, one unexpected rejection
@@ -28,7 +30,7 @@ void reconcileMemoryIndex();
 
 const app = createApp();
 const server = http.createServer(app);
-attachWebSocketServer(server);
+const wss = attachWebSocketServer(server);
 
 server.listen(config.PORT, config.BIND_ADDRESS, () => {
   console.log(`Overlay server listening on http://${config.BIND_ADDRESS}:${config.PORT} (${config.NODE_ENV})`);
@@ -39,9 +41,28 @@ server.listen(config.PORT, config.BIND_ADDRESS, () => {
       "[auth] AUTH_DISABLED=1 — Overlay's own login is OFF. Every route is unauthenticated unless a proxy (Authelia) enforces auth in front of this process.",
     );
   }
+  // Loud on every start, because this is otherwise a silent failure: without
+  // it, ensureProjectClaudeHome() just skips the credentials symlink (see
+  // pty/claude-home.ts's linkCredentials) and every project terminal quietly
+  // falls back to prompting for /login instead of sharing the one account.
+  if (!fs.existsSync(sharedCredentialsFile())) {
+    console.warn(
+      `[claude-home] No Claude Code credentials found at ${sharedCredentialsFile()} — every project terminal will prompt for /login instead of sharing one account. ` +
+        (config.CLAUDE_SHARED_HOME
+          ? "CLAUDE_SHARED_HOME is set, but nothing is logged in at that path yet — run `claude login` as the user who owns it."
+          : "CLAUDE_SHARED_HOME is unset, so this fell back to this process's own home dir — set it to the .claude directory of whichever user ran `claude login` (see docs/DEPLOYMENT.md)."),
+    );
+  }
 });
 
 function shutdown(): void {
+  // http.Server#close() only stops accepting new connections and waits for
+  // existing ones to end on their own — a long-lived WS client (terminal,
+  // status poll, log stream) would otherwise keep this callback from ever
+  // firing, so a restart/deploy hangs until PM2's SIGKILL timeout instead of
+  // exiting cleanly. Terminating every live WS connection up front makes
+  // server.close()'s callback actually fire.
+  for (const client of wss.clients) client.terminate();
   server.close(() => process.exit(0));
 }
 process.on("SIGINT", shutdown);

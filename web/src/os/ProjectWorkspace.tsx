@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DeployServerMessage, ProjectSummary } from "@overlay/shared";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import { formatBytes } from "../format";
 import { wsUrl } from "../api/ws";
 import { TerminalPanel } from "../terminal/TerminalPanel";
@@ -30,7 +30,8 @@ interface DeployResult {
 }
 
 export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSummary; onRemoved: () => void }) {
-  const [tab, setTab] = useState<Tab>("terminal");
+  const isExternal = project.kind === "systemd" || project.kind === "pm2-root";
+  const [tab, setTab] = useState<Tab>(isExternal ? "logs" : "terminal");
   const [showHostTerminal, setShowHostTerminal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [deploying, setDeploying] = useState(false);
@@ -39,6 +40,17 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
   const [deployStartedAt, setDeployStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const deployWsRef = useRef<WebSocket | null>(null);
+
+  // If the user navigates away (or the project is removed) mid-deploy, the
+  // live-log socket would otherwise keep the connection open until the HTTP
+  // deploy call itself resolves, well after this component is gone.
+  useEffect(() => {
+    return () => {
+      deployWsRef.current?.close();
+    };
+  }, []);
 
   useEffect(() => {
     if (deployStartedAt === null) return;
@@ -52,8 +64,13 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
   const displayName = project.name || project.dirName;
 
   const setIcon = async (icon: string | null) => {
-    await api.patch(`/api/projects/${project.id}`, { icon });
-    setIconPickerOpen(false);
+    setActionError(null);
+    try {
+      await api.patch(`/api/projects/${project.id}`, { icon });
+      setIconPickerOpen(false);
+    } catch (err) {
+      setActionError(err instanceof ApiError ? (err.message ?? "Icon konnte nicht geändert werden") : "Icon konnte nicht geändert werden");
+    }
   };
 
   const renameProject = async () => {
@@ -61,7 +78,38 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
     if (next === null) return;
     const trimmed = next.trim();
     if (!trimmed || trimmed === displayName) return;
-    await api.patch(`/api/projects/${project.id}`, { name: trimmed });
+    setActionError(null);
+    try {
+      await api.patch(`/api/projects/${project.id}`, { name: trimmed });
+    } catch (err) {
+      setActionError(err instanceof ApiError ? (err.message ?? "Umbenennen fehlgeschlagen") : "Umbenennen fehlgeschlagen");
+    }
+  };
+
+  const setExternalUrl = async () => {
+    const next = window.prompt(
+      "Dashboard-URL (leer lassen zum Entfernen):",
+      project.externalUrl ?? "https://",
+    );
+    if (next === null) return;
+    const trimmed = next.trim();
+    if (trimmed === (project.externalUrl ?? "")) return;
+    setActionError(null);
+    try {
+      await api.patch(`/api/projects/${project.id}`, { externalUrl: trimmed || null });
+    } catch (err) {
+      setActionError(err instanceof ApiError ? (err.message ?? "Dashboard-URL konnte nicht gespeichert werden") : "Dashboard-URL konnte nicht gespeichert werden");
+    }
+  };
+
+  const toggleHomeSection = async () => {
+    const next = project.homeSection === "dashboard" ? "terminal" : "dashboard";
+    setActionError(null);
+    try {
+      await api.patch(`/api/projects/${project.id}`, { homeSection: next });
+    } catch (err) {
+      setActionError(err instanceof ApiError ? (err.message ?? "Konnte nicht verschoben werden") : "Konnte nicht verschoben werden");
+    }
   };
 
   const removeProject = async () => {
@@ -85,6 +133,11 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
     // delivered via the server-side backlog, so opening it doesn't need to
     // be awaited before triggering the deploy below.
     const ws = new WebSocket(wsUrl(`/ws/deploy/${project.id}`));
+    deployWsRef.current = ws;
+    // Best-effort live log only — a socket-level failure here must not stop
+    // the deploy itself, which is tracked independently via the HTTP POST
+    // below regardless of whether the live log connected.
+    ws.addEventListener("error", () => {});
     ws.addEventListener("message", (event) => {
       try {
         const msg = JSON.parse(event.data) as DeployServerMessage;
@@ -101,6 +154,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
       setDeploying(false);
       setDeployStartedAt(null);
       ws.close();
+      if (deployWsRef.current === ws) deployWsRef.current = null;
     }
   };
 
@@ -149,6 +203,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
             </button>
           </div>
         )}
+        {actionError && <p className="login-error">{actionError}</p>}
         {project.status === "online" && (project.cpuPercent !== null || project.memoryBytes !== null) && (
           <div className="project-resource-usage">
             {project.cpuPercent !== null && <span>{project.cpuPercent}% CPU</span>}
@@ -162,6 +217,25 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
           {project.hasDeployScript && (
             <button onClick={deploy} disabled={deploying}>
               {deploying ? "Deployt…" : "🚀 Deploy"}
+            </button>
+          )}
+          {project.externalUrl && (
+            <a className="project-open-external-button" href={project.externalUrl} target="_blank" rel="noreferrer">
+              Dashboard öffnen ↗
+            </a>
+          )}
+          {!isExternal && (
+            <button onClick={setExternalUrl} title="Dashboard-URL festlegen oder ändern — zeigt eine zusätzliche Kachel im Dashboards-Bereich">
+              {project.externalUrl ? "🔗 Dashboard-URL ändern" : "🔗 Dashboard-URL festlegen"}
+            </button>
+          )}
+          {isExternal && (
+            <button
+              className="project-home-section-toggle"
+              onClick={toggleHomeSection}
+              title="Auf dem Home-Screen unter Dashboards oder Projekt-Terminals einordnen"
+            >
+              {project.homeSection === "dashboard" ? "📊 Dashboard" : "⌨️ Terminal"}
             </button>
           )}
           <button className="project-remove-button-inline" onClick={removeProject}>
@@ -195,22 +269,28 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
       </div>
 
       <nav className="tab-bar">
-        <button className={tab === "terminal" ? "active" : ""} onClick={() => setTab("terminal")}>
-          Terminal
-        </button>
+        {!isExternal && (
+          <button className={tab === "terminal" ? "active" : ""} onClick={() => setTab("terminal")}>
+            Terminal
+          </button>
+        )}
         <button className={tab === "logs" ? "active" : ""} onClick={() => setTab("logs")}>
           Logs
         </button>
-        <button className={tab === "files" ? "active" : ""} onClick={() => setTab("files")}>
-          Dateien
-        </button>
-        <button className={tab === "plans" ? "active" : ""} onClick={() => setTab("plans")}>
-          Pläne
-        </button>
-        <button className={tab === "obsidian" ? "active" : ""} onClick={() => setTab("obsidian")}>
-          Obsidian
-        </button>
-        {tab === "terminal" && (
+        {!isExternal && (
+          <>
+            <button className={tab === "files" ? "active" : ""} onClick={() => setTab("files")}>
+              Dateien
+            </button>
+            <button className={tab === "plans" ? "active" : ""} onClick={() => setTab("plans")}>
+              Pläne
+            </button>
+            <button className={tab === "obsidian" ? "active" : ""} onClick={() => setTab("obsidian")}>
+              Obsidian
+            </button>
+          </>
+        )}
+        {!isExternal && tab === "terminal" && (
           <button
             className={`tab-bar-split-toggle ${showHostTerminal ? "active" : ""}`}
             onClick={() => setShowHostTerminal((v) => !v)}
@@ -221,7 +301,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
         )}
       </nav>
       <div className="tab-content">
-        {tab === "terminal" && (
+        {!isExternal && tab === "terminal" && (
           <>
             <TerminalPanel key={project.id} wsPath={`/ws/pty/${project.id}`} />
             {showHostTerminal && (
@@ -233,14 +313,16 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
           </>
         )}
         {tab === "logs" && <LogPanel key={project.id} projectId={project.id} />}
-        {tab === "files" && (
+        {!isExternal && tab === "files" && (
           <div className="files-tab">
             <FileTree projectId={project.id} onSelectFile={setSelectedFile} />
             <FileViewer projectId={project.id} path={selectedFile} />
           </div>
         )}
-        {tab === "plans" && <PlansTab key={project.id} projectId={project.id} />}
-        {tab === "obsidian" && <ObsidianTab key={project.id} projectId={project.id} projectDirName={project.dirName} />}
+        {!isExternal && tab === "plans" && <PlansTab key={project.id} projectId={project.id} />}
+        {!isExternal && tab === "obsidian" && (
+          <ObsidianTab key={project.id} projectId={project.id} projectDirName={project.dirName} />
+        )}
       </div>
     </div>
   );

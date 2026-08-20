@@ -288,6 +288,10 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
   } catch (err) {
     // Nothing is running on the other side, so the chat must not claim she's on it.
     markIdle(chat.id);
+    // The turn never made it out, so no reply will land on /api/emmy/inbound
+    // to consume this flag — leaving it set would wrongly tag the next
+    // unrelated reply as the final document.
+    if (requestFinalDocument) await updateChat(chat.id, { pendingFinalDocument: false });
     res.status(502).json({ error: "openclaw_send_failed", message: (err as Error).message, saved: message });
     return;
   }

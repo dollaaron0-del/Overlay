@@ -1,4 +1,4 @@
-export const IDLE_LOCK_STORAGE_KEY = "overlay-idle-lock-minutes";
+const IDLE_LOCK_STORAGE_KEY = "overlay-idle-lock-minutes";
 
 export type IdleLockPreference = number | "never";
 

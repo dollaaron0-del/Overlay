@@ -95,18 +95,27 @@ export function SecurityDashboard() {
   useEffect(() => {
     setLoading(true);
     setError(null);
+    let cancelled = false;
     const path = selectedId ? `/api/security/scans/${selectedId}` : "/api/security/scans/latest";
     api
       .get<ScanReport>(path)
-      .then(setReport)
+      .then((data) => {
+        if (!cancelled) setReport(data);
+      })
       .catch((err) => {
+        if (cancelled) return;
         if (err instanceof ApiError && err.status === 404) {
           setReport(null);
         } else {
           setError("Scan-Bericht konnte nicht geladen werden.");
         }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedId]);
 
   // A scan just finished (see useScanProgress) — refresh the history list,

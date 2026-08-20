@@ -9,7 +9,12 @@ import { handleDeployConnection } from "../projects/deploy.ws.js";
 import { handleEmmyConnection } from "../emmy/emmy.ws.js";
 import { isAllowedOrigin } from "./origin-check.js";
 
-export function attachWebSocketServer(server: HttpServer): void {
+// Returns the underlying WebSocketServer so callers (see index.ts's shutdown)
+// can force-close every live connection (terminal/status/logs/…) on
+// SIGTERM/SIGINT — otherwise http.Server#close() alone waits forever for
+// those long-lived, upgraded sockets to close on their own, since it only
+// stops accepting *new* connections.
+export function attachWebSocketServer(server: HttpServer): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (req, socket, head) => {
@@ -53,4 +58,6 @@ export function attachWebSocketServer(server: HttpServer): void {
       }
     });
   });
+
+  return wss;
 }

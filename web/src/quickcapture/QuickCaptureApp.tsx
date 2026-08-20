@@ -8,7 +8,6 @@ interface ProjectOption {
 }
 
 interface PendingImage {
-  file: File;
   previewUrl: string;
   dataBase64: string;
   mimeType: string;
@@ -55,14 +54,24 @@ export function QuickCaptureApp() {
   const needsTargetSetup = targetProjectId !== undefined && (!targetProjectId || !targetProject);
 
   const chooseTarget = async (projectId: string) => {
-    await api.put("/api/quick-capture/target", { projectId });
-    setTargetProjectId(projectId);
-    setChoosingTarget(false);
+    try {
+      await api.put("/api/quick-capture/target", { projectId });
+      setTargetProjectId(projectId);
+      setChoosingTarget(false);
+    } catch (err) {
+      setError(err instanceof ApiError ? (err.message ?? "Fehler beim Speichern") : "Fehler beim Speichern");
+    }
   };
 
   const toggleObsidianMode = async (checked: boolean) => {
+    const previous = obsidianMode;
     setObsidianMode(checked);
-    await api.put("/api/quick-capture/obsidian-mode", { obsidianMode: checked });
+    try {
+      await api.put("/api/quick-capture/obsidian-mode", { obsidianMode: checked });
+    } catch (err) {
+      setObsidianMode(previous);
+      setError(err instanceof ApiError ? (err.message ?? "Fehler beim Speichern") : "Fehler beim Speichern");
+    }
   };
 
   const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -71,7 +80,7 @@ export function QuickCaptureApp() {
     const dataUrl = await readFileAsDataUrl(file);
     const [prefix, base64] = dataUrl.split(",");
     const mimeType = /data:(.*);base64/.exec(prefix)?.[1] ?? file.type;
-    setImage({ file, previewUrl: dataUrl, dataBase64: base64, mimeType });
+    setImage({ previewUrl: dataUrl, dataBase64: base64, mimeType });
   };
 
   const removeImage = () => {
@@ -134,6 +143,7 @@ export function QuickCaptureApp() {
           Obsidian-Modus: jede Notiz als eigene Datei mit Frontmatter unter <code>inbox/</code> statt an{" "}
           <code>inbox.md</code> angehängt
         </label>
+        {error && <p className="login-error">{error}</p>}
       </div>
     );
   }
