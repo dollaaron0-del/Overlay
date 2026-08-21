@@ -13,19 +13,19 @@ import {
   resolveHomeSection,
   resolveProjectDir,
   scaffoldProject,
+  updateProjectAutoDeploy,
   updateProjectExternalUrl,
   updateProjectHomeSection,
   updateProjectIcon,
   updateProjectName,
 } from "./projects.registry.js";
 import { notifyProjectsChanged } from "../ws/status.ws.js";
-import { describeProcess, restartProcess, statusOf } from "../pm2/pm2.service.js";
+import { describeProcess, statusOf } from "../pm2/pm2.service.js";
 import { systemdStatus } from "../systemd/systemd.service.js";
 import { pm2RootStatus } from "../pm2root/pm2root.service.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
-import { runDeployScript } from "./deploy-runner.js";
-import { startDeployRun, recordDeployLine, endDeployRun, isDeployRunning } from "./deploy-log-bus.js";
-import { config } from "../config.js";
+import { isDeployRunning } from "./deploy-log-bus.js";
+import { runProjectDeploy } from "./deploy-service.js";
 import { getOrCreateSession } from "../pty/pty.manager.js";
 
 export const projectsRouter = Router();
@@ -185,6 +185,7 @@ const updateProjectSchema = z.object({
   name: z.string().trim().min(1).max(100).nullable().optional(),
   homeSection: z.enum(["dashboard", "terminal"]).nullable().optional(),
   externalUrl: z.string().min(1).nullable().optional(),
+  autoDeployOnCommit: z.boolean().optional(),
 });
 
 projectsRouter.patch("/:id", async (req, res) => {
@@ -197,7 +198,8 @@ projectsRouter.patch("/:id", async (req, res) => {
     parsed.data.icon === undefined &&
     parsed.data.name === undefined &&
     parsed.data.homeSection === undefined &&
-    parsed.data.externalUrl === undefined
+    parsed.data.externalUrl === undefined &&
+    parsed.data.autoDeployOnCommit === undefined
   ) {
     res.status(400).json({ error: "invalid_request", message: "Nothing to update" });
     return;
@@ -243,6 +245,19 @@ projectsRouter.patch("/:id", async (req, res) => {
       return;
     }
     updated = await updateProjectHomeSection(req.params.id, parsed.data.homeSection);
+  }
+  if (updated && parsed.data.autoDeployOnCommit !== undefined) {
+    // Auto-deploy without a deploy script would just silently never fire —
+    // reject it up front instead of letting the toggle look "on" for
+    // nothing (see git-deploy-watcher.ts's own deployScript check).
+    if (parsed.data.autoDeployOnCommit && !updated.deployScript) {
+      res.status(400).json({
+        error: "auto_deploy_requires_deploy_script",
+        message: "Auto-Deploy setzt ein konfiguriertes Deploy-Skript voraus.",
+      });
+      return;
+    }
+    updated = await updateProjectAutoDeploy(req.params.id, parsed.data.autoDeployOnCommit);
   }
   if (!updated) {
     res.status(404).json({ error: "not_found" });
@@ -310,22 +325,6 @@ projectsRouter.post("/:id/deploy", async (req, res) => {
   // live (see deploy-runner.ts) to /ws/deploy/:id as it runs — there's no
   // known step count for an arbitrary script, so live output is the honest
   // stand-in for a progress bar here.
-  startDeployRun(project.id);
-  const result = await runDeployScript(project.deployScript, resolveProjectDir(project), config.DEPLOY_TIMEOUT_MS, (line) => {
-    recordDeployLine(project.id, { type: "line", stream: line.stream, text: line.text });
-  }).catch((err) => ({ stdout: "", stderr: (err as Error).message, exitCode: null }));
-
-  const success = result.exitCode === 0;
-  endDeployRun(project.id, { type: "exit", success, exitCode: result.exitCode });
-
-  if (success) {
-    // Best-effort: pick up the newly deployed build. Not fatal if the
-    // process isn't running yet — the deploy itself already succeeded.
-    // deployScript is never set on a systemd- or pm2-root-kind project, so
-    // pm2Name is guaranteed here even though the type is optional.
-    await restartProcess(project.pm2Name!).catch(() => undefined);
-  }
-
-  await appendAuditEntry({ type: "project_deployed", detail: `${project.id} (${success ? "ok" : "failed"})` });
-  res.json({ ok: success, stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode });
+  const result = await runProjectDeploy(project);
+  res.json({ ok: result.success, stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode });
 });

@@ -1728,6 +1728,23 @@ button.active {
   background: var(--c-surface-2-hover);
 }
 
+.project-auto-deploy-toggle {
+  font-size: var(--fs-sm);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--c-surface-2);
+  color: var(--c-text-1);
+}
+
+.project-auto-deploy-toggle:hover {
+  background: var(--c-surface-2-hover);
+}
+
+.project-auto-deploy-toggle-on {
+  background: var(--c-success-bg);
+  color: var(--c-success);
+}
+
 .add-project-kind-toggle {
   display: flex;
   flex-direction: column;
