@@ -4,8 +4,8 @@ import { getProject, resolveProjectDir } from "../projects/projects.registry.js"
 import { describeProcess, restartProcess, startProcess, statusOf, stopProcess } from "../pm2/pm2.service.js";
 import { systemdAction, systemdStatus } from "../systemd/systemd.service.js";
 import { pm2RootAction, pm2RootStatus } from "../pm2root/pm2root.service.js";
-import { runDeployScript } from "../projects/deploy-runner.js";
-import { startDeployRun, recordDeployLine, endDeployRun, isDeployRunning } from "../projects/deploy-log-bus.js";
+import { isDeployRunning } from "../projects/deploy-log-bus.js";
+import { runProjectDeploy } from "../projects/deploy-service.js";
 import { runBackupJob } from "../backup/backup-job.js";
 import { runCommand } from "../security/run-tool.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
@@ -117,23 +117,8 @@ automationRouter.post("/projects/:id/deploy", async (req, res) => {
     return;
   }
 
-  startDeployRun(project.id);
-  const result = await runDeployScript(project.deployScript, resolveProjectDir(project), config.DEPLOY_TIMEOUT_MS, (line) => {
-    recordDeployLine(project.id, { type: "line", stream: line.stream, text: line.text });
-  }).catch((err) => ({ stdout: "", stderr: (err as Error).message, exitCode: null }));
-
-  const success = result.exitCode === 0;
-  endDeployRun(project.id, { type: "exit", success, exitCode: result.exitCode });
-  // deployScript (checked above) is never set on a systemd- or pm2-root-kind
-  // project, so pm2Name is guaranteed here even though the type is optional.
-  if (success) await restartProcess(project.pm2Name!).catch(() => undefined);
-
-  await appendAuditEntry({
-    type: "project_deployed",
-    actor: ACTOR,
-    detail: `${project.id} (${success ? "ok" : "failed"})`,
-  });
-  res.json({ ok: success, stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode });
+  const result = await runProjectDeploy(project, ACTOR);
+  res.json({ ok: result.success, stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode });
 });
 
 automationRouter.post("/backup", async (_req, res) => {

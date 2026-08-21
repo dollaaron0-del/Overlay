@@ -31,6 +31,15 @@ export interface Project {
   externalUrl?: string;
   /** Optional shell command run by POST /:id/deploy, e.g. "git pull && npm install && npm run build". Not applicable to kind "systemd". */
   deployScript?: string;
+  /**
+   * When true, git-deploy-watcher.ts automatically runs this project's
+   * deployScript (and restarts it on success) whenever a new commit appears
+   * in its directory — e.g. one made in its own Terminal tab — instead of
+   * requiring a manual "Deploy" click. Set via PATCH /:id; only meaningful
+   * when deployScript is set. Undefined/false = manual deploy only (today's
+   * default, unchanged for every existing project).
+   */
+  autoDeployOnCommit?: boolean;
   /** Optional custom home-screen icon (a single emoji), set via PATCH /:id. Falls back to a generic folder icon. */
   icon?: string;
   /** Optional custom display name, set via PATCH /:id. Falls back to dirName. */

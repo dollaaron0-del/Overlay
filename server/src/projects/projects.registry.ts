@@ -314,6 +314,24 @@ export async function updateProjectHomeSection(
   });
 }
 
+/**
+ * Enables/disables auto-deploy: when true, git-deploy-watcher.ts runs this
+ * project's deploy script (and restarts it on success) automatically
+ * whenever a new commit appears in its directory, instead of requiring a
+ * manual Deploy click. Callers must ensure deployScript is set first (see
+ * the guard in projects.routes.ts's PATCH /:id) — this setter itself doesn't
+ * re-check, same division of responsibility as updateProjectHomeSection.
+ */
+export async function updateProjectAutoDeploy(id: string, enabled: boolean): Promise<Project | undefined> {
+  return mutateProjects((current) => {
+    const index = current.findIndex((p) => p.id === id);
+    if (index === -1) return { next: current, result: undefined };
+    const next = [...current];
+    next[index] = { ...next[index], autoDeployOnCommit: enabled || undefined };
+    return { next, result: next[index] };
+  });
+}
+
 /** Subdirectories of APPS_ROOT that aren't registered as a project yet. */
 export async function listAvailableDirs(): Promise<string[]> {
   const projects = await ensureLoaded();

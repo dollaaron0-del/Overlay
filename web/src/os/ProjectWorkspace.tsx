@@ -103,6 +103,15 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
     }
   };
 
+  const toggleAutoDeploy = async () => {
+    setActionError(null);
+    try {
+      await api.patch(`/api/projects/${project.id}`, { autoDeployOnCommit: !project.autoDeployOnCommit });
+    } catch (err) {
+      setActionError(err instanceof ApiError ? (err.message ?? "Auto-Deploy konnte nicht geändert werden") : "Auto-Deploy konnte nicht geändert werden");
+    }
+  };
+
   const toggleHomeSection = async () => {
     const next = project.homeSection === "dashboard" ? "terminal" : "dashboard";
     setActionError(null);
@@ -218,6 +227,15 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
           {project.hasDeployScript && (
             <button onClick={deploy} disabled={deploying}>
               {deploying ? "Deployt…" : "🚀 Deploy"}
+            </button>
+          )}
+          {project.hasDeployScript && (
+            <button
+              onClick={toggleAutoDeploy}
+              className={project.autoDeployOnCommit ? "project-auto-deploy-toggle project-auto-deploy-toggle-on" : "project-auto-deploy-toggle"}
+              title="Bei jedem Commit im Terminal automatisch deployen und den Dienst neu starten, statt manuell auf Deploy klicken zu müssen"
+            >
+              {project.autoDeployOnCommit ? "⚡ Auto-Deploy: An" : "⚡ Auto-Deploy: Aus"}
             </button>
           )}
           {project.externalUrl && (

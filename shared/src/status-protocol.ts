@@ -17,6 +17,8 @@ export interface ProjectSummary {
   memoryBytes: number | null;
   cpuPercent: number | null;
   hasDeployScript: boolean;
+  /** Whether git-deploy-watcher.ts should auto-run this project's deploy script whenever a new commit appears in its directory (e.g. one made in its own Terminal tab). Only meaningful when hasDeployScript is true. */
+  autoDeployOnCommit: boolean;
   /** Custom home-screen icon (single emoji), if the user set one. */
   icon?: string;
   /** Custom display name, if the user set one. Falls back to dirName. */

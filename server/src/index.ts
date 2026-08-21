@@ -5,6 +5,7 @@ import { createApp } from "./server.js";
 import { attachWebSocketServer } from "./ws/ws.server.js";
 import { reconcileMemoryIndex } from "./emmy/emmy-memory.js";
 import { sharedCredentialsFile } from "./pty/claude-home.js";
+import { startGitDeployWatcher, stopGitDeployWatcher } from "./projects/git-deploy-watcher.js";
 
 // Defense in depth: Express 4 does not catch a rejected promise thrown by an
 // async route handler on its own — without this, one unexpected rejection
@@ -24,6 +25,11 @@ process.on("uncaughtException", (err) => {
 // (live or archived) that predates this feature or was sent while Ollama was
 // unreachable. Never blocks server startup and can never take the process down.
 void reconcileMemoryIndex();
+
+// Polls each project's .git/HEAD for new commits and auto-runs its deploy
+// script when one appears — see git-deploy-watcher.ts. Opt-in per project
+// via autoDeployOnCommit (PATCH /:id), off by default.
+startGitDeployWatcher();
 
 const app = createApp();
 const server = http.createServer(app);
@@ -59,6 +65,7 @@ function shutdown(): void {
   // firing, so a restart/deploy hangs until PM2's SIGKILL timeout instead of
   // exiting cleanly. Terminating every live WS connection up front makes
   // server.close()'s callback actually fire.
+  stopGitDeployWatcher();
   for (const client of wss.clients) client.terminate();
   server.close(() => process.exit(0));
 }
