@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
 import type { Terminal } from "@xterm/xterm";
 import type { PtyClientMessage, PtyServerMessage } from "@overlay/shared";
 import { ReconnectingSocket, wsUrl } from "../api/ws";
@@ -13,8 +14,20 @@ export type ConnectionStatus = "connecting" | "connected" | "reconnecting";
  * backgrounded) just resumes: the server replays its scrollback buffer on
  * attach, and ReconnectingSocket already re-establishes on
  * visibilitychange/pageshow.
+ *
+ * `sendPasteRef`, if given, is populated with a function that sends text as
+ * a dedicated "paste" message (server wraps it in a bracketed-paste block
+ * unconditionally — see PtySession.paste) instead of going through
+ * `terminal.onData`'s plain "input" path below. TerminalPanel's own mount
+ * effect (where Ctrl+V/right-click/the paste box call this) runs before this
+ * hook's socket exists on first mount, so a ref is how it reaches across;
+ * it's a no-op until the socket actually opens.
  */
-export function useTerminalSocket(wsPath: string | null, terminal: Terminal | null): ConnectionStatus {
+export function useTerminalSocket(
+  wsPath: string | null,
+  terminal: Terminal | null,
+  sendPasteRef?: MutableRefObject<(text: string) => void>,
+): ConnectionStatus {
   const socketRef = useRef<ReconnectingSocket<PtyServerMessage, PtyClientMessage> | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
 
@@ -24,6 +37,7 @@ export function useTerminalSocket(wsPath: string | null, terminal: Terminal | nu
     setStatus("connecting");
     const socket = new ReconnectingSocket<PtyServerMessage, PtyClientMessage>(wsUrl(wsPath));
     socketRef.current = socket;
+    if (sendPasteRef) sendPasteRef.current = (text) => socket.send({ type: "paste", data: text });
 
     const unsubscribe = socket.onMessage((msg) => {
       if (msg.type === "data") terminal.write(msg.chunk);
@@ -72,7 +86,10 @@ export function useTerminalSocket(wsPath: string | null, terminal: Terminal | nu
       resizeDisposable.dispose();
       socket.close();
       socketRef.current = null;
+      if (sendPasteRef) sendPasteRef.current = () => {};
     };
+    // sendPasteRef is a ref: identity doesn't matter for re-running this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsPath, terminal]);
 
   return status;

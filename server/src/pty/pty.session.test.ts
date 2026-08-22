@@ -126,3 +126,40 @@ test("removing an unknown client changes nothing", () => {
     session.kill();
   }
 });
+
+// Spying on the underlying pty's write() (rather than reading back output)
+// sidesteps the master side's own tty echo: `cat` doesn't reconfigure the
+// pty out of cooked/echo mode, so the kernel driver echoes raw ESC bytes
+// back in caret notation ("^[" instead of \x1B) before `cat` ever sees them
+// — observing that would test the kernel's echo rendering, not what
+// paste() actually wrote.
+function spyOnWrite(session: PtySession): string[] {
+  const writes: string[] = [];
+  session.proc.write = (data: string) => writes.push(data);
+  return writes;
+}
+
+test("paste() defaults to submitting: bracketed markers plus a trailing \\r", () => {
+  const session = newSession();
+  try {
+    const writes = spyOnWrite(session);
+    session.paste("hello");
+    assert.deepEqual(writes, ["\x1b[200~hello\x1b[201~\r"]);
+  } finally {
+    session.kill();
+  }
+});
+
+test("paste(text, false) omits the trailing \\r so the app doesn't auto-submit", () => {
+  // This is the interactive terminal-panel path (Ctrl+V, right-click, the
+  // paste box): a human should decide when to press Enter, not have it
+  // pressed on their behalf the instant text lands.
+  const session = newSession();
+  try {
+    const writes = spyOnWrite(session);
+    session.paste("hello", false);
+    assert.deepEqual(writes, ["\x1b[200~hello\x1b[201~"]);
+  } finally {
+    session.kill();
+  }
+});

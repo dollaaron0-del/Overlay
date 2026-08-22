@@ -2,6 +2,7 @@
 
 export type PtyClientMessage =
   | { type: "input"; data: string }
+  | { type: "paste"; data: string }
   | { type: "resize"; cols: number; rows: number }
   | { type: "pong" };
 

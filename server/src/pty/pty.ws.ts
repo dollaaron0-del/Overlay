@@ -76,6 +76,11 @@ function attachPtySession(ws: WebSocket, session: PtySession): void {
       case "input":
         session.write(msg.data);
         break;
+      case "paste":
+        // No auto-submit: see PtySession.paste's doc comment on why
+        // interactive human paste must leave pressing Enter to the user.
+        session.paste(msg.data, false);
+        break;
       case "resize":
         session.setClientSize(clientId, msg.cols, msg.rows);
         break;
