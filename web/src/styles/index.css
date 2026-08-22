@@ -285,7 +285,8 @@ button.active {
   background: var(--c-surface-2);
   border-radius: var(--radius-md);
   padding: var(--space-0) var(--space-2);
-  margin-left: var(--space-2);
+  /* Spacing comes from the title row's flex gap — a margin on top of it
+     would double up, and break alignment once the row wraps. */
 }
 
 .project-resource-usage {
@@ -1148,10 +1149,17 @@ button.active {
   font-size: var(--fs-base);
 }
 
+/* The column floor is the widest tile a cell has to hold (a project glyph at
+   96px plus the icon button's horizontal padding) — anything narrower lets
+   large tiles and their labels spill into the neighbouring cell, which is
+   what used to make labels overlap. The Emmy hero tile is wider still and
+   spans two columns instead (see --hero below). */
 .home-app-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
   gap: var(--space-3) var(--space-2);
+  align-items: start;
+  justify-items: center;
 }
 
 .os-app-icon {
@@ -1161,7 +1169,9 @@ button.active {
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
-  padding: var(--space-2);
+  padding: var(--space-2) var(--space-1);
+  width: 100%;
+  min-width: 0;
   color: var(--c-text);
 }
 
@@ -1169,11 +1179,16 @@ button.active {
   background: transparent;
 }
 
+/* Sized off --os-glyph-size (set per tile variant on the wrapper) so the
+   edit-mode buttons can anchor to the glyph's edges rather than to the much
+   wider grid cell. min()/aspect-ratio keep it square and inside its cell even
+   on a viewport too narrow for the nominal size. */
 .os-app-icon-glyph {
   position: relative;
   font-size: 2rem;
-  width: 56px;
-  height: 56px;
+  width: min(var(--os-glyph-size, 56px), 100%);
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1208,14 +1223,23 @@ button.active {
   text-align: center;
 }
 
+/* Labels wrap to at most two lines inside their own cell instead of being
+   cut off after ~10 characters on one line. min-height reserves the second
+   line so glyph rows stay aligned whether or not a name wraps. */
 .os-app-icon-label {
   font-size: var(--fs-sm);
   color: var(--c-text-2);
   text-align: center;
-  max-width: 84px;
+  max-width: 100%;
+  line-height: 1.25;
+  min-height: calc(2 * 1.25em);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 
 .home-app-grid-header {
@@ -1295,6 +1319,11 @@ button.active {
 
 .os-app-icon-wrapper {
   position: relative;
+  width: 100%;
+  min-width: 0;
+  /* Default glyph size; each size variant below overrides it, and the glyph
+     plus the edit-mode buttons all derive their geometry from it. */
+  --os-glyph-size: 56px;
 }
 
 .os-app-icon-wrapper.edit-mode {
@@ -1319,10 +1348,13 @@ button.active {
   }
 }
 
+/* Anchored to the glyph's top-left corner (the glyph is centred in a cell
+   that is wider than it), not the cell's — otherwise the button floats off
+   in empty space next to the icon it belongs to. */
 .os-app-icon-hide-button {
   position: absolute;
-  top: -4px;
-  left: -4px;
+  top: calc(var(--space-2) - 8px);
+  left: calc(50% - var(--os-glyph-size, 56px) / 2 - 8px);
   width: 22px;
   height: 22px;
   padding: 0;
@@ -1339,10 +1371,12 @@ button.active {
   background: var(--c-danger);
 }
 
+/* Bottom-right of the glyph, so it shares neither corner with the hide
+   button nor with the notification badge at the glyph's top-right. */
 .os-app-icon-delete-button {
   position: absolute;
-  top: -4px;
-  right: -4px;
+  top: calc(var(--space-2) + var(--os-glyph-size, 56px) - 14px);
+  left: calc(50% + var(--os-glyph-size, 56px) / 2 - 14px);
   width: 22px;
   height: 22px;
   padding: 0;
@@ -1362,29 +1396,40 @@ button.active {
 /* Project tiles get a bigger glyph than static apps, so the projects a user
    actually works in stand out on a homescreen that's otherwise mostly
    utility apps. */
+.os-app-icon-wrapper--large {
+  --os-glyph-size: 96px;
+}
+
 .os-app-icon-wrapper--large .os-app-icon-glyph {
-  width: 96px;
-  height: 96px;
   font-size: 3.2rem;
-  border-radius: var(--radius-md);
 }
 
 .os-app-icon-wrapper--large .os-app-icon-label {
-  max-width: 112px;
   font-size: var(--fs-sm);
 }
 
 /* Emmy is the centerpiece of the overlay — its tile outranks even project
    tiles in size. */
+.os-app-icon-wrapper--hero {
+  --os-glyph-size: 116px;
+}
+
+/* The hero tile is wider than one grid column by design — spanning two keeps
+   it out of its neighbour's cell. Only above ~360px, though: on a narrower
+   viewport the grid can be single-column, where a span would force an
+   implicit second column and push the grid off-screen. There the glyph simply
+   shrinks to the cell instead (see the min() on .os-app-icon-glyph). */
+@media (min-width: 360px) {
+  .os-app-icon-wrapper--hero {
+    grid-column: span 2;
+  }
+}
+
 .os-app-icon-wrapper--hero .os-app-icon-glyph {
-  width: 116px;
-  height: 116px;
   font-size: 3.8rem;
-  border-radius: var(--radius-md);
 }
 
 .os-app-icon-wrapper--hero .os-app-icon-label {
-  max-width: 132px;
   font-size: var(--fs-sm);
   font-weight: 600;
 }
@@ -1620,15 +1665,21 @@ button.active {
   gap: var(--space-2);
 }
 
+/* Wraps rather than overflowing: name, status and the commit badge together
+   are wider than a phone-width header. */
 .project-workspace-title {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
   font-weight: 600;
+  min-width: 0;
 }
 
 .project-workspace-name {
   font-size: var(--fs-base);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .project-workspace-title .project-status-label {
@@ -1670,30 +1721,140 @@ button.active {
   color: var(--c-text);
 }
 
-.project-icon-picker {
+/* --- Icon picker (IconPicker.tsx) --- */
+
+.icon-picker {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
+  flex-direction: column;
+  gap: var(--space-2);
   padding: var(--space-2);
   background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  max-width: 520px;
+}
+
+.icon-picker-header {
+  display: flex;
+  gap: var(--space-1);
   align-items: center;
 }
 
-.project-icon-picker-option {
+.icon-picker-search {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+}
+
+.icon-picker-close {
   background: transparent;
   border: none;
-  font-size: var(--fs-lg);
-  padding: var(--space-1);
+  color: var(--c-text-2);
+  font-size: var(--fs-sm);
   line-height: 1;
+  padding: var(--space-1);
 }
 
-.project-icon-picker-option:hover {
-  background: var(--c-surface-2-hover);
+.icon-picker-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-0);
+}
+
+.icon-picker-category {
+  font-size: var(--fs-xs);
+  padding: var(--space-0) var(--space-1);
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--c-border);
+  color: var(--c-text-2);
+}
+
+.icon-picker-category.is-active {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  color: var(--c-on-solid);
+}
+
+.icon-picker-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.icon-picker-section-title {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--c-text-3);
+}
+
+.icon-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  gap: var(--space-0);
+}
+
+/* The main grid scrolls so a long category can't push the search field and
+   the custom-icon field out of reach. */
+.icon-picker-grid--scroll {
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: var(--space-0);
+}
+
+.icon-picker-option {
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
+  font-size: var(--fs-lg);
+  line-height: 1;
+  padding: var(--space-1) var(--space-0);
+  aspect-ratio: 1 / 1;
 }
 
-.project-icon-picker-reset {
+.icon-picker-option:hover {
+  background: var(--c-surface-2-hover);
+}
+
+.icon-picker-option.is-active {
+  border-color: var(--c-accent);
+  background: var(--c-surface);
+}
+
+.icon-picker-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--c-text-3);
+}
+
+.icon-picker-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--c-border);
+  padding-top: var(--space-2);
+}
+
+.icon-picker-custom {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.icon-picker-custom input {
+  width: 9rem;
+  min-width: 0;
+  font-size: var(--fs-sm);
+}
+
+.icon-picker-custom button,
+.icon-picker-reset {
   font-size: var(--fs-xs);
 }
 

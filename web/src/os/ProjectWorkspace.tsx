@@ -11,10 +11,9 @@ import { PlansTab } from "./PlansTab";
 import { ObsidianTab } from "./ObsidianTab";
 import { DecisionBoard } from "./DecisionBoard";
 import { defaultProjectIcon } from "./project-icon";
+import { IconPicker } from "./IconPicker";
 
 type Tab = "terminal" | "logs" | "files" | "plans" | "obsidian" | "decisions";
-
-const ICON_PRESETS = ["📁", "🚀", "💻", "🌐", "🔧", "📦", "🗂", "⚙️", "📊", "🔒", "🎨", "🛠", "📡", "🧩", "☁️", "🐳", "🔥", "📈"];
 
 const STATUS_LABEL: Record<ProjectSummary["status"], string> = {
   online: "läuft",
@@ -202,16 +201,12 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
           )}
         </div>
         {iconPickerOpen && (
-          <div className="project-icon-picker">
-            {ICON_PRESETS.map((icon) => (
-              <button key={icon} onClick={() => setIcon(icon)} className="project-icon-picker-option">
-                {icon}
-              </button>
-            ))}
-            <button onClick={() => setIcon(null)} className="project-icon-picker-reset">
-              Zurücksetzen
-            </button>
-          </div>
+          <IconPicker
+            value={project.icon || defaultProjectIcon(project.id)}
+            onSelect={(icon) => setIcon(icon)}
+            onReset={() => setIcon(null)}
+            onClose={() => setIconPickerOpen(false)}
+          />
         )}
         {actionError && <p className="login-error">{actionError}</p>}
         {project.status === "online" && (project.cpuPercent !== null || project.memoryBytes !== null) && (
