@@ -1371,3 +1371,62 @@ Antwort: `{"triggered": ["<chatId>", ...], "failed": [...]}`.
       sie als neue Nachricht im Chat, ohne dass Aaron etwas geschickt hat
 - [ ] Ein zweiter Tick innerhalb derselben Stunde löst denselben Chat NICHT
       erneut aus (`lastRecurringCheckAt` wurde nach dem ersten Tick gesetzt)
+
+## 17. Troubleshooting: Claude verlangt ständig einen neuen Login
+
+Symptom: Man loggt sich in einer Projekt-Session per `/login` ein, und nach
+kurzer Zeit — oder spätestens beim nächsten Öffnen eines Projekts — ist man
+wieder ausgeloggt.
+
+### 17.1 Ursache (behoben)
+
+Jedes Projekt hat ein eigenes Claude-Config-Verzeichnis unter
+`data/claude-homes/<projekt-id>/`; nur die Zugangsdaten
+(`.credentials.json`) sind für alle Projekte dieselben, weil es derselbe
+Account ist. Diese Datei war früher ein **Symlink** auf das geteilte Login
+unter `CLAUDE_SHARED_HOME`.
+
+Claude Code schreibt `.credentials.json` aber nicht direkt, sondern legt eine
+temporäre Datei daneben an und benennt sie per `rename()` über die alte.
+`rename()` **ersetzt** einen Symlink, statt durch ihn hindurchzuschreiben.
+Folge: Beim ersten Token-Refresh in einem Projekt wurde aus dem Symlink eine
+private normale Datei mit dem frischen Token — und das geteilte Login sah nie
+wieder eine Aktualisierung. Beim nächsten Session-Start stellte Overlay fest
+"das ist kein Symlink mehr", **löschte die Datei mit dem einzigen gültigen
+Token** und verlinkte wieder auf das inzwischen veraltete geteilte Login.
+
+Weil Refresh-Tokens bei Benutzung rotieren, funktionierte der so
+wiederhergestellte alte Token nicht mehr. Der fehlgeschlagene Refresh
+schrieb die geteilte Datei mit **leeren** Tokens zurück (`accessToken: ""`,
+`expiresAt: 0`) — ab da war jede neu geöffnete Session sofort ausgeloggt.
+
+Seit `pty/claude-home.ts` die Zugangsdaten in **beide Richtungen kopiert**
+statt sie zu verlinken, tritt das nicht mehr auf: Beide Seiten sind normale
+Dateien (das erwartet Claude Codes `rename()`), beim Session-Start bekommt
+das Projekt das frischeste Login, und beim Session-Ende wandert ein dort
+erneuerter Token zurück ins geteilte Login. Ein leergeschriebenes oder
+abgelaufenes Login gewinnt dabei nie über ein gültiges.
+
+### 17.2 Einmalige Reparatur eines bereits leeren geteilten Logins
+
+Auf einem Server, der den Fehler schon hatte, kann `CLAUDE_SHARED_HOME`
+bereits die leergeschriebene Datei enthalten. Prüfen (zeigt keine Tokens an,
+nur ihre Länge):
+
+```
+node -e 'const o=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).claudeAiOauth||{};
+console.log("accessToken:",(o.accessToken||"").length,"refreshToken:",(o.refreshToken||"").length,
+"expiresAt:",o.expiresAt?new Date(o.expiresAt).toISOString():o.expiresAt)' \
+  /home/<user>/.claude/.credentials.json
+```
+
+Stehen dort Längen von `0` bzw. `expiresAt: 0`, ist dieses Login tot. Es
+genügt, sich **einmal** in einer beliebigen Projekt-Session neu einzuloggen
+(`/login`): Beim Beenden der Session trägt Overlay den frischen Token
+automatisch ins geteilte Login zurück, und alle anderen Projekte übernehmen
+ihn beim nächsten Start. Ein manuelles Kopieren der Datei ist nicht nötig.
+
+Hat ein Projekt-Verzeichnis noch einen gültigen Token (Längen > 0 und
+`expiresAt` in der Zukunft), reicht sogar ein Neustart des Overlay-Servers
+plus einmaliges Öffnen dieses Projekts — der Abgleich läuft bei jedem
+Session-Start und -Ende.

@@ -21,7 +21,27 @@ fs.mkdirSync(path.join(fakeHome, ".claude"), { recursive: true });
 fs.writeFileSync(path.join(fakeHome, ".claude", ".credentials.json"), '{"token":"shared"}');
 fs.writeFileSync(path.join(fakeHome, ".claude", "settings.json"), '{"model":"opus"}');
 
-const { ensureProjectClaudeHome, hasExistingConversation } = await import("./claude-home.js");
+const { ensureProjectClaudeHome, hasExistingConversation, syncClaudeCredentials } = await import("./claude-home.js");
+
+const sharedFile = path.join(fakeHome, ".claude", ".credentials.json");
+
+/** Writes a credentials file in the real claudeAiOauth shape. */
+function writeCredential(file: string, oauth: Record<string, unknown>): void {
+  fs.writeFileSync(file, JSON.stringify({ claudeAiOauth: { accessToken: "a", refreshToken: "r", ...oauth } }));
+}
+
+function writeShared(oauth: Record<string, unknown>): void {
+  writeCredential(sharedFile, oauth);
+}
+
+function readOauth(file: string): Record<string, string> {
+  return JSON.parse(fs.readFileSync(file, "utf8")).claudeAiOauth;
+}
+
+/** Back to the plain fixture the shape-agnostic tests expect. */
+function resetShared(): void {
+  fs.writeFileSync(sharedFile, '{"token":"shared"}');
+}
 
 before(() => process.chdir(workdir));
 after(() => {
@@ -42,20 +62,82 @@ test("each project gets its own directory", () => {
   assert.ok(fs.statSync(b).isDirectory());
 });
 
-test("credentials are linked to the shared ones, not copied", () => {
-  // A copy would go stale the moment the shared token is refreshed, leaving
-  // that project logged out for no visible reason.
+test("credentials are copied into the project as a real file, never a symlink", () => {
+  // A symlink is what broke this before: Claude Code refreshes its token by
+  // renaming a new file over .credentials.json, and a rename replaces the
+  // link instead of following it. The shared login then never saw another
+  // refresh, and the next session start deleted the only valid token to
+  // restore the link.
   const home = ensureProjectClaudeHome("linked");
-  const link = path.join(home, ".credentials.json");
-  assert.ok(fs.lstatSync(link).isSymbolicLink(), "must be a symlink");
-  assert.equal(fs.readFileSync(link, "utf8"), '{"token":"shared"}');
+  const file = path.join(home, ".credentials.json");
+  assert.ok(!fs.lstatSync(file).isSymbolicLink(), "must be a real file, not a symlink");
+  assert.equal(fs.readFileSync(file, "utf8"), '{"token":"shared"}');
 });
 
-test("a refreshed shared credential is visible to an existing project home", () => {
+test("a symlink left over from the previous scheme is replaced by a real file", () => {
+  const home = ensureProjectClaudeHome("legacy-link");
+  const file = path.join(home, ".credentials.json");
+  fs.rmSync(file);
+  fs.symlinkSync(path.join(fakeHome, ".claude", ".credentials.json"), file);
+
+  ensureProjectClaudeHome("legacy-link");
+  assert.ok(!fs.lstatSync(file).isSymbolicLink(), "the old link must not survive an upgrade");
+  assert.equal(fs.readFileSync(file, "utf8"), '{"token":"shared"}');
+});
+
+test("a refreshed shared credential reaches an existing project home", () => {
   const home = ensureProjectClaudeHome("refresh");
-  fs.writeFileSync(path.join(fakeHome, ".claude", ".credentials.json"), '{"token":"rotated"}');
-  assert.equal(fs.readFileSync(path.join(home, ".credentials.json"), "utf8"), '{"token":"rotated"}');
-  fs.writeFileSync(path.join(fakeHome, ".claude", ".credentials.json"), '{"token":"shared"}');
+  writeShared({ refreshToken: "rotated", expiresAt: 5_000 });
+  ensureProjectClaudeHome("refresh");
+  assert.equal(readOauth(path.join(home, ".credentials.json")).refreshToken, "rotated");
+  resetShared();
+});
+
+test("a token refreshed inside a project is carried back to the shared login", () => {
+  // The direction that was missing entirely before: without it, a project
+  // that refreshes holds the only working token and every other project
+  // keeps starting from an older one — which no longer works, because
+  // refresh tokens rotate on use.
+  const home = ensureProjectClaudeHome("carries-back");
+  writeCredential(path.join(home, ".credentials.json"), { refreshToken: "refreshed-inside", expiresAt: 9_000 });
+
+  syncClaudeCredentials(home);
+  assert.equal(readOauth(sharedFile).refreshToken, "refreshed-inside");
+  resetShared();
+});
+
+test("an emptied credentials file never wins over a real login", () => {
+  // Exactly the state the live shared file was found in: valid JSON, right
+  // shape, but the tokens blanked to "" by a failed refresh. Treating that
+  // as newer would log every project out.
+  const home = ensureProjectClaudeHome("emptied");
+  writeCredential(path.join(home, ".credentials.json"), { refreshToken: "still-valid", expiresAt: 4_000 });
+  syncClaudeCredentials(home);
+
+  // The blanked file is written last, so it is also the newest by mtime.
+  writeShared({ refreshToken: "", accessToken: "", expiresAt: 0 });
+  syncClaudeCredentials(home);
+
+  assert.equal(readOauth(path.join(home, ".credentials.json")).refreshToken, "still-valid", "the project keeps its login");
+  assert.equal(readOauth(sharedFile).refreshToken, "still-valid", "and repairs the shared one");
+  resetShared();
+});
+
+test("the later-expiring token wins regardless of which side it is on", () => {
+  const home = ensureProjectClaudeHome("newest-wins");
+  writeCredential(path.join(home, ".credentials.json"), { refreshToken: "older", expiresAt: 1_000 });
+  writeShared({ refreshToken: "newer", expiresAt: 8_000 });
+
+  syncClaudeCredentials(home);
+  assert.equal(readOauth(path.join(home, ".credentials.json")).refreshToken, "newer");
+  resetShared();
+});
+
+test("a project with no login yet is left alone when nothing is shared either", () => {
+  fs.rmSync(sharedFile);
+  const home = ensureProjectClaudeHome("nothing-anywhere");
+  assert.ok(!fs.existsSync(path.join(home, ".credentials.json")), "must not invent an empty credentials file");
+  resetShared();
 });
 
 test("settings are copied so a project can diverge without affecting others", () => {
@@ -83,14 +165,18 @@ test("calling it again for the same project is harmless", () => {
   assert.equal(fs.readFileSync(path.join(second, "projects", "keep.jsonl"), "utf8"), "transcript");
 });
 
-test("a broken or replaced credential link is repaired", () => {
+test("an unparseable credentials file is replaced from the shared login", () => {
   const home = ensureProjectClaudeHome("repair");
-  fs.rmSync(path.join(home, ".credentials.json"));
-  fs.writeFileSync(path.join(home, ".credentials.json"), "stale copy");
+  const file = path.join(home, ".credentials.json");
+  fs.writeFileSync(file, "not json at all");
+  // An unreadable file carries no expiry, so the shared login's real one
+  // outranks it — otherwise a corrupted file would keep the project logged
+  // out even though a good token exists.
+  writeShared({ refreshToken: "usable", expiresAt: 7_000 });
+
   ensureProjectClaudeHome("repair");
-  const link = path.join(home, ".credentials.json");
-  assert.ok(fs.lstatSync(link).isSymbolicLink());
-  assert.equal(fs.readFileSync(link, "utf8"), '{"token":"shared"}');
+  assert.equal(readOauth(file).refreshToken, "usable");
+  resetShared();
 });
 
 test("project ids that could climb out of the root are refused", () => {

@@ -45,9 +45,10 @@ server.listen(config.PORT, config.BIND_ADDRESS, () => {
     );
   }
   // Loud on every start, because this is otherwise a silent failure: without
-  // it, ensureProjectClaudeHome() just skips the credentials symlink (see
-  // pty/claude-home.ts's linkCredentials) and every project terminal quietly
-  // falls back to prompting for /login instead of sharing the one account.
+  // it, ensureProjectClaudeHome() has nothing to seed a project's credentials
+  // from (see pty/claude-home.ts's syncClaudeCredentials) and every project
+  // terminal quietly falls back to prompting for /login instead of sharing
+  // the one account.
   if (!fs.existsSync(sharedCredentialsFile())) {
     console.warn(
       `[claude-home] No Claude Code credentials found at ${sharedCredentialsFile()} — every project terminal will prompt for /login instead of sharing one account. ` +
