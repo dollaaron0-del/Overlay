@@ -126,6 +126,8 @@ export class InvalidDirNameError extends Error {}
 export class InvalidSystemdUnitError extends Error {}
 export class InvalidPm2RootNameError extends Error {}
 export class InvalidExternalUrlError extends Error {}
+export class InvalidCodeDirError extends Error {}
+export class CodeDirWrongKindError extends Error {}
 
 function assertValidDirName(dirName: string): void {
   // Must be a single path segment directly under APPS_ROOT — no traversal, no absolute paths.
@@ -173,6 +175,19 @@ function assertValidExternalUrl(url: string): void {
   }
   if (parsed.protocol !== "https:") {
     throw new InvalidExternalUrlError(`External URL must be https: ${url}`);
+  }
+}
+
+async function assertValidCodeDir(codeDir: string): Promise<void> {
+  // Becomes a read-write bind mount inside the project's sandbox, so a relative
+  // path or a file (rather than a directory) would either miss silently or
+  // expose the wrong thing — reject early with a clear message.
+  if (!path.isAbsolute(codeDir)) {
+    throw new InvalidCodeDirError(`codeDir must be an absolute path: ${codeDir}`);
+  }
+  const stat = await fs.stat(codeDir).catch(() => null);
+  if (!stat || !stat.isDirectory()) {
+    throw new InvalidCodeDirError(`codeDir does not exist or is not a directory: ${codeDir}`);
   }
 }
 
@@ -285,6 +300,30 @@ export async function updateProjectExternalUrl(id: string, url: string | null): 
     if (index === -1) return { next: current, result: undefined };
     const next = [...current];
     next[index] = { ...next[index], externalUrl: url ?? undefined };
+    return { next, result: next[index] };
+  });
+}
+
+/**
+ * Sets (or clears, with null) the absolute host path to a systemd/pm2-root
+ * project's real code, which its sandboxed terminal then binds in read-write.
+ * Rejects a normal PM2 project (its code already lives under APPS_ROOT) and a
+ * path that is not an existing directory.
+ */
+export async function updateProjectCodeDir(id: string, codeDir: string | null): Promise<Project | undefined> {
+  if (codeDir) await assertValidCodeDir(codeDir);
+  const existing = await getProject(id);
+  if (!existing) return undefined;
+  if (codeDir && existing.kind !== "systemd" && existing.kind !== "pm2-root") {
+    throw new CodeDirWrongKindError(
+      `codeDir only applies to systemd/pm2-root projects, not kind "${existing.kind ?? "pm2"}"`,
+    );
+  }
+  return mutateProjects((current) => {
+    const index = current.findIndex((p) => p.id === id);
+    if (index === -1) return { next: current, result: undefined };
+    const next = [...current];
+    next[index] = { ...next[index], codeDir: codeDir ?? undefined };
     return { next, result: next[index] };
   });
 }

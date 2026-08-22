@@ -64,6 +64,9 @@ export function getOrCreateSession(project: Project): PtySession {
         serverDir: process.cwd(),
         sharedClaudeHome: sharedClaudeHomeDir(),
         sharedCredentialsFile: sharedCredentialsFile(),
+        // A systemd/pm2-root project's real code lives outside APPS_ROOT; bind
+        // it in so its terminal edits the actual app, not the empty placeholder.
+        ...(project.codeDir ? { extraMounts: [{ path: realPathOrSelf(project.codeDir) }] } : {}),
       })
     : { command: config.CLAUDE_COMMAND, args: claudeArgs };
 

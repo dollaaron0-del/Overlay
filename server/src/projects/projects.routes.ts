@@ -2,7 +2,9 @@ import { Router } from "express";
 import { z } from "zod";
 import {
   addProject,
+  CodeDirWrongKindError,
   getProject,
+  InvalidCodeDirError,
   InvalidDirNameError,
   InvalidExternalUrlError,
   InvalidPm2RootNameError,
@@ -14,6 +16,7 @@ import {
   resolveProjectDir,
   scaffoldProject,
   updateProjectAutoDeploy,
+  updateProjectCodeDir,
   updateProjectExternalUrl,
   updateProjectHomeSection,
   updateProjectIcon,
@@ -186,6 +189,7 @@ const updateProjectSchema = z.object({
   homeSection: z.enum(["dashboard", "terminal"]).nullable().optional(),
   externalUrl: z.string().min(1).nullable().optional(),
   autoDeployOnCommit: z.boolean().optional(),
+  codeDir: z.string().min(1).nullable().optional(),
 });
 
 projectsRouter.patch("/:id", async (req, res) => {
@@ -199,7 +203,8 @@ projectsRouter.patch("/:id", async (req, res) => {
     parsed.data.name === undefined &&
     parsed.data.homeSection === undefined &&
     parsed.data.externalUrl === undefined &&
-    parsed.data.autoDeployOnCommit === undefined
+    parsed.data.autoDeployOnCommit === undefined &&
+    parsed.data.codeDir === undefined
   ) {
     res.status(400).json({ error: "invalid_request", message: "Nothing to update" });
     return;
@@ -258,6 +263,25 @@ projectsRouter.patch("/:id", async (req, res) => {
       return;
     }
     updated = await updateProjectAutoDeploy(req.params.id, parsed.data.autoDeployOnCommit);
+  }
+  if (updated && parsed.data.codeDir !== undefined) {
+    // Binds an external directory into the project's sandboxed terminal —
+    // only meaningful for a systemd/pm2-root project whose APPS_ROOT dir is an
+    // empty placeholder. A restart of the project's terminal is needed for the
+    // new mount to take effect (the sandbox is built at session start).
+    try {
+      updated = await updateProjectCodeDir(req.params.id, parsed.data.codeDir);
+    } catch (err) {
+      if (err instanceof InvalidCodeDirError) {
+        res.status(400).json({ error: "invalid_code_dir", message: err.message });
+        return;
+      }
+      if (err instanceof CodeDirWrongKindError) {
+        res.status(400).json({ error: "code_dir_wrong_kind", message: err.message });
+        return;
+      }
+      throw err;
+    }
   }
   if (!updated) {
     res.status(404).json({ error: "not_found" });

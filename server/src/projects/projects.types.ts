@@ -45,6 +45,17 @@ export interface Project {
   /** Optional custom display name, set via PATCH /:id. Falls back to dirName. */
   name?: string;
   /**
+   * Absolute host path to this project's real code, for a "systemd"/"pm2-root"
+   * project whose dirName under APPS_ROOT is only an empty placeholder. When
+   * set, the project's sandboxed terminal binds this directory in (read-write)
+   * so a session can actually edit the externally-managed app instead of
+   * staring at an empty stub. Set via PATCH /:id. Undefined = today's behavior
+   * (terminal sees only the empty placeholder). Only honored for
+   * "systemd"/"pm2-root" kinds — a normal PM2 project already lives under
+   * APPS_ROOT.
+   */
+  codeDir?: string;
+  /**
    * Manual override for which home-screen section this project's tile
    * appears in, set via PATCH /:id. Undefined = automatic: "dashboard" for
    * kind "systemd"/"pm2-root" (both link out to an externalUrl instead of
