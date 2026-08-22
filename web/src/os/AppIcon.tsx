@@ -63,7 +63,9 @@ export function AppIcon({
         <span className="os-app-icon-glyph">
           {icon}
           {statusDot && <span className={`status-dot status-${statusDot} os-app-icon-status`} />}
-          {!!badge && <span className="os-app-icon-badge">{badge > 99 ? "99+" : badge}</span>}
+          {/* Suppressed while editing: the badge sits in the same corner the
+              edit-mode buttons occupy, and it isn't actionable there anyway. */}
+          {!!badge && !editMode && <span className="os-app-icon-badge">{badge > 99 ? "99+" : badge}</span>}
           {editMode && selected && <span className="os-app-icon-selected-check">✓</span>}
         </span>
         <span className="os-app-icon-label">{label}</span>
