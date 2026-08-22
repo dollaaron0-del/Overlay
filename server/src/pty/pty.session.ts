@@ -2,6 +2,8 @@ import * as pty from "node-pty";
 import type { IPty } from "node-pty";
 
 const SCROLLBACK_MAX_CHARS = 1_000_000; // ~1MB of terminal output
+/** `ESC ] 52 ; <params> ; <payload>` terminated by BEL or ST. */
+const OSC_52 = /\x1b\]52;[^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const INITIAL_COLS = 80;
 const INITIAL_ROWS = 24;
 
@@ -129,9 +131,19 @@ export class PtySession {
     return { cols: this.cols, rows: this.rows };
   }
 
-  /** Returns the current scrollback so a newly attached client can repaint the terminal. */
+  /**
+   * Returns the current scrollback so a newly attached client can repaint the terminal.
+   *
+   * OSC 52 is stripped out first. It writes to the client's system clipboard
+   * and is a one-shot command rather than display state, so replaying it on
+   * every reattach silently overwrote whatever the user had copied since --
+   * the claude CLI puts its login link on the clipboard that way, and
+   * reattaching after copying the auth code off the website pasted the stale
+   * link instead. Live subscribers still get OSC 52 untouched (see onData
+   * above), so copying from the terminal as it happens keeps working.
+   */
   getScrollback(): string {
-    return this.scrollback;
+    return this.scrollback.replace(OSC_52, "");
   }
 
   onData(listener: (chunk: string) => void): () => void {
