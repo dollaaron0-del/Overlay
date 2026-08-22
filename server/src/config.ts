@@ -73,10 +73,13 @@ const schema = z.object({
   // sandbox, so wrapping it in one would defeat the point. It is reachable by
   // anyone who can reach this app itself, i.e. anyone Overlay's own auth (or
   // AUTH_DISABLED's front proxy) already lets in — same trust boundary as
-  // every other route. Empty/unset = fall back to $SHELL, then /bin/bash.
+  // every other route. Empty/unset = fall back to $SHELL, then /bin/bash,
+  // then /bin/sh — skipping any of those that is a refusing shell
+  // (/usr/sbin/nologin, /bin/false), which is exactly what $SHELL is for
+  // this hardened service user. See resolveHostShell() for why.
   HOST_TERMINAL_SHELL: z.string().default(""),
   // Working directory the host terminal starts in. Empty/unset = this
-  // process's own home directory.
+  // process's own home directory, or / when that does not exist.
   HOST_TERMINAL_CWD: z.string().default(""),
   // Only consulted outside production: the Vite dev server runs on its own
   // port and proxies /api and /ws through to this backend, so the browser's
