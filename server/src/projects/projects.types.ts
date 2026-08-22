@@ -52,8 +52,9 @@ export interface Project {
    * Claude Code keys its conversation/--continue to it — so a session actually
    * edits the externally-managed app rather than staring at an empty stub. Set
    * via PATCH /:id. Undefined = the terminal runs in the APPS_ROOT dir as
-   * before. Only honored for "systemd"/"pm2-root" kinds — a normal PM2 project
-   * already lives under APPS_ROOT.
+   * before. Allowed for any kind: it's an explicit opt-in override, and a
+   * placeholder-style project (empty APPS_ROOT dir, real app elsewhere) may be
+   * registered as plain "pm2" too, not only "systemd"/"pm2-root".
    */
   codeDir?: string;
   /**
