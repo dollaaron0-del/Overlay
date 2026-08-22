@@ -1,0 +1,35 @@
+name: Auto-PR
+
+# Sobald ein overlay-agent/*-Branch gepusht wird, wird automatisch ein PR
+# gegen den Default-Branch geoeffnet - falls noch keiner existiert.
+
+on:
+  push:
+    branches:
+      - 'overlay-agent/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: PR anlegen, falls keiner existiert
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ "$BRANCH" = "$BASE" ]; then
+            echo "Push auf Default-Branch, kein PR noetig."; exit 0
+          fi
+          if gh pr view "$BRANCH" --repo "$REPO" --json number >/dev/null 2>&1; then
+            echo "Es existiert bereits ein PR fuer $BRANCH."; exit 0
+          fi
+          gh pr create --repo "$REPO" --base "$BASE" --head "$BRANCH" \
+            --title "$BRANCH" \
+            --body $'Automatisch erstellter PR fuer `'"$BRANCH"$'`.\n\nLabel **automerge** setzen -> nach gruener CI wird automatisch gesquasht, gemergt und der Branch geloescht.'

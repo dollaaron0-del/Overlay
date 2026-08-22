@@ -1,0 +1,74 @@
+name: Auto-Merge
+
+# Mergt einen PR automatisch, wenn BEIDES zutrifft:
+#   1) Label "automerge" ist gesetzt
+#   2) die CI (statusCheckRollup) ist vollstaendig gruen
+# Getriggert wird nach jedem CI-Lauf (workflow_run) und wenn das Label
+# nachtraeglich gesetzt wird (pull_request: labeled).
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: PR ermitteln und ggf. mergen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          WR_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WR_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          LABEL_NAME: ${{ github.event.label.name }}
+        run: |
+          set -euo pipefail
+
+          # PR-Nummer bestimmen, je nach Ausloeser
+          if [ "$EVENT" = "workflow_run" ]; then
+            if [ "$WR_CONCLUSION" != "success" ]; then
+              echo "CI-Lauf nicht erfolgreich ($WR_CONCLUSION) -> nichts tun."; exit 0
+            fi
+            NUMBER=$(gh pr list --repo "$REPO" --head "$WR_BRANCH" --state open \
+              --json number --jq '.[0].number // empty')
+          else
+            # pull_request: labeled
+            if [ "$LABEL_NAME" != "automerge" ]; then
+              echo "Anderes Label ($LABEL_NAME) -> nichts tun."; exit 0
+            fi
+            NUMBER="$PR_NUMBER"
+          fi
+
+          if [ -z "${NUMBER:-}" ]; then
+            echo "Kein passender offener PR gefunden."; exit 0
+          fi
+          echo "Pruefe PR #$NUMBER ..."
+
+          # Label vorhanden?
+          HAS_LABEL=$(gh pr view "$NUMBER" --repo "$REPO" --json labels \
+            --jq '[.labels[].name] | index("automerge") // empty')
+          if [ -z "$HAS_LABEL" ]; then
+            echo "Label 'automerge' fehlt -> nicht mergen."; exit 0
+          fi
+
+          # CI vollstaendig gruen? (alle Checks SUCCESS/NEUTRAL/SKIPPED, mind. 1 Check)
+          ROLLUP=$(gh pr view "$NUMBER" --repo "$REPO" --json statusCheckRollup --jq '
+            [.statusCheckRollup[]? | (.conclusion // .state // "PENDING")] as $c
+            | if ($c | length) == 0 then "NONE"
+              elif ($c | map(select(. != "SUCCESS" and . != "NEUTRAL" and . != "SKIPPED")) | length) > 0 then "NOT_GREEN"
+              else "GREEN" end')
+          if [ "$ROLLUP" != "GREEN" ]; then
+            echo "CI nicht vollstaendig gruen (Status: $ROLLUP) -> warten."; exit 0
+          fi
+
+          echo "Alle Bedingungen erfuellt -> squash-merge."
+          gh pr merge "$NUMBER" --repo "$REPO" --squash --delete-branch
