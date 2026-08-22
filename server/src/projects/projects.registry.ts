@@ -127,7 +127,6 @@ export class InvalidSystemdUnitError extends Error {}
 export class InvalidPm2RootNameError extends Error {}
 export class InvalidExternalUrlError extends Error {}
 export class InvalidCodeDirError extends Error {}
-export class CodeDirWrongKindError extends Error {}
 
 function assertValidDirName(dirName: string): void {
   // Must be a single path segment directly under APPS_ROOT — no traversal, no absolute paths.
@@ -305,20 +304,17 @@ export async function updateProjectExternalUrl(id: string, url: string | null): 
 }
 
 /**
- * Sets (or clears, with null) the absolute host path to a systemd/pm2-root
- * project's real code, which its sandboxed terminal then binds in read-write.
- * Rejects a normal PM2 project (its code already lives under APPS_ROOT) and a
- * path that is not an existing directory.
+ * Sets (or clears, with null) the absolute host path to a project's real code,
+ * which its sandboxed terminal then runs in (bound read-write) instead of the
+ * APPS_ROOT dir. Allowed for any kind: it's an explicit opt-in override, and a
+ * project whose APPS_ROOT dir is only an empty placeholder can be registered as
+ * plain "pm2" too (e.g. an externally-managed app that still wants a terminal).
+ * Rejects only a path that is not an existing directory.
  */
 export async function updateProjectCodeDir(id: string, codeDir: string | null): Promise<Project | undefined> {
   if (codeDir) await assertValidCodeDir(codeDir);
   const existing = await getProject(id);
   if (!existing) return undefined;
-  if (codeDir && existing.kind !== "systemd" && existing.kind !== "pm2-root") {
-    throw new CodeDirWrongKindError(
-      `codeDir only applies to systemd/pm2-root projects, not kind "${existing.kind ?? "pm2"}"`,
-    );
-  }
   return mutateProjects((current) => {
     const index = current.findIndex((p) => p.id === id);
     if (index === -1) return { next: current, result: undefined };
