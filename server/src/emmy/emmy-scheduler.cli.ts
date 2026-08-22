@@ -12,18 +12,20 @@
 // so the actual mutation happens inside the one process that owns the cache
 // — this CLI is only the thing systemd's timer can independently schedule.
 import { config } from "../config.js";
+import { getSchedulerToken } from "./emmy-scheduler-token.js";
 
-if (!config.AUTOMATION_TOKEN) {
-  console.error("[emmy-scheduler] AUTOMATION_TOKEN ist nicht konfiguriert — recurring tasks können nicht ausgelöst werden.");
-  process.exit(1);
-}
+// Shared with the server via a file in data/ and created on first use, so a
+// tick never fails just because no operator configured a token — the previous
+// version required AUTOMATION_TOKEN here and exited 1 without it, which is why
+// recurring research silently never ran on installs that don't use OpenClaw.
+const token = getSchedulerToken();
 
 const url = `http://127.0.0.1:${config.PORT}/api/emmy/scheduler/run-now`;
 
 try {
   const response = await fetch(url, {
     method: "POST",
-    headers: { Authorization: `Bearer ${config.AUTOMATION_TOKEN}` },
+    headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
