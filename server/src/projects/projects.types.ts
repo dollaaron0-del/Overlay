@@ -47,12 +47,13 @@ export interface Project {
   /**
    * Absolute host path to this project's real code, for a "systemd"/"pm2-root"
    * project whose dirName under APPS_ROOT is only an empty placeholder. When
-   * set, the project's sandboxed terminal binds this directory in (read-write)
-   * so a session can actually edit the externally-managed app instead of
-   * staring at an empty stub. Set via PATCH /:id. Undefined = today's behavior
-   * (terminal sees only the empty placeholder). Only honored for
-   * "systemd"/"pm2-root" kinds — a normal PM2 project already lives under
-   * APPS_ROOT.
+   * set, the project's sandboxed terminal *runs in* this directory instead of
+   * the placeholder: it is bound in read-write, the shell starts there, and
+   * Claude Code keys its conversation/--continue to it — so a session actually
+   * edits the externally-managed app rather than staring at an empty stub. Set
+   * via PATCH /:id. Undefined = the terminal runs in the APPS_ROOT dir as
+   * before. Only honored for "systemd"/"pm2-root" kinds — a normal PM2 project
+   * already lives under APPS_ROOT.
    */
   codeDir?: string;
   /**

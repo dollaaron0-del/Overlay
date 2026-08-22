@@ -53,17 +53,6 @@ export interface SandboxTarget {
    * (e.g. other projects' pre-migration history) stays untouchable.
    */
   sharedCredentialsFile?: string;
-  /**
-   * Extra host paths to re-expose inside the sandbox, on top of the project's
-   * own directory — for a project whose real code lives outside APPS_ROOT
-   * (e.g. an externally, systemd-managed app under a different user's home).
-   * Each entry is bound back in after the tmpfs that hides /home and the apps
-   * root, so it wins even when the path physically sits under /home. Read-write
-   * by default; set readOnly for a path the session should only inspect (e.g. a
-   * logs directory). Empty/undefined keeps the strict "only this project"
-   * boundary unchanged for every project that does not opt in.
-   */
-  extraMounts?: Array<{ path: string; readOnly?: boolean }>;
 }
 
 export function isSandboxAvailable(bwrapPath = "/usr/bin/bwrap"): boolean {
@@ -110,14 +99,6 @@ export function buildSandboxCommand(
     ...(target.sharedCredentialsFile
       ? ["--bind-try", target.sharedCredentialsFile, target.sharedCredentialsFile]
       : []),
-
-    // Re-expose any explicitly configured extra paths (a systemd project's real
-    // code lives outside APPS_ROOT). Listed last so they win over the tmpfs that
-    // hid /home. --*-bind-try, not --*-bind, so a stale/removed path degrades to
-    // "not visible" instead of failing the whole session.
-    ...(target.extraMounts ?? []).flatMap(({ path: p, readOnly }) =>
-      readOnly ? ["--ro-bind-try", p, p] : ["--bind-try", p, p],
-    ),
 
     // Keep the network (the session talks to the API); drop every other
     // namespace. --die-with-parent ties the sandbox to the pty, so closing a
