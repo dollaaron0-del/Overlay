@@ -31,7 +31,13 @@ export function getOrCreateSession(project: Project): PtySession {
   // and a project reached through a link (/opt/apps/Aktien ->
   // /home/aaron/Aktien1) would otherwise land under a different key
   // depending on the path, splitting one project's history in two.
-  const cwd = realPathOrSelf(resolveProjectDir(project));
+  //
+  // A project that pins its real code elsewhere via codeDir (its APPS_ROOT
+  // dir is only an empty placeholder — see Project.codeDir) runs its terminal
+  // *in* that code: the shell starts there, the directory is bound into the
+  // sandbox, and the conversation/--continue key lines up with where edits
+  // actually happen instead of the empty stub.
+  const cwd = realPathOrSelf(project.codeDir ?? resolveProjectDir(project));
   const claudeHome = ensureProjectClaudeHome(project.id, cwd);
   ensureGitCredentialHelper(cwd);
 
@@ -64,9 +70,6 @@ export function getOrCreateSession(project: Project): PtySession {
         serverDir: process.cwd(),
         sharedClaudeHome: sharedClaudeHomeDir(),
         sharedCredentialsFile: sharedCredentialsFile(),
-        // A systemd/pm2-root project's real code lives outside APPS_ROOT; bind
-        // it in so its terminal edits the actual app, not the empty placeholder.
-        ...(project.codeDir ? { extraMounts: [{ path: realPathOrSelf(project.codeDir) }] } : {}),
       })
     : { command: config.CLAUDE_COMMAND, args: claudeArgs };
 

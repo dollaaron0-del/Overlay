@@ -83,36 +83,6 @@ test("no credentials file is bound when none is configured", () => {
   assert.equal(indexOfMount(args, "--bind-try", "/home/aaron/.claude/.credentials.json"), -1);
 });
 
-test("an extra mount is re-bound read-write after /home is hidden", () => {
-  // A systemd project's real code lives outside APPS_ROOT (here under /home),
-  // so like the project itself it must win over the tmpfs that hid /home.
-  const { args } = buildSandboxCommand(
-    "claude",
-    [],
-    { ...target, extraMounts: [{ path: "/home/aaron/Aktien1" }] },
-    "/usr/bin/bwrap",
-  );
-  const homeHidden = indexOfMount(args, "--tmpfs", "/home");
-  const extraBound = indexOfMount(args, "--bind-try", "/home/aaron/Aktien1");
-  assert.ok(homeHidden >= 0 && extraBound > homeHidden, "the extra mount must win over the /home tmpfs");
-});
-
-test("a read-only extra mount uses --ro-bind-try", () => {
-  const { args } = buildSandboxCommand(
-    "claude",
-    [],
-    { ...target, extraMounts: [{ path: "/var/log/aktien", readOnly: true }] },
-    "/usr/bin/bwrap",
-  );
-  assert.ok(indexOfMount(args, "--ro-bind-try", "/var/log/aktien") >= 0);
-  assert.equal(indexOfMount(args, "--bind-try", "/var/log/aktien"), -1, "a read-only mount must not be writable");
-});
-
-test("no extra mounts are added when none are configured", () => {
-  const { args } = buildSandboxCommand("claude", [], target, "/usr/bin/bwrap");
-  assert.equal(indexOfMount(args, "--bind-try", "/home/aaron/Aktien1"), -1);
-});
-
 test("the session starts in the project directory", () => {
   const { args } = buildSandboxCommand("claude", [], target, "/usr/bin/bwrap");
   assert.equal(args[indexOfMount(args, "--chdir", "/opt/apps/alpha") + 1], "/opt/apps/alpha");
