@@ -2,7 +2,12 @@ import { Router } from "express";
 import { getSystemStats } from "./system-stats.js";
 import { runCommand } from "./security/run-tool.js";
 import { appendAuditEntry } from "./audit/audit-log.js";
-import { parseUpdateUnitStatus, describeUpdateFailure, UPDATE_UNIT_PROPERTIES } from "./update-status.js";
+import {
+  parseUpdateUnitStatus,
+  describeUpdateFailure,
+  UPDATE_UNIT_PROPERTIES,
+  UPDATE_JOURNAL_LINES,
+} from "./update-status.js";
 
 export const systemRouter = Router();
 
@@ -58,6 +63,37 @@ systemRouter.post("/update", async (_req, res) => {
 // needs no privileges, so this one goes without sudo.
 const OVERLAY_UPDATE_STATUS_TIMEOUT_MS = 5_000;
 
+/**
+ * The failing run's own output, so the message can name the actual cause
+ * instead of guessing. Filtering by invocation id is what keeps this to the
+ * run that just failed rather than mixing in last week's; like `systemctl
+ * show` above it needs no privileges. Best-effort: if the journal can't be
+ * read (no systemd-journald, restricted access), the caller falls back to the
+ * generic hint rather than losing the status entirely.
+ */
+async function readUpdateJournal(invocationId: string | null): Promise<string | undefined> {
+  if (!invocationId) return undefined;
+  try {
+    const result = await runCommand(
+      "journalctl",
+      [
+        "-u",
+        OVERLAY_UPDATE_UNIT,
+        `_SYSTEMD_INVOCATION_ID=${invocationId}`,
+        "-n",
+        String(UPDATE_JOURNAL_LINES),
+        "-o",
+        "cat",
+        "--no-pager",
+      ],
+      { timeoutMs: OVERLAY_UPDATE_STATUS_TIMEOUT_MS },
+    );
+    return result.stdout || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 systemRouter.get("/update/status", async (_req, res) => {
   try {
     const result = await runCommand(
@@ -66,9 +102,10 @@ systemRouter.get("/update/status", async (_req, res) => {
       { timeoutMs: OVERLAY_UPDATE_STATUS_TIMEOUT_MS },
     );
     const status = parseUpdateUnitStatus(result.stdout);
+    const journal = status.state === "failed" ? await readUpdateJournal(status.invocationId) : undefined;
     res.json({
       ...status,
-      ...(status.state === "failed" ? { message: describeUpdateFailure(status) } : {}),
+      ...(status.state === "failed" ? { message: describeUpdateFailure(status, journal) } : {}),
     });
   } catch (err) {
     // No systemd, unit not installed, systemctl missing: not knowing the state
