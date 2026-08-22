@@ -1298,11 +1298,26 @@ ist er down, schlägt der Tick fehl, wird geloggt, und der nächste Tick
 
 ### 16.1 Voraussetzung
 
-Der Scheduler nutzt denselben `AUTOMATION_TOKEN` wie die
-Automatisierungs-API (Abschnitt 14.2) — falls dort noch nicht gesetzt,
-zuerst dort einrichten. Ohne `AUTOMATION_TOKEN` bleibt der Endpunkt (wie
-`/api/automation/*`) mit 404 unerreichbar und `emmy-scheduler.cli.ts`
-bricht mit einer klaren Fehlermeldung ab, statt still nichts zu tun.
+Keine — der Scheduler benötigt **keine** Token-Konfiguration in `.env`.
+
+Server und `emmy-scheduler.cli.ts` teilen sich ein automatisch beim ersten
+Start erzeugtes Geheimnis in `data/emmy-scheduler-token` (0600, gehört dem
+`overlay`-Nutzer, siehe `server/src/emmy/emmy-scheduler-token.ts`). Der
+Pfad wird aus dem Modulverzeichnis abgeleitet, nicht aus `process.cwd()`,
+weil PM2 den Server aus dem Repo-Root startet, die systemd-Unit die CLI
+aber mit `WorkingDirectory=/opt/overlay/server` — cwd-relativ würden beide
+Prozesse zwei verschiedene Dateien anlegen und die Auth dauerhaft mit 401
+scheitern.
+
+> **Historie:** Bis August 2026 lief der Tick über `AUTOMATION_TOKEN`, also
+> über die *optionale* Opt-in-Anmeldung der OpenClaw-Automatisierungs-API
+> (Abschnitt 14.2). Auf jeder Installation, die OpenClaw nicht nutzt, war
+> dieser Token leer — dann antwortete der Endpunkt mit 404, jeder Tick
+> beendete sich mit Exit 1, und Emmys wiederkehrende Recherchen liefen
+> **nie**, während die Oberfläche sie unverändert als "fällig" anzeigte.
+> Ein interner Cron-Tick darf nicht von einer unabhängigen externen
+> Integration abhängen; deshalb der eigene Token. `AUTOMATION_TOKEN` wird
+> aus Kompatibilität weiterhin akzeptiert, ist aber nicht mehr nötig.
 
 ### 16.2 systemd-Timer einrichten
 
@@ -1348,9 +1363,10 @@ systemctl start overlay-emmy-scheduler.service
 journalctl -u overlay-emmy-scheduler.service -f
 ```
 
-Alternativ direkt gegen den laufenden Server, ohne systemd:
+Alternativ direkt gegen den laufenden Server, ohne systemd — der Token
+steht in `data/emmy-scheduler-token` (nur für den `overlay`-Nutzer lesbar):
 ```
-curl -X POST -H "Authorization: Bearer <AUTOMATION_TOKEN>" \
+curl -X POST -H "Authorization: Bearer $(cat /opt/overlay/data/emmy-scheduler-token)" \
   https://<overlay-host>/api/emmy/scheduler/run-now
 ```
 Antwort: `{"triggered": ["<chatId>", ...], "failed": [...]}`.

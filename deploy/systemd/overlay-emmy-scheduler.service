@@ -15,9 +15,14 @@ Type=oneshot
 User=overlay
 Group=overlay
 
-# Adjust this to wherever the repo actually lives on the server.
+# Adjust this to wherever the repo actually lives on the server. Note the
+# CLI does not depend on this being the same cwd the server runs from: the
+# internal scheduler token is resolved relative to the installed module, not
+# to cwd (see server/src/emmy/emmy-scheduler-token.ts).
 WorkingDirectory=/opt/overlay/server
-EnvironmentFile=/opt/overlay/.env
+# Optional — the scheduler tick itself needs nothing from .env. Kept so the
+# CLI sees PORT if the server was moved off the default.
+EnvironmentFile=-/opt/overlay/.env
 Environment=NODE_ENV=production
 
 ExecStart=/usr/bin/node /opt/overlay/server/dist/emmy/emmy-scheduler.cli.js

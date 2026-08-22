@@ -45,9 +45,11 @@ if [ ! -f /etc/systemd/system/overlay-emmy-scheduler.timer ]; then
   systemctl enable --now overlay-emmy-scheduler.timer
   echo "    Installiert und aktiviert (Takt: alle 15 Minuten)."
 fi
-if ! grep -q '^AUTOMATION_TOKEN=.\+' /opt/overlay/.env 2>/dev/null; then
-  echo "    WARNUNG: AUTOMATION_TOKEN ist in .env nicht gesetzt — der Emmy-Scheduler-Tick schlägt dadurch weiterhin mit 404 fehl (siehe docs/DEPLOYMENT.md Abschnitt 14.2)."
-fi
+# Früher stand hier eine Warnung, falls AUTOMATION_TOKEN in .env fehlt: der
+# Tick lief damals über requireAutomationToken und schlug ohne diesen Token
+# mit 404 fehl. Der Tick nutzt inzwischen einen eigenen, automatisch
+# erzeugten internen Token (server/src/emmy/emmy-scheduler-token.ts), läuft
+# also ohne jede .env-Konfiguration — die Warnung wäre jetzt irreführend.
 
 echo "==> 6/7 Stelle sicher, dass der Auto-Update-Check-Timer installiert ist"
 # Gleiches Muster wie bei Schritt 5/7 oben (Emmy-Scheduler): der Timer lag

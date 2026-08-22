@@ -22,6 +22,7 @@ import { requireEmmyInboundToken } from "./emmy/emmy-inbound.middleware.js";
 import { agentDecisionsRouter } from "./agent-decisions/agent-decisions.routes.js";
 import { agentDecisionsInboundRouter } from "./agent-decisions/agent-decisions-inbound.routes.js";
 import { emmySchedulerRouter } from "./emmy/emmy-scheduler.routes.js";
+import { requireSchedulerToken } from "./emmy/emmy-scheduler.middleware.js";
 import { apiRateLimiter } from "./rate-limit.js";
 import { hasActiveSessions } from "./pty/pty.manager.js";
 
@@ -150,9 +151,11 @@ export function createApp() {
   app.use("/api/automation", requireAutomationToken, automationRouter);
 
   // Hit by the overlay-emmy-scheduler systemd timer (via emmy-scheduler.cli.ts),
-  // which has no browser session — same token/trust model as /api/automation
-  // above, deliberately reusing requireAutomationToken rather than a new token.
-  app.use("/api/emmy/scheduler", requireAutomationToken, emmySchedulerRouter);
+  // which has no browser session. Uses its own auto-generated internal token
+  // rather than AUTOMATION_TOKEN: that one is opt-in for the external OpenClaw
+  // API, and gating an internal cron tick behind it meant recurring research
+  // silently never ran on installs that don't use OpenClaw.
+  app.use("/api/emmy/scheduler", requireSchedulerToken, emmySchedulerRouter);
 
   const protectedApi = express.Router();
   protectedApi.use(requireAuth);
