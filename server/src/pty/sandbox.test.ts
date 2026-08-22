@@ -66,21 +66,30 @@ test("no shared Claude login is bound when none is configured", () => {
   assert.equal(indexOfMount(args, "--ro-bind-try", "/home/aaron/.claude"), -1);
 });
 
-test("the shared credentials file is re-bound read-write, after the read-only shared login", () => {
+test("the shared login stays read-only — no write hole for the credentials file", () => {
+  // The shared credentials file used to be re-bound read-write here so a
+  // refresh inside the sandbox could write it directly. It never could:
+  // Claude Code refreshes by renaming a new file over the old one, and a
+  // rename inside the sandbox cannot replace a file bound from outside. The
+  // hole bought nothing and let a session clobber the machine's one login,
+  // so the whole shared home is read-only again (see pty/claude-home.ts).
   const { args } = buildSandboxCommand(
     "claude",
     [],
-    { ...target, sharedClaudeHome: "/home/aaron/.claude", sharedCredentialsFile: "/home/aaron/.claude/.credentials.json" },
+    { ...target, sharedClaudeHome: "/home/aaron/.claude" },
     "/usr/bin/bwrap",
   );
-  const sharedBound = indexOfMount(args, "--ro-bind-try", "/home/aaron/.claude");
-  const credentialsBound = indexOfMount(args, "--bind-try", "/home/aaron/.claude/.credentials.json");
-  assert.ok(sharedBound >= 0 && credentialsBound > sharedBound, "the credentials file must win over the read-only mount");
-});
-
-test("no credentials file is bound when none is configured", () => {
-  const { args } = buildSandboxCommand("claude", [], target, "/usr/bin/bwrap");
-  assert.equal(indexOfMount(args, "--bind-try", "/home/aaron/.claude/.credentials.json"), -1);
+  assert.ok(indexOfMount(args, "--ro-bind-try", "/home/aaron/.claude") >= 0);
+  assert.equal(
+    indexOfMount(args, "--bind-try", "/home/aaron/.claude/.credentials.json"),
+    -1,
+    "no read-write bind may reach into the shared login",
+  );
+  assert.equal(
+    indexOfMount(args, "--bind", "/home/aaron/.claude/.credentials.json"),
+    -1,
+    "no read-write bind may reach into the shared login",
+  );
 });
 
 test("the session starts in the project directory", () => {

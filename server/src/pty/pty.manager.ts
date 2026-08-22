@@ -2,7 +2,12 @@ import fs from "node:fs";
 import { config } from "../config.js";
 import { resolveProjectDir } from "../projects/projects.registry.js";
 import type { Project } from "../projects/projects.types.js";
-import { ensureProjectClaudeHome, hasExistingConversation, sharedClaudeHomeDir, sharedCredentialsFile } from "./claude-home.js";
+import {
+  ensureProjectClaudeHome,
+  hasExistingConversation,
+  sharedClaudeHomeDir,
+  syncClaudeCredentials,
+} from "./claude-home.js";
 import { ensureGitCredentialHelper } from "./git-credentials.js";
 import { buildSandboxCommand } from "./sandbox.js";
 import { PtySession } from "./pty.session.js";
@@ -69,7 +74,6 @@ export function getOrCreateSession(project: Project): PtySession {
         appsRoot: realPathOrSelf(config.APPS_ROOT),
         serverDir: process.cwd(),
         sharedClaudeHome: sharedClaudeHomeDir(),
-        sharedCredentialsFile: sharedCredentialsFile(),
       })
     : { command: config.CLAUDE_COMMAND, args: claudeArgs };
 
@@ -80,6 +84,16 @@ export function getOrCreateSession(project: Project): PtySession {
   sessions.set(project.id, session);
   session.onExit(() => {
     if (sessions.get(project.id) === session) sessions.delete(project.id);
+    // A session that refreshed its OAuth token wrote the new one into its own
+    // config dir; carry it back to the shared login so the next project to
+    // open does not start from an older token (refresh tokens rotate, so an
+    // older one no longer works). Never allowed to throw: this runs on the
+    // way out of a pty, where nothing is left to handle it.
+    try {
+      syncClaudeCredentials(claudeHome);
+    } catch (err) {
+      console.warn(`[claude-home] Could not carry ${project.id}'s refreshed login back to the shared one:`, err);
+    }
   });
   return session;
 }
