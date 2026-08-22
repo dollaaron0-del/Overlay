@@ -48,17 +48,28 @@ export class PtySession {
   }
 
   /**
-   * Writes text as a single bracketed-paste block and submits it, the same
-   * shape a real terminal sends when a user pastes multi-line text. Plain
-   * `write` sends raw keystrokes: a bare "\n" inside the text is read by the
-   * CLI's input prompt as its own Enter press, so a multi-paragraph message
-   * fragments into several separately-submitted lines instead of arriving as
-   * one prompt. Wrapping it in CSI 200~/201~ tells the CLI's readline "this
-   * is pasted content," so internal newlines stay literal and only the
-   * trailing \r submits.
+   * Writes text as a single bracketed-paste block, the same shape a real
+   * terminal sends when a user pastes multi-line text. Plain `write` sends
+   * raw keystrokes: a bare "\n" inside the text is read by the CLI's input
+   * prompt as its own Enter press, so a multi-paragraph message fragments
+   * into several separately-submitted lines instead of arriving as one
+   * prompt. Wrapping it in CSI 200~/201~ tells the CLI's readline "this is
+   * pasted content," so internal newlines stay literal, regardless of
+   * whether the app actually asked the terminal to enable bracketed-paste
+   * mode (DECSET 2004) — xterm.js's own paste() only wraps when that mode is
+   * active, which an Ink-based TUI like the Claude CLI may never toggle even
+   * though it still parses the CSI markers on the way in, so relying on that
+   * would silently fall back to unwrapped keystrokes.
+   *
+   * `submit`: whether to append a trailing \r so the CLI submits immediately
+   * after the paste. The HTTP hand-off routes (Emmy → project terminal,
+   * scaffold's initial prompt) want that — the text IS the instruction.
+   * Interactive human paste (the terminal panel's Ctrl+V/right-click/paste
+   * box) must not auto-press Enter on someone's behalf; they submit it
+   * themselves once they've had a chance to look at what landed.
    */
-  paste(text: string): void {
-    this.write(`\x1b[200~${text}\x1b[201~\r`);
+  paste(text: string, submit: boolean = true): void {
+    this.write(`\x1b[200~${text}\x1b[201~${submit ? "\r" : ""}`);
   }
 
   /**

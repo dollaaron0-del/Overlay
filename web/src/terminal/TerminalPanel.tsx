@@ -15,6 +15,10 @@ export function TerminalPanel({ wsPath }: { wsPath: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const pasteTextareaRef = useRef<HTMLTextAreaElement>(null);
+  // Populated by useTerminalSocket once its socket is open; see its doc
+  // comment for why every interactive paste path below goes through this
+  // instead of xterm's own term.paste().
+  const sendPasteRef = useRef<(text: string) => void>(() => {});
   const [terminal, setTerminal] = useState<Terminal | null>(null);
   const [pasteBoxOpen, setPasteBoxOpen] = useState(false);
 
@@ -103,14 +107,17 @@ export function TerminalPanel({ wsPath }: { wsPath: string }) {
     // would previously short-circuit to undefined and silently do nothing
     // with no feedback at all. Open the manual paste box instead, which
     // needs no permission or secure context — pasting into a real, visible
-    // textarea always works.
+    // textarea always works. Delivered via sendPasteRef, not term.paste():
+    // see useTerminalSocket's doc comment on why that goes through a
+    // dedicated "paste" message instead of xterm's own bracketed-paste
+    // handling.
     const pasteFromClipboard = () => {
       if (typeof navigator.clipboard?.readText !== "function") {
         setPasteBoxOpen(true);
         return;
       }
       navigator.clipboard.readText().then(
-        (text) => term.paste(text),
+        (text) => sendPasteRef.current(text),
         () => setPasteBoxOpen(true),
       );
     };
@@ -197,7 +204,7 @@ export function TerminalPanel({ wsPath }: { wsPath: string }) {
       const text = event.clipboardData?.getData("text/plain");
       if (!text) return;
       event.preventDefault();
-      term.paste(text);
+      sendPasteRef.current(text);
     };
     container.addEventListener("paste", onPaste);
 
@@ -290,7 +297,7 @@ export function TerminalPanel({ wsPath }: { wsPath: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const status = useTerminalSocket(wsPath, terminal);
+  const status = useTerminalSocket(wsPath, terminal, sendPasteRef);
 
   // Autofocus the moment the box opens so the very next keystroke (or a
   // right-click "Paste" on a real, visible textarea) lands there — this is
@@ -303,7 +310,7 @@ export function TerminalPanel({ wsPath }: { wsPath: string }) {
 
   const submitPasteBox = () => {
     const text = pasteTextareaRef.current?.value;
-    if (text) terminal?.paste(text);
+    if (text) sendPasteRef.current(text);
     setPasteBoxOpen(false);
     terminal?.focus();
   };
