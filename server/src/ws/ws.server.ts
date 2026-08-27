@@ -40,6 +40,15 @@ export function attachWebSocketServer(server: HttpServer): WebSocketServer {
     }
 
     wss.handleUpgrade(req, socket, head, (ws) => {
+      // A misbehaving client (e.g. an unmasked frame → WS_ERR_EXPECTED_MASK)
+      // makes ws emit 'error' on this socket. Without a listener, Node rethrows
+      // it as an uncaughtException and takes the whole process down — which
+      // crash-looped Overlay and silently killed any in-flight Emmy turn. Log
+      // and drop just this one socket instead. Attached before routing so it
+      // covers every endpoint below.
+      ws.on("error", (err) => {
+        console.error(`[ws] socket error on ${url.pathname}: ${(err as Error).message}`);
+      });
       if (segments[1] === "pty" && segments[2]) {
         void handlePtyConnection(ws, segments[2]);
       } else if (segments[1] === "host-terminal") {

@@ -1,6 +1,5 @@
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
-import { OsShell } from "./os/OsShell";
-import { ThemeProvider } from "./theme/ThemeProvider";
+import { EmmyShell } from "./os/EmmyShell";
 import { useDynamicViewportHeight } from "./layout/useDynamicViewportHeight";
 
 // Renders whenever /api/session reports unauthenticated: AUTH_DISABLED is
@@ -19,16 +18,14 @@ function Unauthenticated() {
 function Gate() {
   const { authenticated, loading } = useAuth();
   if (loading) return <div className="loading-screen">Lädt…</div>;
-  return authenticated ? <OsShell /> : <Unauthenticated />;
+  return authenticated ? <EmmyShell /> : <Unauthenticated />;
 }
 
 export function App() {
   useDynamicViewportHeight();
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <Gate />
-      </AuthProvider>
-    </ThemeProvider>
+    <AuthProvider>
+      <Gate />
+    </AuthProvider>
   );
 }

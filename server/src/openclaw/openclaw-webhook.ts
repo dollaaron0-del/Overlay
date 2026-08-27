@@ -66,7 +66,7 @@ export async function sendEmmyChatMessage(text: string): Promise<void> {
  * itself (the message text tells it how, including the chatId), which is why
  * this is fire-and-return: a 200 here only means the turn was accepted.
  */
-export async function sendEmmyHookTurn(sessionKey: string, name: string, message: string): Promise<void> {
+export async function sendEmmyHookTurn(sessionKey: string, name: string, message: string, model?: string): Promise<void> {
   if (!config.OPENCLAW_HOOK_URL) {
     throw new Error("OPENCLAW_HOOK_URL ist nicht konfiguriert");
   }
@@ -75,5 +75,6 @@ export async function sendEmmyHookTurn(sessionKey: string, name: string, message
     sessionKey,
     name,
     deliver: false,
+    ...(model ? { model } : {}),
   });
 }

@@ -150,7 +150,7 @@ export function TerminalPanel({ wsPath }: { wsPath: string }) {
         // (see onPaste below, and xterm's own internal paste handler on its
         // helper textarea) carry it instead — that path needs no permission
         // at all, though it isn't fully reliable either in practice, which
-        // is what the visible "📋 Einfügen" button (pasteBoxOpen) is for.
+        // is what the visible "Einfügen" button (pasteBoxOpen) is for.
         if (typeof navigator.clipboard?.readText !== "function") return true;
         pasteFromClipboard();
         event.preventDefault();
@@ -326,7 +326,7 @@ export function TerminalPanel({ wsPath }: { wsPath: string }) {
         <span className={`connection-dot connection-${status}`} />
         {STATUS_LABEL[status]}
         <button type="button" className="terminal-paste-button" onClick={() => setPasteBoxOpen(true)}>
-          📋 Einfügen
+          Einfügen
         </button>
       </div>
       <div className="terminal-panel" ref={containerRef} />

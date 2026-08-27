@@ -7,7 +7,7 @@ import { publishEmmyMessage, publishEmmyChats } from "./emmy-bus.js";
 import { markWorking, markIdle } from "./emmy-activity.js";
 import { indexMessageForMemory } from "./emmy-memory.js";
 import { minResearchDurationMs, DEFAULT_RESEARCH_WINDOW_HOURS } from "./emmy-categorize.js";
-import { sessionKeyFor } from "./emmy-turn-message.js";
+import { sessionKeyFor, turnModelFor } from "./emmy-turn-message.js";
 import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
 import { renderMarkdownToPdf, pdfFilenameFor } from "./emmy-pdf.js";
 import { saveGeneratedAttachment } from "./emmy-attachments.js";
@@ -152,7 +152,12 @@ emmyInboundRouter.post("/", async (req, res) => {
       ].join("\n");
 
       try {
-        await sendEmmyHookTurn(sessionKeyFor(chatId), `Overlay-Aufgabe: ${chat.title}`, nudge);
+        await sendEmmyHookTurn(
+          sessionKeyFor(chatId),
+          `Overlay-Aufgabe: ${chat.title}`,
+          nudge,
+          turnModelFor(effectiveCategory, chat.researchPhase),
+        );
         markWorking(
           chatId,
           "Recherchiert weiter (Mindestzeit für diese Aufgabe noch nicht erreicht)…",

@@ -42,7 +42,7 @@ export function EmmyMermaid({ code }: { code: string }): JSX.Element {
   if (error) {
     return (
       <div className="emmy2-mermaid-error">
-        <p>⚠️ Diagramm fehlerhaft: {error}</p>
+        <p><kbd>[!]</kbd> Diagramm fehlerhaft: {error}</p>
         <pre>
           <code>{code}</code>
         </pre>

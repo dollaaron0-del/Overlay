@@ -1,5 +1,27 @@
 import type { ReactNode } from "react";
 
+/** Schlichtes Linien-Icon statt Klammer-Kürzel, siehe EmmyChatApp.tsx für
+ * das übrige Icon-Set (Aarons Vorgabe vom 26.08.). */
+function IconLink() {
+  return (
+    <svg
+      width={14}
+      height={14}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ verticalAlign: "text-bottom" }}
+    >
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </svg>
+  );
+}
+
 interface RenderOptions {
   /** Resolves a wikilink's target name to a note path, or undefined if no matching note exists. */
   resolveWikilink: (name: string) => string | undefined;
@@ -92,7 +114,7 @@ export function renderMiniMarkdown(markdown: string, options: RenderOptions): Re
       flushList();
       blocks.push(
         <p key={`embed-${blockKey++}`} className="obsidian-embed-ref">
-          🖼 {embedMatch[1]}
+          <IconLink /> {embedMatch[1]}
         </p>,
       );
     } else if (line.trim() === "") {

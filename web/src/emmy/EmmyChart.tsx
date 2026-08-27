@@ -93,7 +93,7 @@ export function EmmyChart({ spec }: { spec: EmmyChartSpec }): JSX.Element {
       <div className="emmy2-chart-toolbar">
         {spec.title && <span className="emmy2-chart-title">{spec.title}</span>}
         <button type="button" className="emmy2-chart-toggle" onClick={() => setTableView((v) => !v)}>
-          {tableView ? "📈 Als Diagramm" : "📋 Als Tabelle"}
+          {tableView ? "Als Diagramm" : "Als Tabelle"}
         </button>
       </div>
 

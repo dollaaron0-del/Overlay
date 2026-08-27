@@ -187,7 +187,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
             title="Projekt umbenennen"
             aria-label="Projekt umbenennen"
           >
-            ✎
+            <kbd>[E]</kbd>
           </button>
           <span className="project-status-label">{STATUS_LABEL[project.status]}</span>
           {project.version && (
@@ -221,7 +221,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
           <button onClick={() => runAction("restart")}>Restart</button>
           {project.hasDeployScript && (
             <button onClick={deploy} disabled={deploying}>
-              {deploying ? "Deployt…" : "🚀 Deploy"}
+              {deploying ? "Deployt…" : "Deploy"}
             </button>
           )}
           {project.hasDeployScript && (
@@ -230,7 +230,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
               className={project.autoDeployOnCommit ? "project-auto-deploy-toggle project-auto-deploy-toggle-on" : "project-auto-deploy-toggle"}
               title="Bei jedem Commit im Terminal automatisch deployen und den Dienst neu starten, statt manuell auf Deploy klicken zu müssen"
             >
-              {project.autoDeployOnCommit ? "⚡ Auto-Deploy: An" : "⚡ Auto-Deploy: Aus"}
+              {project.autoDeployOnCommit ? "Auto-Deploy: An" : "Auto-Deploy: Aus"}
             </button>
           )}
           {project.externalUrl && (
@@ -240,7 +240,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
           )}
           {!isExternal && (
             <button onClick={setExternalUrl} title="Dashboard-URL festlegen oder ändern — zeigt eine zusätzliche Kachel im Dashboards-Bereich">
-              {project.externalUrl ? "🔗 Dashboard-URL ändern" : "🔗 Dashboard-URL festlegen"}
+              {project.externalUrl ? "Dashboard-URL ändern" : "Dashboard-URL festlegen"}
             </button>
           )}
           {isExternal && (
@@ -249,7 +249,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
               onClick={toggleHomeSection}
               title="Auf dem Home-Screen unter Dashboards oder Projekt-Terminals einordnen"
             >
-              {project.homeSection === "dashboard" ? "📊 Dashboard" : "⌨️ Terminal"}
+              {project.homeSection === "dashboard" ? "Dashboard" : "Terminal"}
             </button>
           )}
           <button className="project-remove-button-inline" onClick={removeProject}>
@@ -313,7 +313,7 @@ export function ProjectWorkspace({ project, onRemoved }: { project: ProjectSumma
             onClick={() => setShowHostTerminal((v) => !v)}
             title="Server-Terminal daneben öffnen"
           >
-            🖥️ Server
+            Server
           </button>
         )}
       </nav>

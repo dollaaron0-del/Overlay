@@ -3,9 +3,9 @@ import type { AgentDecision, AgentDecisionServerMessage } from "@overlay/shared"
 import { ReconnectingSocket, wsUrl } from "../api/ws";
 
 const SENTIMENT_LABEL: Record<NonNullable<AgentDecision["sentiment"]>, string> = {
-  bullish: "📈 bullish",
-  neutral: "➖ neutral",
-  bearish: "📉 bearish",
+  bullish: "bullish",
+  neutral: "neutral",
+  bearish: "bearish",
 };
 
 function formatTime(iso: string): string {

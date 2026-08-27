@@ -81,7 +81,7 @@ export function IconPicker({
           autoFocus
         />
         <button className="icon-picker-close" onClick={onClose} aria-label="Icon-Auswahl schließen">
-          ✕
+          <kbd>[X]</kbd>
         </button>
       </div>
 

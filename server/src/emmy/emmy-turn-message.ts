@@ -13,6 +13,25 @@ export function sessionKeyFor(chatId: string): string {
   return `agent:main:overlay:${chatId}`;
 }
 
+/**
+ * Which model an outbound turn should use, or undefined for the gateway
+ * default (Claude). Only the research *gathering* phase — category "research"
+ * before it flips to "discussion" — is offloaded to EMMY_RESEARCH_MODEL
+ * (Gemini): that's the part that reads many sources and burns tokens. The
+ * discussion phase (Q&A with Aaron over the findings), normal chat and
+ * recurring checks all return undefined so they stay on the default model,
+ * because that's where Emmy's judgement and tone need to be. Empty
+ * EMMY_RESEARCH_MODEL disables the split.
+ */
+export function turnModelFor(
+  category: EmmyCategory | undefined,
+  researchPhase: EmmyResearchPhase | undefined,
+): string | undefined {
+  if (!config.EMMY_RESEARCH_MODEL) return undefined;
+  if (category === "research" && researchPhase !== "discussion") return config.EMMY_RESEARCH_MODEL;
+  return undefined;
+}
+
 export interface EmmyTurnMessageOptions {
   attachmentPaths?: { abs: string; name: string }[];
   memoryHits?: MemoryHit[];
@@ -69,6 +88,7 @@ export function buildEmmyTurnMessage(
   }
 
   lines.push("");
+  lines.push("--- Aarons neue Nachricht (genau hierauf antwortest du) ---");
   lines.push(userText || "(keine Textnachricht, siehe Anhänge)");
   if (attachmentPaths.length > 0) {
     lines.push("");
@@ -94,13 +114,13 @@ export function buildEmmyTurnMessage(
   lines.push(`  Body:   JSON {"chatId":"${chatId}","activity":"<woran du gerade arbeitest>"}`);
   lines.push(`Sobald du die eigentliche Antwort mit "text" schickst, verschwindet der Hinweis von selbst.`);
   lines.push(
-    `Wenn du dabei recherchierst (Web-Suchen, Quellen lesen), häng optional deinen Fortschritt an dieselbe Zwischenstand-Meldung an — Aaron sieht das live als Quellenzähler und Wissensstand-Balken neben der Aufgabe:`,
+    `Wenn du dabei recherchierst (Web-Suchen, Quellen lesen), häng optional die Anzahl der bisher durchsuchten Quellen an dieselbe Zwischenstand-Meldung an — Aaron sieht das live neben der Aufgabe:`,
   );
   lines.push(
-    `  Body:   JSON {"chatId":"${chatId}","activity":"...","sourcesSearched":<Anzahl bisher durchsuchter/gelesener Quellen>,"knowledgeLevel":<0-100, deine ehrliche Einschätzung wie gut du das Thema jetzt kennst>}`,
+    `  Body:   JSON {"chatId":"${chatId}","activity":"...","sourcesSearched":<Anzahl bisher durchsuchter/gelesener Quellen>}`,
   );
   lines.push(
-    `Beide Felder sind kumulativ über den gesamten Task — schick bei jeder Meldung den aktuellen Gesamtstand, nicht nur das Delta. Lass sie weg, wenn eine Meldung keine Recherche betrifft.`,
+    `Das Feld ist kumulativ über den gesamten Task — schick bei jeder Meldung den aktuellen Gesamtstand, nicht nur das Delta. Lass es weg, wenn eine Meldung keine Recherche betrifft. Zeig keinen Prozent-/Fortschrittswert an, egal wie sicher du dir bist — den gibt es in Overlay nicht mehr, weil eine geschätzte Prozentzahl nie verlässlich war. Zeichnet sich stattdessen ab, dass die Aufgabe noch Stunden braucht, sag das in der Zwischenstand-Meldung explizit mit einer groben Zeitangabe (z. B. "brauche noch ca. 2 Stunden für X"), statt eine Zahl zu erfinden.`,
   );
   lines.push("");
   lines.push("--- Länge & Formatierung deiner Antwort ---");
@@ -144,7 +164,7 @@ export function buildEmmyTurnMessage(
       `Ist die Aufgabenstellung noch zu ungenau, um zielgerichtet zu recherchieren (unklarer Fokus, mehrdeutiger Begriff, fehlender Kontext, mehrere plausible Interpretationen)? Dann fang nicht einfach drauflos raten, sondern schick zuerst 1-3 knappe, konkrete Rückfragen — genau wie eine normale Antwort mit "text", aber zusätzlich mit "needsClarification":true im selben POST. Das zählt nicht als deine Recherche-Zusammenfassung, die Mindestzeit läuft weiter und die Phase bleibt offen; sobald Aarons Antwort im Verlauf steht, gehst du direkt in die eigentliche Recherche. Ist die Aufgabenstellung klar genug, überspring diesen Schritt und leg direkt los.`,
     );
     lines.push(
-      `Nimm dir dafür so viel Zeit wie nötig — mehrere Stunden oder über Nacht sind ausdrücklich erwünscht, nicht nur erlaubt. Arbeite dich wirklich tief ein: mehrere unabhängige Quellen statt nur der ersten Treffer, gegenläufige Positionen einholen, Zahlen/Fakten querchecken. Hör nicht auf, sobald du "genug" zu haben glaubst — schick stattdessen weitere Zwischenstand-Meldungen (activity/sourcesSearched/knowledgeLevel) und recherchiere weiter, bis dein knowledgeLevel wirklich hoch ist.`,
+      `Nimm dir dafür so viel Zeit wie nötig — mehrere Stunden oder über Nacht sind ausdrücklich erwünscht, nicht nur erlaubt. Arbeite dich wirklich tief ein: mehrere unabhängige Quellen statt nur der ersten Treffer, gegenläufige Positionen einholen, Zahlen/Fakten querchecken. Hör nicht auf, sobald du "genug" zu haben glaubst — schick stattdessen weitere Zwischenstand-Meldungen (activity/sourcesSearched) und recherchiere weiter, bis du das Thema wirklich fundiert einschätzen kannst.`,
     );
     if (dueAt) {
       lines.push(
@@ -177,6 +197,9 @@ export function buildEmmyTurnMessage(
     lines.push("--- Das hier ist ein wiederkehrender Check ---");
     lines.push(
       `Diese Aufgabe wird automatisch in regelmäßigen Abständen erneut aufgerufen (siehe Verlauf für den ursprünglichen Auftrag). Prüf den aktuellen Stand und antworte kurz und konkret — nur was sich geändert hat oder worauf Aaron jetzt achten sollte, keine Wiederholung der kompletten Vorgeschichte.`,
+    );
+    lines.push(
+      `Orientier dich dabei am VOLLSTÄNDIGEN ursprünglichen Auftrag aus dem Verlauf, nicht nur an einem einzelnen darin genannten Beispiel/Stichwort. Nennt der Auftrag z. B. "behalte meine Watchlist im Blick, z. B. Aktie X", dann prüfst du die ganze Watchlist — nicht nur Aktie X, das war nur ein Beispiel, kein Filter.`,
     );
   }
   if (chatKind === "task") {

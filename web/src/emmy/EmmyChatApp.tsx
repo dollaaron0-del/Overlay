@@ -9,12 +9,17 @@ import type {
   EmmyMessage,
   EmmyServerMessage,
   EmmyTaskStatus,
+  EmmyTopicWindow,
 } from "@overlay/shared";
 import { api, ApiError } from "../api/client";
 import { ReconnectingSocket, wsUrl } from "../api/ws";
 import { formatTimestamp } from "../format";
 import { renderMiniMarkdown } from "./miniMarkdown";
 import { defaultProjectIcon } from "../os/project-icon";
+import { SystemStatsWidget } from "../os/widgets/SystemStatsWidget";
+import { BackupWidget } from "../os/widgets/BackupWidget";
+import { TerminalPanel } from "../terminal/TerminalPanel";
+import { SettingsApp } from "../settings/SettingsApp";
 
 /** Above this length a reply gets "open as document"/"download" actions instead of only living in the bubble. Kept in sync with the server's PDF-generation threshold. */
 const LONG_REPORT_CHARS = EMMY_LONG_REPORT_CHARS;
@@ -107,9 +112,9 @@ const CATEGORY_LABEL: Record<EmmyCategory, string> = {
   recurring: "Wiederkehrender Check",
 };
 const CATEGORY_ICON: Record<EmmyCategory, string> = {
-  instant: "⚡",
-  research: "🔍",
-  recurring: "🔁",
+  instant: "[!]",
+  research: "[?]",
+  recurring: "[R]",
 };
 const CATEGORY_ORDER: EmmyCategory[] = ["instant", "research", "recurring"];
 
@@ -140,6 +145,22 @@ function formatSince(iso: string, now: number): string {
   return `seit ${Math.floor(minutes / 60)} Std.`;
 }
 
+/** Minutes until a recurring chat's next check is due (negative/zero = overdue). */
+function minutesUntilNextCheck(chat: EmmyChat, now: number): number | null {
+  if (!chat.intervalHours) return null;
+  const last = chat.lastRecurringCheckAt ?? chat.createdAt;
+  const dueAt = new Date(last).getTime() + chat.intervalHours * 3_600_000;
+  return Math.round((dueAt - now) / 60_000);
+}
+
+function formatMinutesLeft(minutesLeft: number): string {
+  if (minutesLeft <= 0) return "fällig";
+  if (minutesLeft < 60) return `in ${minutesLeft} Min.`;
+  const hoursLeft = Math.round(minutesLeft / 60);
+  if (hoursLeft < 24) return `in ${hoursLeft} Std.`;
+  return `in ${Math.round(hoursLeft / 24)} Tagen`;
+}
+
 /**
  * "nächster Check: in ca. 2 Std." — purely client-side, from
  * lastRecurringCheckAt (or createdAt, if it has never run yet) + intervalHours.
@@ -147,15 +168,22 @@ function formatSince(iso: string, now: number): string {
  * display estimate.
  */
 function nextCheckLabel(chat: EmmyChat, now: number): string {
-  if (!chat.intervalHours) return "";
-  const last = chat.lastRecurringCheckAt ?? chat.createdAt;
-  const dueAt = new Date(last).getTime() + chat.intervalHours * 3_600_000;
-  const minutesLeft = Math.round((dueAt - now) / 60_000);
-  if (minutesLeft <= 0) return "nächster Check: fällig";
-  if (minutesLeft < 60) return `nächster Check: in ${minutesLeft} Min.`;
-  const hoursLeft = Math.round(minutesLeft / 60);
-  if (hoursLeft < 24) return `nächster Check: in ${hoursLeft} Std.`;
-  return `nächster Check: in ${Math.round(hoursLeft / 24)} Tagen`;
+  const minutesLeft = minutesUntilNextCheck(chat, now);
+  if (minutesLeft === null) return "";
+  return `nächster Check: ${formatMinutesLeft(minutesLeft)}`;
+}
+
+/** Across several recurring chats, the one due soonest — used by the collapsed summary line. */
+function soonestNextCheckLabel(chats: EmmyChat[], now: number): string {
+  const all = chats.map((c) => minutesUntilNextCheck(c, now)).filter((m): m is number => m !== null);
+  if (all.length === 0) return "";
+  return `nächster Check: ${formatMinutesLeft(Math.min(...all))}`;
+}
+
+/** A research task counts as "urgent" (worth its own card) inside 3 days of its due date. */
+function isDueSoon(chat: EmmyChat, now: number): boolean {
+  if (categoryOf(chat) !== "research" || !chat.dueAt) return false;
+  return new Date(chat.dueAt).getTime() - now <= 3 * 24 * 3_600_000;
 }
 
 /**
@@ -206,6 +234,122 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function IconCheck() {
+  return (
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--c-on-solid)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline className="toggle-flat-check" points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+/** Gemeinsamer Rahmen für alle Linien-Icons — einfarbig über currentColor,
+ * folgt also automatisch Text-/Akzentfarbe. Kein Emoji, keine Klammer-Optik
+ * (Aarons Vorgabe vom 26.08.). */
+function Icon({ size = 16, children }: { size?: number; children: React.ReactNode }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+
+function IconPaperclip(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </Icon>
+  );
+}
+
+function IconTrash(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </Icon>
+  );
+}
+
+function IconPencil(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </Icon>
+  );
+}
+
+function IconSearch(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </Icon>
+  );
+}
+
+function IconLink(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </Icon>
+  );
+}
+
+function IconTerminal(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <polyline points="4 17 10 11 4 5" />
+      <line x1="12" y1="19" x2="20" y2="19" />
+    </Icon>
+  );
+}
+
+function IconUser(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </Icon>
+  );
+}
+
+function IconRepeat(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <polyline points="23 4 23 10 17 10" />
+      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+    </Icon>
+  );
+}
+
+function IconX(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </Icon>
+  );
+}
+
+function IconChevronDown(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <polyline points="6 9 12 15 18 9" />
+    </Icon>
+  );
+}
+
+function IconSidebar(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <line x1="15" y1="4" x2="15" y2="20" />
+    </Icon>
+  );
+}
+
 export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: string) => void }) {
   const [chats, setChats] = useState<EmmyChat[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -223,8 +367,11 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
   const [now, setNow] = useState(() => Date.now());
   const [openDocument, setOpenDocument] = useState<{ message: EmmyMessage; chatTitle: string } | null>(null);
   const [projectPickerRequest, setProjectPickerRequest] = useState<{ text: string; heading: string } | null>(null);
+  const [hostTerminalOpen, setHostTerminalOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const centerTextareaRef = useRef<HTMLTextAreaElement>(null);
   const selectedIdRef = useRef<string | null>(null);
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -245,6 +392,8 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
           if (existing.some((x) => x.id === m.id)) return prev;
           return { ...prev, [m.chatId]: [...existing, m] };
         });
+      } else if (msg.type === "topic-windows") {
+        setTopicWindows(msg.topicWindows);
       }
     });
     // Anything that lands while the socket is reconnecting (sleep, network
@@ -265,6 +414,10 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
         .get<EmmyActivity[]>("/api/emmy/activity")
         .then(setActivities)
         .catch(() => {});
+      api
+        .get<EmmyTopicWindow[]>("/api/emmy/topic-windows")
+        .then(setTopicWindows)
+        .catch(() => {});
       setLoadedChats((prev) => {
         if (!selectedIdRef.current || !prev.has(selectedIdRef.current)) return prev;
         const next = new Set(prev);
@@ -279,18 +432,21 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
     };
   }, []);
 
-  // Initial chat list + activity (in case the socket is slow) + auto-select the general chat.
+  // Initial chat list + activity (in case the socket is slow). No auto-select:
+  // the center stage (search bar + ambient dashboards) is the default landing
+  // view; a chat only opens when the user actually picks one.
   useEffect(() => {
     api
       .get<EmmyChat[]>("/api/emmy/chats")
-      .then((list) => {
-        setChats(list);
-        setSelectedId((cur) => cur ?? list[0]?.id ?? null);
-      })
+      .then(setChats)
       .catch(() => {});
     api
       .get<EmmyActivity[]>("/api/emmy/activity")
       .then(setActivities)
+      .catch(() => {});
+    api
+      .get<EmmyTopicWindow[]>("/api/emmy/topic-windows")
+      .then(setTopicWindows)
       .catch(() => {});
   }, []);
 
@@ -325,12 +481,31 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
   );
   const activeActivity = selectedId ? activityByChat[selectedId] : undefined;
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, selectedId, activeActivity?.note]);
-
   const taskChats = useMemo(() => chats.filter((c) => c.kind === "task"), [chats]);
   const generalChat = chats.find((c) => c.kind === "general") ?? null;
+
+  // The center stage doubles as the live general-chat transcript, so its
+  // history has to load as soon as the chat is known — not only once it's
+  // been "opened" like the task chats.
+  useEffect(() => {
+    if (!generalChat || loadedChats.has(generalChat.id)) return;
+    const id = generalChat.id;
+    api
+      .get<EmmyMessage[]>(`/api/emmy/chats/${id}/messages`)
+      .then((msgs) => {
+        setMessagesByChat((prev) => ({ ...prev, [id]: msgs }));
+        setLoadedChats((prev) => new Set(prev).add(id));
+      })
+      .catch(() => {});
+  }, [generalChat?.id, loadedChats]);
+
+  const centerMessages = generalChat ? (messagesByChat[generalChat.id] ?? []) : [];
+  const centerActivity = generalChat ? activityByChat[generalChat.id] : undefined;
+  const centerHasThread = centerMessages.length > 0 || !!centerActivity;
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length, centerMessages.length, selectedId, activeActivity?.note, centerActivity?.note]);
 
   const loadArchive = async () => {
     setArchiveOpen(true);
@@ -368,8 +543,9 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const sendMessage = async (opts?: { requestFinalDocument?: boolean }) => {
-    if (!selectedId) return;
+  const sendMessage = async (opts?: { requestFinalDocument?: boolean; chatId?: string }) => {
+    const targetId = opts?.chatId ?? selectedId;
+    if (!targetId) return;
     const requestFinalDocument = opts?.requestFinalDocument === true;
     const text = draft.trim() || (requestFinalDocument ? "Bitte erstelle das Abschlussdokument." : "");
     if (!text && pending.length === 0) return;
@@ -379,7 +555,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
     setSending(true);
     setError(null);
     try {
-      await api.post(`/api/emmy/chats/${selectedId}/messages`, {
+      await api.post(`/api/emmy/chats/${targetId}/messages`, {
         text: text || undefined,
         attachments: attachments.length > 0 ? attachments : undefined,
         requestFinalDocument: requestFinalDocument || undefined,
@@ -467,84 +643,200 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
     }
   };
 
-  const showList = !selectedId && !archiveOpen;
+  const showCenter = !selectedId && !archiveOpen;
+  const activeTasks = useMemo(() => taskChats.filter((c) => !!activityByChat[c.id]), [taskChats, activityByChat]);
+  const idleTasks = useMemo(
+    () => taskChats.filter((c) => !activityByChat[c.id] && c.status !== "done"),
+    [taskChats, activityByChat],
+  );
+  // Recurring checks are almost always idle (they only "activate" during their
+  // own check window) — showing every one permanently is exactly the clutter
+  // Aaron doesn't want, so they collapse into one summary line by default.
+  const recurringIdleTasks = useMemo(
+    () => idleTasks.filter((c) => categoryOf(c) === "recurring"),
+    [idleTasks],
+  );
+  // A research task with a due date coming up soon is worth surfacing on its
+  // own; everything else idle (instant tasks with no due date, research far
+  // out) collapses into a plain count instead of a permanent card each.
+  const urgentOtherTasks = useMemo(
+    () => idleTasks.filter((c) => categoryOf(c) !== "recurring" && isDueSoon(c, now)),
+    [idleTasks, now],
+  );
+  const restOtherTasks = useMemo(
+    () => idleTasks.filter((c) => categoryOf(c) !== "recurring" && !isDueSoon(c, now)),
+    [idleTasks, now],
+  );
+  const [recurringExpanded, setRecurringExpanded] = useState(false);
+  const [restExpanded, setRestExpanded] = useState(false);
+  const [systemExpanded, setSystemExpanded] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Topic windows live on the server (persisted, pushed over /ws/emmy); the
+  // z-order is a pure view concern and stays local.
+  const [topicWindows, setTopicWindows] = useState<EmmyTopicWindow[]>([]);
+  const [topicOrder, setTopicOrder] = useState<string[]>([]);
+
+  const openTopicWindow = (title: string, content: string) => {
+    void api
+      .post("/api/emmy/topic-windows", { title, content })
+      .catch(() => setError("Themen-Fenster konnte nicht erstellt werden."));
+  };
+  const focusTopicWindow = (id: string) =>
+    setTopicOrder((o) => (o[o.length - 1] === id ? o : [...o.filter((x) => x !== id), id]));
+  /** Live, local-only geometry update during a drag — no network. */
+  const dragTopicWindow = (id: string, patch: Partial<EmmyTopicWindow>) =>
+    setTopicWindows((ws) => ws.map((w) => (w.id === id ? { ...w, ...patch } : w)));
+  const persistTopicWindow = (id: string, patch: Partial<EmmyTopicWindow>) => {
+    void api.patch(`/api/emmy/topic-windows/${id}`, patch).catch(() => {});
+  };
+  const minimizeTopicWindow = (id: string) => persistTopicWindow(id, { minimized: true });
+  const reopenTopicWindow = (id: string) => {
+    persistTopicWindow(id, { minimized: false });
+    focusTopicWindow(id);
+  };
+  const deleteTopicWindow = (id: string) => {
+    void api.delete(`/api/emmy/topic-windows/${id}`).catch(() => {});
+  };
+
+  const startCenterSend = () => {
+    if (!generalChat) return;
+    // Stay on the center stage — the transcript renders right here now.
+    void sendMessage({ chatId: generalChat.id });
+  };
+
+  const onCenterKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      startCenterSend();
+    }
+  };
+
+  // The composer grows with its content instead of scrolling inside a fixed
+  // box — you always see the whole message. The thread above yields the
+  // space (see .emmy2-center-stage layout). Runs on every draft change so it
+  // also shrinks back to one line after sending. Hard cap at 50vh so a
+  // pasted wall of text can't swallow the screen.
+  useEffect(() => {
+    const el = centerTextareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, window.innerHeight * 0.5)}px`;
+  }, [draft]);
+
+  // Strg/Cmd+B toggles the overview drawer (mirrors the corner trigger).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")) {
+        e.preventDefault();
+        setSidebarOpen((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
-    <div className="emmy2-app" data-view={showList ? "list" : "chat"}>
-      <aside className="emmy2-sidebar">
-        <div className="emmy2-sidebar-head">
-          <div className="emmy2-avatar">🦊</div>
-          <h2>Emmy</h2>
-        </div>
-
-        {generalChat && (
-          <button
-            className={`emmy2-chat-row${selectedId === generalChat.id ? " active" : ""}`}
-            onClick={() => openChat(generalChat.id)}
-          >
-            <span className="emmy2-chat-title">💬 {generalChat.title}</span>
-            {activityByChat[generalChat.id] && <span className="emmy2-working-dot" title="Emmy arbeitet gerade" />}
-          </button>
-        )}
-
-        <div className="emmy2-new-task">
-          <input
-            value={newTaskTitle}
-            onChange={(e) => setNewTaskTitle(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void createTask()}
-            placeholder="Neue Aufgabe…"
-          />
-          <button onClick={() => void createTask()} title="Aufgabe anlegen">
-            ＋
-          </button>
-        </div>
-
-        {CATEGORY_ORDER.map((category) => {
-          const group = taskChats.filter((c) => categoryOf(c) === category);
-          if (group.length === 0) return null;
-          return (
-            <div key={category} className="emmy2-group">
-              <div className="emmy2-group-head">
-                {CATEGORY_ICON[category]} {CATEGORY_LABEL[category]} <span className="emmy2-group-count">{group.length}</span>
-              </div>
-              {group.map((c) => {
-                const progress = progressOf(c, activityByChat[c.id]);
-                return (
-                  <button
-                    key={c.id}
-                    className={`emmy2-chat-row${selectedId === c.id ? " active" : ""}`}
-                    onClick={() => openChat(c.id)}
-                  >
-                    <span className="emmy2-chat-lines">
-                      <span className="emmy2-chat-title">{c.title}</span>
-                      <span className="emmy2-chat-sub">
-                        {activityByChat[c.id]
-                          ? "arbeitet gerade daran…"
-                          : category === "research" && c.dueAt
-                            ? `bis ${formatDue(c.dueAt)}`
-                            : category === "recurring" && c.intervalHours
-                              ? `${formatInterval(c.intervalHours)} · ${nextCheckLabel(c, now)}`
-                              : STATUS_LABEL[c.status]}
-                      </span>
-                      <ProgressMeta sourcesSearched={progress.sourcesSearched} knowledgeLevel={progress.knowledgeLevel} />
-                    </span>
-                    {activityByChat[c.id] ? (
-                      <span className="emmy2-working-dot" title="Emmy arbeitet gerade" />
-                    ) : (
-                      <span className={`emmy2-status-dot emmy2-status-${c.status}`} />
-                    )}
-                  </button>
-                );
-              })}
+    <div className="emmy2-app" data-view={showCenter ? "center" : "chat"}>
+      <button
+        className="emmy2-sidebar-trigger"
+        onClick={() => setSidebarOpen(true)}
+        title="Übersicht (Strg+B)"
+      >
+        <IconSidebar size={15} />
+        <span>Emmy</span>
+      </button>
+      <EmmySidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        taskChats={taskChats}
+        activityByChat={activityByChat}
+        now={now}
+        onOpenChat={(id) => {
+          setSidebarOpen(false);
+          openChat(id);
+        }}
+        topicWindows={topicWindows}
+        onOpenTopicWindow={(id) => {
+          setSidebarOpen(false);
+          reopenTopicWindow(id);
+        }}
+        onDeleteTopicWindow={deleteTopicWindow}
+      />
+      {showCenter && (
+        <div className="emmy2-center-stage" data-conversation={centerHasThread}>
+          {centerHasThread && (
+            <div className="emmy2-center-thread">
+              {centerMessages.map((m) => (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  onOpenDocument={() => setOpenDocument({ message: m, chatTitle: generalChat?.title ?? "Emmy" })}
+                  onSendToProject={() =>
+                    setProjectPickerRequest({ text: m.text, heading: "An welches Projekt-Terminal?" })
+                  }
+                  onImplementInProject={() =>
+                    setProjectPickerRequest({
+                      text: buildImplementationPrompt(m.text, generalChat?.title ?? "Emmy"),
+                      heading: "Recherche-Ergebnis umsetzen in…",
+                    })
+                  }
+                  onOpenTopicWindow={() => openTopicWindow(topicTitleFrom(m.text), m.text)}
+                />
+              ))}
+              {centerActivity && <ActivityBubble activity={centerActivity} now={now} />}
+              <div ref={messagesEndRef} />
             </div>
-          );
-        })}
+          )}
+          <div className="emmy2-center-input-wrap">
+            {pending.length > 0 && (
+              <div className="emmy2-pending">
+                {pending.map((p, i) => (
+                  <span key={i} className="emmy2-pending-chip">
+                    <IconPaperclip size={12} /> {p.originalName}
+                    <button onClick={() => setPending((prev) => prev.filter((_, j) => j !== i))}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="emmy2-center-input-row">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => void addFiles(e.target.files)}
+              />
+              <button
+                className="emmy2-attach"
+                onClick={() => fileInputRef.current?.click()}
+                title="Datei anhängen"
+              >
+                <IconPaperclip />
+              </button>
+              <textarea
+                ref={centerTextareaRef}
+                className="emmy2-center-textarea"
+                rows={1}
+                autoFocus
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={onCenterKeyDown}
+                placeholder="Was gibt's?"
+              />
+              <button
+                className="emmy2-send"
+                onClick={startCenterSend}
+                disabled={sending || (!draft.trim() && pending.length === 0)}
+              >
+                Senden
+              </button>
+            </div>
+            {error && <p className="emmy2-error">{error}</p>}
+          </div>
+        </div>
+      )}
 
-        <button className={`emmy2-chat-row emmy2-archive-row${archiveOpen ? " active" : ""}`} onClick={() => void loadArchive()}>
-          <span className="emmy2-chat-title">🗄 Archiv</span>
-        </button>
-      </aside>
-
+      {!showCenter && (
       <section className="emmy2-main">
         {archiveOpen ? (
           <ArchiveView
@@ -568,13 +860,11 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
             }
             error={error}
           />
-        ) : !selectedChat ? (
-          <p className="empty-hint">Wähle links einen Chat oder leg eine Aufgabe an.</p>
-        ) : (
+        ) : !selectedChat ? null : (
           <>
             <header className="emmy2-conv-head">
               <button className="emmy2-back" onClick={() => setSelectedId(null)} title="Zurück">
-                ‹
+                <kbd>{"[<]"}</kbd>
               </button>
               <ChatTitle chat={selectedChat} onRename={renameChat} />
               <div className="emmy2-conv-actions">
@@ -625,7 +915,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                       onClick={() => void sendMessage({ requestFinalDocument: true })}
                       title="Fasst die gesamte Recherche und Unterhaltung in einem Abschlussdokument zusammen"
                     >
-                      📘 Abschlussdokument erstellen
+                      Abschlussdokument erstellen
                     </button>
                   )}
                 <button
@@ -633,7 +923,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                   onClick={() => void removeChat(selectedChat)}
                   title={selectedChat.kind === "general" ? "Chat leeren (Verlauf wird archiviert)" : "Löschen (Verlauf wird archiviert)"}
                 >
-                  🗑
+                  <IconTrash />
                 </button>
               </div>
             </header>
@@ -703,6 +993,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                       heading: "Recherche-Ergebnis umsetzen in…",
                     })
                   }
+                  onOpenTopicWindow={() => openTopicWindow(topicTitleFrom(m.text), m.text)}
                 />
               ))}
               {activeActivity && <ActivityBubble activity={activeActivity} now={now} />}
@@ -715,7 +1006,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
               <div className="emmy2-pending">
                 {pending.map((p, i) => (
                   <span key={i} className="emmy2-pending-chip">
-                    📎 {p.originalName}
+                    <IconPaperclip size={12} /> {p.originalName}
                     <button onClick={() => setPending((prev) => prev.filter((_, j) => j !== i))}>×</button>
                   </span>
                 ))}
@@ -731,7 +1022,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                 onChange={(e) => void addFiles(e.target.files)}
               />
               <button className="emmy2-attach" onClick={() => fileInputRef.current?.click()} title="Datei anhängen">
-                📎
+                <IconPaperclip />
               </button>
               <textarea
                 className="emmy2-textarea"
@@ -752,6 +1043,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
           </>
         )}
       </section>
+      )}
       {openDocument && (
         <EmmyDocumentViewer
           message={openDocument.message}
@@ -770,7 +1062,229 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
           }}
         />
       )}
+      {hostTerminalOpen && (
+        <div className="home-modal-backdrop" onClick={() => setHostTerminalOpen(false)}>
+          <div className="emmy2-terminal-panel" onClick={(e) => e.stopPropagation()}>
+            <header className="emmy2-doc-head">
+              <h3>Server-Terminal</h3>
+              <button onClick={() => setHostTerminalOpen(false)} title="Schließen">
+                <kbd>[X]</kbd>
+              </button>
+            </header>
+            <div className="emmy2-terminal-body">
+              <TerminalPanel wsPath="/ws/host-terminal" />
+            </div>
+          </div>
+        </div>
+      )}
+      {settingsOpen && (
+        <div className="home-modal-backdrop" onClick={() => setSettingsOpen(false)}>
+          <div className="emmy2-doc-panel" onClick={(e) => e.stopPropagation()}>
+            <header className="emmy2-doc-head">
+              <h3>Konto</h3>
+              <button onClick={() => setSettingsOpen(false)} title="Schließen">
+                <kbd>[X]</kbd>
+              </button>
+            </header>
+            <div className="emmy2-doc-body">
+              <SettingsApp />
+            </div>
+          </div>
+        </div>
+      )}
+      {topicWindows
+        .filter((w) => !w.minimized)
+        .map((w) => (
+          <TopicWindow
+            key={w.id}
+            win={w}
+            z={20 + Math.max(0, topicOrder.indexOf(w.id))}
+            onFocus={() => focusTopicWindow(w.id)}
+            onClose={() => minimizeTopicWindow(w.id)}
+            onChange={(patch) => dragTopicWindow(w.id, patch)}
+            onCommit={(geometry) => persistTopicWindow(w.id, geometry)}
+          />
+        ))}
     </div>
+  );
+}
+
+/** One ambient card in the center-stage grid: active tasks show their live note, everything else shows its normal status line. */
+function AmbientTaskCard({
+  chat,
+  activity,
+  now,
+  onOpen,
+}: {
+  chat: EmmyChat;
+  activity: EmmyActivity | undefined;
+  now: number;
+  onOpen: () => void;
+}) {
+  const category = categoryOf(chat);
+  const progress = progressOf(chat, activity);
+  return (
+    <button className={`emmy2-ambient-card${activity ? " emmy2-ambient-card-active" : ""}`} onClick={onOpen}>
+      <span className="emmy2-ambient-card-head">
+        <span>{CATEGORY_ICON[category]}</span>
+        <span className="emmy2-chat-title">{chat.title}</span>
+      </span>
+      <span className="emmy2-chat-sub">
+        {activity
+          ? activity.note || "arbeitet gerade daran…"
+          : category === "research" && chat.dueAt
+            ? `bis ${formatDue(chat.dueAt)}`
+            : category === "recurring" && chat.intervalHours
+              ? `${formatInterval(chat.intervalHours)} · ${nextCheckLabel(chat, now)}`
+              : STATUS_LABEL[chat.status]}
+      </span>
+      <ProgressMeta sourcesSearched={progress.sourcesSearched} knowledgeLevel={progress.knowledgeLevel} />
+      {activity && <span className="emmy2-bubble-time">{formatSince(activity.since, now)}</span>}
+    </button>
+  );
+}
+
+/**
+ * Right-side overview drawer (Strg/Cmd+B or the corner trigger). The home
+ * screen stays bare — everything glanceable-but-not-ambient lives here:
+ * server health, recurring checks, other open tasks, later the Python
+ * dashboards. Slides over the chat, ESC or scrim-click closes.
+ */
+function EmmySidebar({
+  open,
+  onClose,
+  taskChats,
+  activityByChat,
+  now,
+  onOpenChat,
+  topicWindows,
+  onOpenTopicWindow,
+  onDeleteTopicWindow,
+}: {
+  open: boolean;
+  onClose: () => void;
+  taskChats: EmmyChat[];
+  activityByChat: Record<string, EmmyActivity>;
+  now: number;
+  onOpenChat: (id: string) => void;
+  topicWindows: EmmyTopicWindow[];
+  onOpenTopicWindow: (id: string) => void;
+  onDeleteTopicWindow: (id: string) => void;
+}) {
+  const [showIdleRecurring, setShowIdleRecurring] = useState(false);
+  const [showAllOther, setShowAllOther] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  const recurring = taskChats.filter((c) => categoryOf(c) === "recurring" && c.status !== "done");
+  const runningRecurring = recurring.filter((c) => activityByChat[c.id]);
+  const idleRecurring = recurring.filter((c) => !activityByChat[c.id]);
+  const otherTasks = taskChats.filter(
+    (c) => categoryOf(c) !== "recurring" && c.status !== "done",
+  );
+  const shownOther = showAllOther ? otherTasks : otherTasks.slice(0, 4);
+
+  return (
+    <>
+      <div className={`emmy2-sidebar-scrim${open ? " open" : ""}`} onClick={onClose} />
+      <aside className={`emmy2-sidebar${open ? " open" : ""}`} aria-hidden={!open}>
+        <header className="emmy2-sidebar-head">
+          <span className="emmy2-sidebar-brand">
+            <IconSidebar size={15} /> Emmy
+          </span>
+          <button onClick={onClose} title="Schließen (Esc)">
+            <IconX size={15} />
+          </button>
+        </header>
+
+        <div className="emmy2-sidebar-body">
+          <section className="emmy2-sidebar-section">
+            <h4>Server</h4>
+            <SystemStatsWidget onOpen={onClose} />
+          </section>
+
+          <section className="emmy2-sidebar-section">
+            <h4>Wiederkehrende Checks</h4>
+            {recurring.length === 0 && <p className="empty-hint">Keine eingerichtet.</p>}
+            {runningRecurring.map((c) => (
+              <AmbientTaskCard
+                key={c.id}
+                chat={c}
+                activity={activityByChat[c.id]}
+                now={now}
+                onOpen={() => onOpenChat(c.id)}
+              />
+            ))}
+            {idleRecurring.length > 0 && !showIdleRecurring && (
+              <button className="emmy2-sidebar-more" onClick={() => setShowIdleRecurring(true)}>
+                {idleRecurring.length} ruhend · {soonestNextCheckLabel(idleRecurring, now)}
+              </button>
+            )}
+            {showIdleRecurring &&
+              idleRecurring.map((c) => (
+                <AmbientTaskCard key={c.id} chat={c} activity={undefined} now={now} onOpen={() => onOpenChat(c.id)} />
+              ))}
+          </section>
+
+          <section className="emmy2-sidebar-section">
+            <h4>Offene Aufgaben</h4>
+            {otherTasks.length === 0 && <p className="empty-hint">Nichts offen.</p>}
+            {shownOther.map((c) => (
+              <AmbientTaskCard
+                key={c.id}
+                chat={c}
+                activity={activityByChat[c.id]}
+                now={now}
+                onOpen={() => onOpenChat(c.id)}
+              />
+            ))}
+            {!showAllOther && otherTasks.length > 4 && (
+              <button className="emmy2-sidebar-more" onClick={() => setShowAllOther(true)}>
+                {otherTasks.length - 4} weitere
+              </button>
+            )}
+          </section>
+
+          <section className="emmy2-sidebar-section">
+            <h4>Themen-Fenster</h4>
+            {topicWindows.length === 0 && (
+              <p className="empty-hint">
+                Über „Themen-Fenster" an einer Emmy-Nachricht öffnen — sie bleiben hier, auch minimiert.
+              </p>
+            )}
+            {topicWindows.map((w) => (
+              <div key={w.id} className="emmy2-topicwin-row">
+                <button className="emmy2-topicwin-row-open" onClick={() => onOpenTopicWindow(w.id)}>
+                  {w.title}
+                  {w.minimized && <span className="emmy2-chat-sub"> minimiert</span>}
+                </button>
+                <button
+                  className="emmy2-topicwin-row-del"
+                  onClick={() => onDeleteTopicWindow(w.id)}
+                  title="Löschen"
+                >
+                  <IconTrash size={13} />
+                </button>
+              </div>
+            ))}
+          </section>
+
+          <section className="emmy2-sidebar-section">
+            <h4>Dashboards</h4>
+            <p className="empty-hint">
+              Werden auf Python umgestellt — landen hier, sobald sie eine Schnittstelle haben.
+            </p>
+          </section>
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -820,16 +1334,8 @@ function ProgressMeta({
   return (
     <span className="emmy2-progress-meta">
       {sourcesSearched !== undefined && (
-        <span className="emmy2-source-badge" title="Bisher durchsuchte Quellen">
-          🔎 {sourcesSearched}
-        </span>
-      )}
-      {knowledgeLevel !== undefined && (
-        <span className="emmy2-knowledge" title={`Wissensstand: ${knowledgeLevel}%`}>
-          <span className="emmy2-knowledge-bar">
-            <span className="emmy2-knowledge-fill" style={{ width: `${knowledgeLevel}%` }} />
-          </span>
-          <span className="emmy2-knowledge-pct">{knowledgeLevel}%</span>
+        <span className="emmy2-source-badge" title="Bisher durchsuchte Quellen" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <IconSearch size={13} /> {sourcesSearched}
         </span>
       )}
     </span>
@@ -877,7 +1383,7 @@ function ArchiveView({
     <>
       <header className="emmy2-conv-head">
         <button className="emmy2-back" onClick={onBack} title="Zurück">
-          ‹
+          <kbd>{"[<]"}</kbd>
         </button>
         <h3 className="emmy2-conv-title">{openEntry ? openEntry.chat.title : "Archiv"}</h3>
       </header>
@@ -905,7 +1411,7 @@ function ArchiveView({
             <div key={entry.id} className="emmy2-archive-item">
               <button className="emmy2-archive-open" onClick={() => onOpen(entry)}>
                 <span className="emmy2-chat-title">
-                  {entry.category ? `${CATEGORY_ICON[entry.category]} ` : entry.kind === "general" ? "💬 " : ""}
+                  {entry.category ? `${CATEGORY_ICON[entry.category]} ` : entry.kind === "general" ? "[C] " : ""}
                   {entry.title}
                 </span>
                 <span className="emmy2-chat-sub">
@@ -913,7 +1419,7 @@ function ArchiveView({
                 </span>
               </button>
               <button className="emmy2-delete" onClick={() => onPurge(entry)} title="Endgültig löschen">
-                🗑
+                <IconTrash />
               </button>
             </div>
           ))}
@@ -928,25 +1434,27 @@ function MessageBubble({
   onOpenDocument,
   onSendToProject,
   onImplementInProject,
+  onOpenTopicWindow,
 }: {
   message: EmmyMessage;
   onOpenDocument: () => void;
   onSendToProject: () => void;
   onImplementInProject: () => void;
+  onOpenTopicWindow?: () => void;
 }) {
   const isFinalDocument = message.role === "emmy" && message.isFinalDocument === true;
   const needsClarification = message.role === "emmy" && message.needsClarification === true;
   const isLongReport = message.role === "emmy" && (isFinalDocument || message.text.length > LONG_REPORT_CHARS);
   return (
     <div className={`emmy2-bubble emmy2-bubble-${message.role}${isLongReport ? " emmy2-bubble-report" : ""}`}>
-      {needsClarification && <span className="emmy2-clarify-badge">❓ Rückfrage vor der Recherche</span>}
+      {needsClarification && <span className="emmy2-clarify-badge">Rückfrage vor der Recherche</span>}
       {isLongReport && (
         <div className="emmy2-report-actions">
-          <span className="emmy2-report-badge">{isFinalDocument ? "📘 Abschlussdokument" : "📄 Ausführlicher Bericht"}</span>
+          <span className="emmy2-report-badge">{isFinalDocument ? "Abschlussdokument" : "Ausführlicher Bericht"}</span>
           <span className="emmy2-report-buttons">
             <button onClick={onOpenDocument}>Als Dokument öffnen</button>
             <button className="emmy2-implement-button" onClick={onImplementInProject} title="Recherche-Ergebnis direkt in einem Projekt umsetzen">
-              🚀 In Projekt umsetzen
+              In Projekt umsetzen
             </button>
           </span>
         </div>
@@ -965,18 +1473,107 @@ function MessageBubble({
           </a>
         ) : (
           <a key={a.filename} href={url} target="_blank" rel="noreferrer" className="emmy2-att-doc">
-            📄 {a.originalName}
+            <kbd>[F]</kbd> {a.originalName}
           </a>
         );
       })}
       <div className="emmy2-bubble-footer">
         <span className="emmy2-bubble-time">{formatTimestamp(message.at)}</span>
-        {message.text && (
-          <button className="emmy2-bubble-to-project" onClick={onSendToProject} title="In ein Projekt-Terminal senden">
-            → Projekt
+        {message.role === "emmy" && message.text && onOpenTopicWindow && (
+          <button className="emmy2-bubble-action" onClick={onOpenTopicWindow} title="Als verschiebbares Themen-Fenster öffnen">
+            Themen-Fenster
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Derives a short window title from a message: first markdown heading, else
+ * the first sentence/line, trimmed. */
+function topicTitleFrom(text: string): string {
+  const heading = text.match(/^#{1,3}\s+(.+)$/m)?.[1];
+  const line = heading ?? text.split("\n").find((l) => l.trim().length > 0) ?? "Themen-Fenster";
+  const clean = line.replace(/[*_`#>]/g, "").trim();
+  return clean.length > 48 ? `${clean.slice(0, 47)}…` : clean;
+}
+
+/**
+ * A free-floating, draggable+resizable reference window (like a browser
+ * window). Emmy fills it with a compiled dossier on a topic; you push it
+ * aside and keep chatting. Stage 1: spawned from a message, lives in memory
+ * only. Persistence + Emmy-side generation come next.
+ */
+type TopicWindowGeometry = Pick<EmmyTopicWindow, "x" | "y" | "w" | "h">;
+
+function TopicWindow({
+  win,
+  z,
+  onFocus,
+  onClose,
+  onChange,
+  onCommit,
+}: {
+  win: EmmyTopicWindow;
+  z: number;
+  onFocus: () => void;
+  onClose: () => void;
+  onChange: (patch: Partial<TopicWindowGeometry>) => void;
+  onCommit: (geometry: TopicWindowGeometry) => void;
+}) {
+  // Drag/resize via window-level listeners (not pointer capture) so a fast
+  // pointer that outruns the small header/handle still tracks. `onChange`
+  // updates local state live for a smooth drag; `onCommit` persists once on
+  // release.
+  const start = (mode: "move" | "resize") => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onFocus();
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const { x: ox, y: oy, w: ow, h: oh } = win;
+    let last: TopicWindowGeometry = { x: ox, y: oy, w: ow, h: oh };
+    document.body.style.userSelect = "none";
+    const onMove = (ev: PointerEvent) => {
+      ev.preventDefault();
+      const dx = ev.clientX - sx;
+      const dy = ev.clientY - sy;
+      if (mode === "move") {
+        last = {
+          ...last,
+          x: Math.max(0, Math.min(window.innerWidth - 80, ox + dx)),
+          y: Math.max(0, Math.min(window.innerHeight - 40, oy + dy)),
+        };
+        onChange({ x: last.x, y: last.y });
+      } else {
+        last = { ...last, w: Math.max(300, ow + dx), h: Math.max(200, oh + dy) };
+        onChange({ w: last.w, h: last.h });
+      }
+    };
+    const onUp = () => {
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      onCommit(last);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  return (
+    <div
+      className="emmy2-topicwin"
+      style={{ left: win.x, top: win.y, width: win.w, height: win.h, zIndex: z }}
+      onPointerDownCapture={onFocus}
+    >
+      <header className="emmy2-topicwin-head" onPointerDown={start("move")}>
+        <span className="emmy2-topicwin-title">{win.title}</span>
+        <button onClick={onClose} title="In die Seitenleiste minimieren">
+          <IconX size={14} />
+        </button>
+      </header>
+      <div className="emmy2-topicwin-body emmy2-markdown">{renderMiniMarkdown(win.content)}</div>
+      <div className="emmy2-topicwin-resize" onPointerDown={start("resize")} />
     </div>
   );
 }
@@ -1042,7 +1639,7 @@ function ProjectPickerModal({
         <header className="emmy2-doc-head">
           <h3>{heading}</h3>
           <button onClick={onClose} title="Schließen">
-            ✕
+            <kbd>[X]</kbd>
           </button>
         </header>
         {error && <p className="emmy2-error">{error}</p>}
@@ -1108,13 +1705,13 @@ function EmmyDocumentViewer({
           <h3>{chatTitle}</h3>
           <div className="emmy2-doc-actions">
             <button onClick={() => downloadAsMarkdown(message.text, downloadFilenameFor(chatTitle, message.at))}>
-              ⬇️ Herunterladen (.md)
+              Herunterladen (.md)
             </button>
             <button onClick={() => bodyRef.current && printAsPdf(chatTitle, bodyRef.current.innerHTML)}>
-              🖨️ Als PDF exportieren
+              Als PDF exportieren
             </button>
             <button onClick={onClose} title="Schließen">
-              ✕
+              <kbd>[X]</kbd>
             </button>
           </div>
         </header>

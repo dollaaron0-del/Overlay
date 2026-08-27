@@ -36,7 +36,7 @@ function TreeNode({
   return (
     <div className="tree-node">
       <div className="tree-node-label" onClick={toggle}>
-        {entry.type === "dir" ? (expanded ? "📂" : "📁") : "📄"} {entry.name}
+        {entry.type === "dir" ? <kbd>{expanded ? "[–]" : "[+]"}</kbd> : <kbd>[F]</kbd>} {entry.name}
       </div>
       {expanded && children && (
         <div className="tree-node-children">
