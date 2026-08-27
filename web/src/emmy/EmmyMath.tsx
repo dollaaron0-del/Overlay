@@ -33,7 +33,7 @@ export function EmmyMath({ latex }: { latex: string }): JSX.Element {
   if (error) {
     return (
       <div className="emmy2-math-error">
-        <p>⚠️ Formel fehlerhaft: {error}</p>
+        <p><kbd>[!]</kbd> Formel fehlerhaft: {error}</p>
         <pre>
           <code>{latex}</code>
         </pre>

@@ -2,6 +2,17 @@
   box-sizing: border-box;
 }
 
+/* Klammer-Zeichen nur noch für echte, universelle Symbole (`[+]` `[–]`
+   `[!]` `[×]`) — Buchstaben-Kürzel wie ehemals [F]/[S]/[D] wurden durch
+   richtige Linien-Icons ersetzt (siehe IconPaperclip/IconTrash/… in
+   EmmyChatApp.tsx, Aarons Vorgabe vom 26.08.). kbd bleibt trotzdem
+   Monospace, reiner Text, kein eigenes Padding/Border. */
+kbd {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-style: normal;
+  font-size: inherit;
+}
+
 :root {
   /* Spacing scale — every padding/margin/gap in this file resolves to one
      of these. No other spacing values are allowed; snap to the nearest
@@ -31,34 +42,68 @@
      No soft, wide, "AI-generated" glow shadows anywhere else. */
   --shadow-popover: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.18);
 
+  /* Bewegungs-Skala — bewusst kurz statt "digital-träge", damit sich jedes
+     klickbare Element haptisch anfühlt (Aarons Vorgabe vom 26.08.): ein
+     echter Tastendruck reagiert sofort, kein weiches Ein-/Ausblenden. Nur
+     drei Stufen, dieselbe Logik wie Spacing/Typografie — keine neuen
+     Werte einführen, sondern auf diese snappen. */
+  --motion-press: 80ms;
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --ease-tactile: cubic-bezier(0.2, 0, 0.2, 1);
+  /* Für Zustandswechsel, die sich "gefedert" statt flach anfühlen sollen
+     (Schalter/Regler beim Einrasten) — leichtes Überschwingen, kein
+     Spielzeug-Wackeln. */
+  --ease-tactile-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
   /* Fixed overlay colors — identical in both themes, so they live outside
      the per-theme blocks below rather than being duplicated three times. */
   --c-on-solid: #fff;
-  --c-accent-overlay: rgba(44, 92, 230, 0.55);
   --c-backdrop: rgba(5, 7, 12, 0.65);
 }
 
-:root,
-:root[data-theme="dark"] {
+/* Nur ein Modus, fest auf Aaron zugeschnitten — kein Umschalten, keine
+   System-Präferenz-Erkennung mehr (siehe entfernte ThemeProvider.tsx).
+   Dunkel und zurückhaltend, auf Aarons Wunsch vom 26.08. Akzent:
+   Tannengrün mit einem Hauch Petrol-Blau (Aarons Vorgabe vom 26.08. —
+   "mehr ins Grüne, Blattgrün/Tannengrün, etwas Petrol dunkelblau") — gegen
+   die dunkle Fläche geprüft (validate_palette.js, PASS ≥3:1, Chroma-Floor).
+   Vom Erfolgs-Grün bewusst über die TIEFE abgesetzt (viel dunkler/gedeckter
+   als --c-success), nicht über den Farbton, da beide in derselben
+   Grün-Familie liegen sollen.
+   Status-Farben sind bewusst tiefer/gesättigter als vorher ("mehr Tiefe"),
+   dabei so weit wie möglich vom Akzent und voneinander abgesetzt geprüft.
+   Erfolg bewusst als echtes Mittel-Grün statt gelbstichig gewählt (ein
+   gelbverschobenes Grün trennte zwar besser vom Akzent, wirkte aber
+   "giftgrün" statt ruhig — Aarons Feedback vom 26.08. sticht die reine
+   Trennschärfe).
+
+   Diese Palette ist ab 26.08. die feste Referenz für jede künftige
+   Design-Frage am Overlay — siehe OVERLAY_COLOR_PALETTE.md im
+   Haupt-Workspace für die vollständige Dokumentation. Wird beim
+   schrittweisen Neuaufbau nach und nach angewendet, nicht auf einmal
+   nachträglich überall reingepatcht. */
+:root {
   --c-bg: #0b0e14;
   --c-surface: #131722;
   --c-surface-2: #1c2333;
   --c-surface-2-hover: #232c42;
   --c-border: #232a3b;
   --c-border-strong: #2c3550;
-  --c-accent: #2c5ce6;
+  --c-accent: #1c7550;
+  --c-accent-hover: #269c66;
+  --c-accent-active: #155c3d;
+  --c-accent-bg: #12291d;
   --c-text: #e6e9ef;
   --c-text-2: #9aa4b8;
   --c-text-3: #6b7385;
-  --c-danger: #ef6f6f;
+  --c-danger: #c1443f;
   --c-danger-bg: #4a1420;
-  --c-warning: #ffab5e;
+  --c-warning: #cc7a2e;
   --c-warning-bg: #4a2a14;
-  --c-caution: #ffd95e;
-  --c-caution-bg: #4a3f14;
-  --c-info: #5ecbff;
+  --c-info: #2f7fc4;
   --c-info-bg: #143a4a;
-  --c-success: #5eff8f;
+  --c-success: #3a9d5c;
   --c-success-bg: #143a1e;
 
   /* Categorical chart series — fixed order, never cycled/reassigned.
@@ -71,75 +116,6 @@
   --c-series-6: #008300;
   --c-series-7: #9085e9;
   --c-series-8: #e66767;
-}
-
-:root[data-theme="light"] {
-  --c-bg: #f5f6f8;
-  --c-surface: #ffffff;
-  --c-surface-2: #eceef2;
-  --c-surface-2-hover: #dde1e8;
-  --c-border: #d8dce3;
-  --c-border-strong: #c3c9d4;
-  --c-accent: #2c5ce6;
-  --c-text: #1a1d24;
-  --c-text-2: #565f70;
-  --c-text-3: #7c8494;
-  --c-danger: #c8323a;
-  --c-danger-bg: #fbe0e2;
-  --c-warning: #b35900;
-  --c-warning-bg: #fde9d0;
-  --c-caution: #8a6d00;
-  --c-caution-bg: #fbf0c7;
-  --c-info: #0969a2;
-  --c-info-bg: #d9f0fb;
-  --c-success: #1a7f37;
-  --c-success-bg: #d6f5df;
-
-  --c-series-1: #2a78d6;
-  --c-series-2: #eb6834;
-  --c-series-3: #1baf7a;
-  --c-series-4: #eda100;
-  --c-series-5: #e87ba4;
-  --c-series-6: #008300;
-  --c-series-7: #4a3aa7;
-  --c-series-8: #e34948;
-}
-
-/* No stored/system preference yet: fall back to the visitor's OS setting
-   before JS applies the persisted (or system-detected) theme, so there's no
-   dark-flash-then-light-theme jump for light-mode systems. */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme]) {
-    --c-bg: #f5f6f8;
-    --c-surface: #ffffff;
-    --c-surface-2: #eceef2;
-    --c-surface-2-hover: #dde1e8;
-    --c-border: #d8dce3;
-    --c-border-strong: #c3c9d4;
-    --c-accent: #2c5ce6;
-    --c-text: #1a1d24;
-    --c-text-2: #565f70;
-    --c-text-3: #7c8494;
-    --c-danger: #c8323a;
-    --c-danger-bg: #fbe0e2;
-    --c-warning: #b35900;
-    --c-warning-bg: #fde9d0;
-    --c-caution: #8a6d00;
-    --c-caution-bg: #fbf0c7;
-    --c-info: #0969a2;
-    --c-info-bg: #d9f0fb;
-    --c-success: #1a7f37;
-    --c-success-bg: #d6f5df;
-
-    --c-series-1: #2a78d6;
-    --c-series-2: #eb6834;
-    --c-series-3: #1baf7a;
-    --c-series-4: #eda100;
-    --c-series-5: #e87ba4;
-    --c-series-6: #008300;
-    --c-series-7: #4a3aa7;
-    --c-series-8: #e34948;
-  }
 }
 
 html {
@@ -174,12 +150,6 @@ body {
   justify-content: center;
 }
 
-.settings-hint {
-  font-size: var(--fs-xs);
-  color: var(--c-text-3);
-  margin: 0 0 var(--space-2);
-}
-
 button {
   background: var(--c-surface-2);
   border: 1px solid var(--c-border-strong);
@@ -188,10 +158,27 @@ button {
   padding: var(--space-2) var(--space-3);
   cursor: pointer;
   font-size: var(--fs-sm);
+  transition:
+    transform var(--motion-press) var(--ease-tactile),
+    background-color var(--motion-fast) var(--ease-tactile),
+    border-color var(--motion-fast) var(--ease-tactile);
 }
 
 button:hover {
   background: var(--c-surface-2-hover);
+}
+
+/* Haptisches Feedback: jeder Klick/Tap staucht das Element kurz, wie ein
+   echter Tastendruck. Bewusst nur transform (kein Schatten/Gradient) —
+   bleibt damit artefaktfrei, siehe Status der Grundlagen in
+   DESIGN_PRINCIPLES.md. */
+button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--c-accent);
+  outline-offset: 2px;
 }
 
 button.active {
@@ -199,57 +186,119 @@ button.active {
   border-color: var(--c-accent);
 }
 
-.add-project-form {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  font-size: var(--fs-sm);
+/* Schalter — flache Box mit Häkchen, kein gleitender Knopf. Entschieden am
+   26.08. (Variante "B" aus dem Vergleich), mit federndem Einrasten und
+   sich zeichnendem Häkchen für haptisches Feedback. */
+.toggle-flat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
 }
 
-.add-project-form-header {
+.toggle-flat input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-flat-box {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border-strong);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  transition: transform var(--motion-press) var(--ease-tactile), background-color var(--motion-fast) var(--ease-tactile), border-color var(--motion-fast) var(--ease-tactile);
 }
 
-.add-project-form-header h3 {
-  margin: 0;
-  font-size: var(--fs-sm);
+.toggle-flat input:checked + .toggle-flat-box {
+  background: var(--c-accent);
+  border-color: var(--c-accent);
+  /* Federt beim Einrasten kurz über die Zielgröße hinaus — fühlt sich wie
+     ein echtes Einklicken an, nicht wie ein Farbwechsel. */
+  animation: toggle-flat-settle var(--motion-base) var(--ease-tactile-bounce);
 }
 
-.add-project-form label {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  font-size: var(--fs-xs);
-  color: var(--c-text-2);
+@keyframes toggle-flat-settle {
+  0% {
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
-.add-project-form input,
-.add-project-form select {
-  background: var(--c-bg);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  color: var(--c-text);
-  font-size: var(--fs-sm);
+.toggle-flat:active .toggle-flat-box {
+  transform: scale(0.88);
 }
 
-.close-button {
-  background: transparent;
-  border: none;
-  color: var(--c-text-2);
-  font-size: var(--fs-sm);
-  padding: var(--space-0) var(--space-1);
+.toggle-flat-check {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: toggle-flat-draw var(--motion-base) var(--ease-tactile) 60ms forwards;
 }
 
-.close-button:hover {
-  background: transparent;
-  color: var(--c-text);
+@keyframes toggle-flat-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Regler — griffig, für Touch/iPad gedacht. Entschieden am 26.08.
+   (Variante "B" aus dem Vergleich), mit Anheben+Schatten beim Greifen und
+   federndem Zurücksetzen beim Loslassen. */
+.slider-chunky {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+
+.slider-chunky::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  border: 2px solid var(--c-surface);
+  cursor: pointer;
+  /* Federnd statt linear beim Loslassen zurück auf Normalgröße, damit sich
+     das Greifen "lebendig" anfühlt statt nur größer/kleiner zu schalten.
+     Der Schatten ist der bereits sanktionierte --shadow-popover-Ton, kein
+     neues Artefakt — er zeigt nur an, dass der Punkt gerade "angehoben"
+     wird, und verschwindet wieder, sobald losgelassen wird. */
+  transition: transform var(--motion-base) var(--ease-tactile-bounce), box-shadow var(--motion-fast) var(--ease-tactile);
+}
+
+.slider-chunky::-webkit-slider-thumb:active {
+  transform: scale(1.25);
+  box-shadow: var(--shadow-popover);
+}
+
+.slider-chunky::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--c-accent);
+  border: 2px solid var(--c-surface);
+  cursor: pointer;
+  transition: transform var(--motion-base) var(--ease-tactile-bounce), box-shadow var(--motion-fast) var(--ease-tactile);
+}
+
+.slider-chunky::-moz-range-thumb:active {
+  transform: scale(1.25);
+  box-shadow: var(--shadow-popover);
 }
 
 .status-dot {
@@ -387,12 +436,6 @@ button.active {
 .overview-ollama-error {
   margin: 0;
   color: var(--c-danger);
-  font-size: var(--fs-sm);
-}
-
-.overview-ollama-pending {
-  margin: 0;
-  color: var(--c-text-3);
   font-size: var(--fs-sm);
 }
 
@@ -590,10 +633,6 @@ button.active {
   word-break: break-all;
 }
 
-.log-err {
-  color: var(--c-danger);
-}
-
 .files-tab {
   display: grid;
   grid-template-columns: 260px 1fr;
@@ -639,312 +678,6 @@ button.active {
   padding: var(--space-5);
 }
 
-.security-dashboard {
-  display: grid;
-  grid-template-columns: 280px 1fr;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-
-.security-history {
-  border-right: 1px solid var(--c-surface-2);
-  overflow-y: auto;
-  padding: var(--space-3);
-}
-
-.security-history h3 {
-  margin-top: 0;
-  font-size: var(--fs-sm);
-  color: var(--c-text-2);
-}
-
-.security-history-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.security-history-list li {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  cursor: pointer;
-  font-size: var(--fs-xs);
-}
-
-.security-history-list li.selected {
-  border-color: var(--c-accent);
-}
-
-.severity-summary-inline {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  margin-top: var(--space-1);
-}
-
-.security-detail {
-  overflow-y: auto;
-  padding: var(--space-4);
-}
-
-.security-detail-header h2 {
-  margin: 0 0 var(--space-1);
-  font-size: var(--fs-lg);
-}
-
-.security-detail-header p {
-  margin: 0 0 var(--space-2);
-  color: var(--c-text-2);
-  font-size: var(--fs-sm);
-}
-
-.severity-summary {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-bottom: var(--space-4);
-}
-
-.severity-badge {
-  display: inline-block;
-  padding: var(--space-0) var(--space-2);
-  border-radius: 999px;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.severity-badge.severity-critical {
-  background: var(--c-danger-bg);
-  color: var(--c-danger);
-}
-
-.severity-badge.severity-high {
-  background: var(--c-warning-bg);
-  color: var(--c-warning);
-}
-
-.severity-badge.severity-medium {
-  background: var(--c-caution-bg);
-  color: var(--c-caution);
-}
-
-.severity-badge.severity-low {
-  background: var(--c-info-bg);
-  color: var(--c-info);
-}
-
-.severity-badge.severity-info,
-.severity-badge.severity-ok {
-  background: var(--c-success-bg);
-  color: var(--c-success);
-}
-
-.llm-triage-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-
-.llm-triage-header {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-0);
-  margin-bottom: var(--space-2);
-  font-weight: 600;
-}
-
-.llm-triage-disclaimer {
-  font-weight: 400;
-  font-size: var(--fs-xs);
-  color: var(--c-text-2);
-  font-style: italic;
-}
-
-.llm-triage-text {
-  margin: 0;
-  white-space: pre-wrap;
-  font-size: var(--fs-sm);
-  line-height: 1.5;
-}
-
-.llm-triage-error {
-  margin: 0;
-  color: var(--c-danger);
-  font-size: var(--fs-sm);
-}
-
-.tool-result-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.tool-result-card {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-}
-
-.tool-result-card.tool-status-skipped {
-  opacity: 0.7;
-}
-
-.tool-result-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-2);
-}
-
-.tool-name {
-  font-weight: 600;
-}
-
-.tool-status-badge {
-  font-size: var(--fs-xs);
-  padding: var(--space-0) var(--space-2);
-  border-radius: 999px;
-  background: var(--c-surface-2);
-  color: var(--c-text-2);
-}
-
-.tool-status-badge.tool-status-findings {
-  background: var(--c-warning-bg);
-  color: var(--c-warning);
-}
-
-.tool-status-badge.tool-status-error {
-  background: var(--c-danger-bg);
-  color: var(--c-danger);
-}
-
-.tool-note {
-  font-size: var(--fs-xs);
-  color: var(--c-text-2);
-  margin-bottom: var(--space-2);
-}
-
-.finding-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.finding-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--fs-sm);
-}
-
-.finding-context {
-  color: var(--c-text-3);
-  font-size: var(--fs-xs);
-}
-
-.tool-raw {
-  margin-top: var(--space-2);
-  font-size: var(--fs-xs);
-}
-
-.tool-raw summary {
-  cursor: pointer;
-  color: var(--c-text-2);
-}
-
-.tool-raw pre {
-  margin-top: var(--space-2);
-  max-height: 240px;
-  overflow: auto;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  white-space: pre-wrap;
-}
-
-.activity-log {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--space-3);
-}
-
-.activity-log-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-bottom: var(--space-3);
-}
-
-.activity-log-header h2 {
-  margin: 0;
-}
-
-.activity-filter-input {
-  background: var(--c-bg);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-1) var(--space-2);
-  color: var(--c-text);
-  font-size: var(--fs-xs);
-  min-width: 200px;
-}
-
-.activity-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.activity-list li {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border-radius: var(--radius-md);
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  font-size: var(--fs-sm);
-}
-
-.activity-list li.activity-event-warn {
-  border-color: var(--c-danger);
-}
-
-.activity-timestamp {
-  color: var(--c-text-3);
-  font-size: var(--fs-xs);
-  white-space: nowrap;
-}
-
-.activity-event-label {
-  font-weight: 600;
-}
-
-.activity-event-warn .activity-event-label {
-  color: var(--c-danger);
-}
-
-.activity-detail {
-  color: var(--c-text-2);
-}
-
 /* --- OS shell --- */
 
 .os-shell {
@@ -957,93 +690,6 @@ button.active {
   min-width: 0;
   display: flex;
   flex-direction: column;
-}
-
-/* --- Sidebar --- */
-/* The single nav surface for the whole app: home, Sicherheit/Cockpit
-   shortcuts, and the Suche/Aktivität/Steuerung actions that used to be
-   duplicated between the TopBar and the bottom Dock. */
-
-.os-sidebar {
-  flex-shrink: 0;
-  width: 208px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3) var(--space-2);
-  border-right: 1px solid var(--c-surface-2);
-  overflow-y: auto;
-}
-
-.os-sidebar-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  background: transparent;
-  border: none;
-  padding: var(--space-2);
-  margin-bottom: var(--space-2);
-  font-weight: 700;
-  font-size: var(--fs-base);
-  color: var(--c-text);
-}
-
-.os-sidebar-brand-icon {
-  font-size: var(--fs-lg);
-}
-
-.os-sidebar-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--c-surface-2);
-}
-
-.os-sidebar-section--push-end {
-  margin-top: auto;
-}
-
-.os-sidebar-button {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  color: var(--c-text);
-  font-size: var(--fs-sm);
-  text-align: left;
-}
-
-.os-sidebar-button:hover {
-  background: var(--c-surface-2);
-}
-
-.os-sidebar-icon {
-  position: relative;
-  font-size: var(--fs-base);
-  width: 1.5em;
-  text-align: center;
-}
-
-.os-sidebar-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.os-sidebar-badge {
-  position: absolute;
-  top: -0.1rem;
-  right: -0.1rem;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--c-danger);
-  border: 1px solid var(--c-bg);
 }
 
 .os-topbar {
@@ -1100,36 +746,9 @@ button.active {
   flex-direction: column;
 }
 
-/* --- Homescreen --- */
-
-.home-screen {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
 .home-section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-}
-
-.home-section-title {
-  margin: 0;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--c-text-2);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.home-widget-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: var(--space-2);
 }
 
@@ -1149,195 +768,6 @@ button.active {
   font-size: var(--fs-base);
 }
 
-/* The column floor is the widest tile a cell has to hold (a project glyph at
-   96px plus the icon button's horizontal padding) — anything narrower lets
-   large tiles and their labels spill into the neighbouring cell, which is
-   what used to make labels overlap. The Emmy hero tile is wider still and
-   spans two columns instead (see --hero below). */
-.home-app-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: var(--space-3) var(--space-2);
-  align-items: start;
-  justify-items: center;
-}
-
-.os-app-icon {
-  background: transparent;
-  border: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-1);
-  width: 100%;
-  min-width: 0;
-  color: var(--c-text);
-}
-
-.os-app-icon:hover {
-  background: transparent;
-}
-
-/* Sized off --os-glyph-size (set per tile variant on the wrapper) so the
-   edit-mode buttons can anchor to the glyph's edges rather than to the much
-   wider grid cell. min()/aspect-ratio keep it square and inside its cell even
-   on a viewport too narrow for the nominal size. */
-.os-app-icon-glyph {
-  position: relative;
-  font-size: 2rem;
-  width: min(var(--os-glyph-size, 56px), 100%);
-  aspect-ratio: 1 / 1;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-}
-
-.os-app-icon-status {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  width: 10px;
-  height: 10px;
-  border: 2px solid var(--c-surface);
-}
-
-.os-app-icon-badge {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-md);
-  background: var(--c-danger);
-  border: 2px solid var(--c-surface);
-  color: var(--c-on-solid);
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  line-height: 14px;
-  text-align: center;
-}
-
-/* Labels wrap to at most two lines inside their own cell instead of being
-   cut off after ~10 characters on one line. min-height reserves the second
-   line so glyph rows stay aligned whether or not a name wraps. */
-.os-app-icon-label {
-  font-size: var(--fs-sm);
-  color: var(--c-text-2);
-  text-align: center;
-  max-width: 100%;
-  line-height: 1.25;
-  min-height: calc(2 * 1.25em);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  hyphens: auto;
-}
-
-.home-app-grid-header {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  min-height: 1.8rem;
-}
-
-.home-edit-done-button,
-.home-group-button {
-  background: var(--c-accent);
-  border-color: var(--c-accent);
-  font-weight: 600;
-}
-
-.os-app-icon.selected .os-app-icon-glyph {
-  border-color: var(--c-accent);
-}
-
-.os-app-icon-selected-check {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--c-accent-overlay);
-  border-radius: var(--radius-md);
-  color: var(--c-on-solid);
-  font-size: var(--fs-lg);
-  font-weight: 700;
-}
-
-.os-folder-glyph {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  gap: var(--space-0);
-  padding: var(--space-1);
-  font-size: var(--fs-sm);
-}
-
-.os-folder-glyph span {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.folder-view {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-  width: min(480px, 90vw);
-  max-height: 70vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.folder-view-grid {
-  gap: var(--space-3) var(--space-2);
-}
-
-.folder-view-item {
-  position: relative;
-}
-
-.folder-dissolve-button {
-  align-self: center;
-  color: var(--c-danger);
-  border-color: var(--c-danger);
-  background: transparent;
-}
-
-.os-app-icon-wrapper {
-  position: relative;
-  width: 100%;
-  min-width: 0;
-  /* Default glyph size; each size variant below overrides it, and the glyph
-     plus the edit-mode buttons all derive their geometry from it. */
-  --os-glyph-size: 56px;
-}
-
-.os-app-icon-wrapper.edit-mode {
-  touch-action: none;
-}
-
-.os-app-icon-wrapper.edit-mode .os-app-icon-glyph {
-  animation: os-icon-jiggle 0.22s ease-in-out infinite;
-}
-
-.os-app-icon-wrapper.edit-mode:nth-child(even) .os-app-icon-glyph {
-  animation-delay: -0.11s;
-}
-
 @keyframes os-icon-jiggle {
   0%,
   100% {
@@ -1348,113 +778,7 @@ button.active {
   }
 }
 
-/* Anchored to the glyph's top-left corner (the glyph is centred in a cell
-   that is wider than it), not the cell's — otherwise the button floats off
-   in empty space next to the icon it belongs to. */
-.os-app-icon-hide-button {
-  position: absolute;
-  top: calc(var(--space-2) - 8px);
-  left: calc(50% - var(--os-glyph-size, 56px) / 2 - 8px);
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--c-danger);
-  border: 2px solid var(--c-surface);
-  color: var(--c-on-solid);
-  font-size: var(--fs-xs);
-  line-height: 1;
-  z-index: 1;
-}
-
-.os-app-icon-hide-button:hover {
-  background: var(--c-danger);
-}
-
-/* Bottom-right of the glyph, so it shares neither corner with the hide
-   button nor with the notification badge at the glyph's top-right. */
-.os-app-icon-delete-button {
-  position: absolute;
-  top: calc(var(--space-2) + var(--os-glyph-size, 56px) - 14px);
-  left: calc(50% + var(--os-glyph-size, 56px) / 2 - 14px);
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--c-danger);
-  border: 2px solid var(--c-surface);
-  color: var(--c-on-solid);
-  font-size: var(--fs-xs);
-  line-height: 1;
-  z-index: 1;
-}
-
-.os-app-icon-delete-button:hover {
-  filter: brightness(1.1);
-}
-
-/* Project tiles get a bigger glyph than static apps, so the projects a user
-   actually works in stand out on a homescreen that's otherwise mostly
-   utility apps. */
-.os-app-icon-wrapper--large {
-  --os-glyph-size: 96px;
-}
-
-.os-app-icon-wrapper--large .os-app-icon-glyph {
-  font-size: 3.2rem;
-}
-
-.os-app-icon-wrapper--large .os-app-icon-label {
-  font-size: var(--fs-sm);
-}
-
-/* Emmy is the centerpiece of the overlay — its tile outranks even project
-   tiles in size. */
-.os-app-icon-wrapper--hero {
-  --os-glyph-size: 116px;
-}
-
 /* The hero tile is wider than one grid column by design — spanning two keeps
-   it out of its neighbour's cell. Only above ~360px, though: on a narrower
-   viewport the grid can be single-column, where a span would force an
-   implicit second column and push the grid off-screen. There the glyph simply
-   shrinks to the cell instead (see the min() on .os-app-icon-glyph). */
-@media (min-width: 360px) {
-  .os-app-icon-wrapper--hero {
-    grid-column: span 2;
-  }
-}
-
-.os-app-icon-wrapper--hero .os-app-icon-glyph {
-  font-size: 3.8rem;
-}
-
-.os-app-icon-wrapper--hero .os-app-icon-label {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-}
-
-.home-hidden-section {
-  border-top: 1px solid var(--c-surface-2);
-  padding-top: var(--space-3);
-}
-
-.home-hidden-section h3 {
-  margin: 0 0 var(--space-2);
-  font-size: var(--fs-sm);
-  color: var(--c-text-2);
-}
-
-.home-hidden-icon {
-  opacity: 0.6;
-  cursor: pointer;
-}
-
-.home-hidden-icon-restore {
-  font-size: var(--fs-xs);
-  color: var(--c-accent);
-}
-
 .home-modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1463,189 +787,6 @@ button.active {
   align-items: center;
   justify-content: center;
   z-index: 30;
-}
-
-/* --- Spotlight --- */
-
-.spotlight-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--c-backdrop);
-  display: flex;
-  justify-content: center;
-  padding-top: 12vh;
-  z-index: 40;
-}
-
-.spotlight-panel {
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  width: min(480px, 90vw);
-  max-height: 60vh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: var(--shadow-popover);
-}
-
-.spotlight-input {
-  border: none;
-  border-bottom: 1px solid var(--c-border);
-  background: transparent;
-  color: var(--c-text);
-  font-size: var(--fs-base);
-  padding: var(--space-3);
-}
-
-.spotlight-results {
-  list-style: none;
-  margin: 0;
-  padding: var(--space-2);
-  overflow-y: auto;
-}
-
-.spotlight-results li {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  font-size: var(--fs-sm);
-}
-
-.spotlight-results li:hover {
-  background: var(--c-surface-2);
-}
-
-.spotlight-message {
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.spotlight-message p {
-  margin: 0;
-  font-size: var(--fs-sm);
-}
-
-.spotlight-result-icon {
-  font-size: var(--fs-base);
-}
-
-/* --- Notification Center --- */
-
-.notification-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-}
-
-.notification-panel {
-  position: absolute;
-  top: 3.5rem;
-  right: 1rem;
-  width: min(360px, 90vw);
-  max-height: 70vh;
-  overflow-y: auto;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  box-shadow: var(--shadow-popover);
-}
-
-.notification-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-2);
-}
-
-.notification-header h3 {
-  margin: 0;
-  font-size: var(--fs-base);
-}
-
-.notification-item {
-  padding: var(--space-2) var(--space-1);
-  border-bottom: 1px solid var(--c-surface-2);
-}
-
-.notification-item:last-child {
-  border-bottom: none;
-}
-
-.notification-item[role="button"] {
-  cursor: pointer;
-}
-
-.notification-item h4 {
-  margin: 0 0 var(--space-1);
-  font-size: var(--fs-sm);
-  color: var(--c-text-2);
-}
-
-.notification-item p {
-  margin: 0;
-  font-size: var(--fs-sm);
-}
-
-.notification-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  font-size: var(--fs-xs);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-/* --- Control Center --- */
-
-.control-center-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-}
-
-.control-center-panel {
-  position: absolute;
-  top: 3.5rem;
-  right: 1rem;
-  width: min(320px, 90vw);
-  max-height: 70vh;
-  overflow-y: auto;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  box-shadow: var(--shadow-popover);
-}
-
-.control-center-item {
-  padding: var(--space-2) var(--space-1);
-  border-bottom: 1px solid var(--c-surface-2);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.control-center-item:last-child {
-  border-bottom: none;
-}
-
-.control-center-item h4 {
-  margin: 0;
-  font-size: var(--fs-sm);
-  color: var(--c-text-2);
-}
-
-.control-center-item p {
-  margin: 0;
-  font-size: var(--fs-xs);
 }
 
 /* --- Project workspace --- */
@@ -1906,21 +1047,6 @@ button.active {
   color: var(--c-success);
 }
 
-.add-project-kind-toggle {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-  font-size: var(--fs-sm);
-}
-
-.add-project-kind-toggle label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: normal;
-}
-
 /* --- Settings --- */
 
 .settings-app {
@@ -1941,132 +1067,6 @@ button.active {
 .settings-theme-options {
   display: flex;
   gap: var(--space-2);
-}
-
-/* --- Emmy-Chat --- */
-
-.emmy-app {
-  padding: var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  max-width: 640px;
-  margin: 0 auto;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-
-.emmy-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.emmy-avatar {
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  background: var(--c-accent);
-  color: var(--c-on-solid);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: var(--fs-base);
-  flex-shrink: 0;
-}
-
-.emmy-header-text {
-  display: flex;
-  flex-direction: column;
-}
-
-.emmy-header-text h2 {
-  margin: 0;
-}
-
-.emmy-header-sub {
-  font-size: var(--fs-xs);
-  color: var(--c-text-3);
-}
-
-.emmy-messages {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  min-height: 0;
-}
-
-.emmy-bubble {
-  max-width: 85%;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--fs-base);
-}
-
-.emmy-bubble p {
-  margin: 0;
-  white-space: pre-wrap;
-}
-
-.emmy-bubble-time {
-  display: block;
-  margin-top: var(--space-1);
-  font-size: var(--fs-xs);
-  opacity: 0.65;
-}
-
-.emmy-bubble-me {
-  align-self: flex-end;
-  background: var(--c-accent);
-  color: var(--c-on-solid);
-}
-
-.emmy-bubble-emmy {
-  align-self: flex-start;
-  background: var(--c-surface-2);
-  border: 1px solid var(--c-border);
-}
-
-.emmy-error {
-  color: var(--c-danger);
-  font-size: var(--fs-sm);
-  margin: 0;
-}
-
-.emmy-input-row {
-  display: flex;
-  gap: var(--space-2);
-  align-items: flex-end;
-}
-
-.emmy-textarea {
-  flex: 1;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  color: var(--c-text);
-  font-size: var(--fs-base);
-  font-family: inherit;
-  padding: var(--space-3);
-  resize: vertical;
-}
-
-.emmy-send-button {
-  padding: var(--space-3);
-  font-size: var(--fs-base);
-  font-weight: 600;
-  background: var(--c-accent);
-  border-color: var(--c-accent);
-  white-space: nowrap;
-}
-
-.emmy-send-button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 /* --- Pläne-Tab (Projekt-Workspace) --- */
@@ -2340,23 +1340,6 @@ button.active {
   color: var(--c-text-2);
 }
 
-.scan-progress {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-bottom: var(--space-3);
-  padding: var(--space-3);
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-}
-
-.scan-progress-label {
-  margin: 0;
-  font-size: var(--fs-sm);
-  color: var(--c-text-2);
-}
-
 /* --- Emmy Multi-Chat --- */
 
 .emmy2-app {
@@ -2366,129 +1349,10 @@ button.active {
   width: 100%;
 }
 
-.emmy2-sidebar {
-  width: 260px;
-  flex-shrink: 0;
-  border-right: 1px solid var(--c-border);
-  overflow-y: auto;
-  padding: var(--space-2);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.emmy2-sidebar-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-}
-
-.emmy2-sidebar-head h2 {
-  margin: 0;
-  font-size: var(--fs-base);
-}
-
-.emmy2-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: var(--c-surface-2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-base);
-  flex-shrink: 0;
-}
-
-.emmy2-new-task {
-  display: flex;
-  gap: var(--space-2);
-  margin: var(--space-2) 0;
-}
-
-.emmy2-new-task input {
-  flex: 1;
-  min-width: 0;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--radius-md);
-  color: var(--c-text);
-  padding: var(--space-2);
-  font-family: inherit;
-  font-size: var(--fs-sm);
-}
-
-.emmy2-new-task button {
-  flex-shrink: 0;
-  padding: var(--space-2);
-  font-size: var(--fs-base);
-  line-height: 1;
-}
-
-.emmy2-group {
-  margin-top: var(--space-2);
-}
-
-.emmy2-group-head {
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--c-text-3);
-  padding: var(--space-1);
-}
-
-.emmy2-group-count {
-  opacity: 0.6;
-}
-
-.emmy2-chat-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  color: var(--c-text);
-  font-size: var(--fs-sm);
-}
-
-.emmy2-chat-row:hover {
-  background: var(--c-surface-2);
-}
-
-.emmy2-chat-row.active {
-  background: var(--c-surface-2);
-  border-color: var(--c-border-strong);
-}
-
 .emmy2-chat-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.emmy2-status-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.emmy2-status-open {
-  background: var(--c-text-3);
-}
-
-.emmy2-status-in_progress {
-  background: var(--c-accent);
-}
-
-.emmy2-status-done {
-  background: var(--c-success);
 }
 
 .emmy2-main {
@@ -2498,6 +1362,282 @@ button.active {
   flex-direction: column;
   min-height: 0;
   padding: var(--space-2) var(--space-3);
+}
+
+/* Center stage: the idle state is just the input, vertically centered;
+   anything relevant (active/upcoming tasks, server status) sits below it as
+   quiet, borderless-until-hover cards rather than a fixed dashboard. */
+.emmy2-center-stage {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-3);
+}
+
+/* Spacer-Paar statt fixer vh-Werte: das Eingabefeld landet an der
+   Grenze zwischen oberen 2/3 und unterem Drittel, egal wie hoch der
+   Bildschirm ist. Aarons Vorgabe vom 26.08.: soll das Erste sein, was
+   man wahrnimmt. */
+.emmy2-center-stage::before {
+  content: "";
+  flex: 2;
+}
+
+.emmy2-center-stage::after {
+  content: "";
+  flex: 1;
+}
+
+.emmy2-center-input-wrap {
+  width: 100%;
+  max-width: min(90vw, 840px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  /* Never let the composer be squeezed — it grows with its content and the
+     thread above gives up the room instead. */
+  flex-shrink: 0;
+}
+
+.emmy2-center-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--c-surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--fs-xl);
+}
+
+.emmy2-center-input-row {
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-1);
+}
+
+.emmy2-center-textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  background: transparent;
+  border: none;
+  color: var(--c-text);
+  font-family: inherit;
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  padding: var(--space-1);
+  /* Height is set inline by the auto-grow effect; this is just the ceiling
+     before it finally scrolls internally (pasted wall of text). */
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.emmy2-center-textarea:focus {
+  outline: none;
+}
+
+.emmy2-center-input-row .emmy2-send {
+  padding: var(--space-1) var(--space-2);
+}
+
+.emmy2-center-input-row .emmy2-attach {
+  padding: var(--space-1);
+  color: var(--c-text-2);
+}
+
+.emmy2-center-input-row .emmy2-attach:hover {
+  color: var(--c-text);
+}
+
+.emmy2-center-input-wrap .emmy2-pending {
+  width: 100%;
+}
+
+/* Startseite mit laufendem Verlauf: Thread scrollt, Eingabezeile bleibt
+   unten; die Spacer, die im Leerzustand das Feld auf die 2/3-Linie
+   schieben, entfallen. */
+.emmy2-center-stage[data-conversation="true"] {
+  overflow: hidden;
+  justify-content: flex-start;
+  gap: var(--space-3);
+}
+
+/* Nur der obere Spacer entfällt — der Thread füllt die oberen zwei Drittel
+   selbst. Der untere Spacer bleibt, damit die Eingabezeile auf derselben
+   2/3-Linie steht wie im Leerzustand statt an den unteren Rand zu rutschen. */
+.emmy2-center-stage[data-conversation="true"]::before {
+  display: none;
+}
+
+/* Der untere Spacer darf NICHT schrumpfen: wenn die Eingabezeile beim
+   Tippen wächst, soll ihr unterer Rand auf der 2/3-Linie bleiben und das
+   Feld nach OBEN wachsen — der Thread gibt die Höhe her, nicht der
+   Bodenabstand. */
+.emmy2-center-stage[data-conversation="true"]::after {
+  flex-shrink: 0;
+}
+
+.emmy2-center-thread {
+  flex: 2;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  max-width: min(90vw, 840px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+  padding-bottom: var(--space-2);
+  /* Ältere Nachrichten sollen oben "unter dem Bildschirmrand durchtauchen"
+     statt hart abgeschnitten zu werden. Die eine funktional erlaubte
+     Gradient-Nutzung (Fade-Maske an einer Scroll-Liste, DESIGN_PRINCIPLES
+     Artefakte-Check). */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--space-5));
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--space-5));
+}
+
+/* Wenige Nachrichten sollen direkt über der Eingabezeile sitzen (normaler
+   Messenger), statt am oberen Rand zu kleben. margin-top:auto kollabiert
+   von selbst, sobald der Verlauf lang genug zum Scrollen wird. */
+.emmy2-center-thread > :first-child {
+  margin-top: auto;
+}
+
+.emmy2-center-quicklinks {
+  width: 100%;
+  display: flex;
+  gap: var(--space-1);
+  justify-content: center;
+}
+
+.emmy2-center-newtask {
+  flex: 1;
+  min-width: 0;
+  max-width: 260px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--c-text-2);
+  padding: var(--space-1) var(--space-2);
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.emmy2-center-newtask:focus {
+  outline: none;
+  border-color: var(--c-border);
+  text-align: left;
+}
+
+.emmy2-center-archive {
+  background: transparent;
+  border: none;
+  color: var(--c-text-3);
+  font-size: var(--fs-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.emmy2-center-archive:hover {
+  color: var(--c-text);
+}
+
+.emmy2-ambient-grid {
+  width: 100%;
+  max-width: 960px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-2);
+}
+
+.emmy2-ambient-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-0);
+  text-align: left;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  color: var(--c-text);
+}
+
+.emmy2-ambient-card:hover {
+  border-color: var(--c-border-strong);
+  background: var(--c-surface-2);
+}
+
+.emmy2-ambient-card-active {
+  border-color: var(--c-accent);
+}
+
+.emmy2-ambient-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+}
+
+.emmy2-ambient-widgets {
+  width: 100%;
+  max-width: 960px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-2);
+  opacity: 0.75;
+}
+
+.emmy2-ambient-widgets .os-widget {
+  margin: 0;
+}
+
+/* Collapsed-by-default summary lines (recurring checks, other open tasks,
+   system widgets) — quiet by default, only expand into the full grid when
+   clicked. Keeps the idle center stage to what's actually relevant right now. */
+.emmy2-ambient-collapsible {
+  width: 100%;
+  max-width: 960px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.emmy2-ambient-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+  color: var(--c-text-2);
+  font-size: var(--fs-sm);
+  text-align: left;
+}
+
+.emmy2-ambient-summary:hover {
+  border-color: var(--c-border);
+  color: var(--c-text);
+}
+
+.emmy2-ambient-summary-caret {
+  margin-left: auto;
+  opacity: 0.6;
 }
 
 .emmy2-conv-head {
@@ -2547,7 +1687,10 @@ button.active {
 }
 
 .emmy2-delete {
-  padding: var(--space-1) var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-1);
 }
 
 .emmy2-final-doc {
@@ -2614,31 +1757,61 @@ button.active {
   opacity: 0.65;
 }
 
-.emmy2-bubble-to-project {
-  flex-shrink: 0;
-  font-size: var(--fs-xs);
-  padding: var(--space-0) var(--space-2);
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  background: transparent;
-  color: inherit;
-  opacity: 0.75;
-}
-
-.emmy2-bubble-to-project:hover {
-  opacity: 1;
+.emmy2-bubble-emmy {
+  align-self: flex-start;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
 }
 
 .emmy2-bubble-me {
   align-self: flex-end;
   background: var(--c-accent);
+  border: 1px solid var(--c-accent);
   color: var(--c-on-solid);
 }
 
-.emmy2-bubble-emmy {
+.emmy2-bubble-me p {
+  color: inherit;
+}
+
+/* Startseiten-Verlauf (Stil "I", von Aaron gewählt 27.08.): jede Nachricht
+   ist ein angehobenes Feld mit heller Oberkante und Sprecher-Leiste. Emmy
+   links, grün getönt, Leiste links; du rechts, neutral-grau, Leiste rechts.
+   Farbe (grün vs. grau) + Seite trennen die Sprecher; beide Felder gleich
+   "wertig". Regelkonform: nur der eine sanktionierte Schatten-Token, kein
+   Gradient (Prinzip 3/7). */
+.emmy2-center-thread .emmy2-bubble {
+  max-width: 80%;
+  border: none;
+  box-shadow: var(--shadow-popover);
+  padding: var(--space-2) var(--space-3);
+}
+
+.emmy2-center-thread .emmy2-bubble-emmy {
   align-self: flex-start;
+  background: var(--c-accent-bg);
+  border-left: 2px solid var(--c-accent);
+  border-top: 1px solid #1e4230;
+}
+
+.emmy2-center-thread .emmy2-bubble-me {
+  align-self: flex-end;
   background: var(--c-surface-2);
-  border: 1px solid var(--c-border);
+  border-right: 2px solid var(--c-text-3);
+  border-top: 1px solid #313b57;
+  color: var(--c-text);
+  text-align: right;
+}
+
+/* Zeitstempel nur bei Hover (Maus am Display), sonst so ruhig wie möglich. */
+.emmy2-center-thread .emmy2-bubble-footer {
+  margin-top: var(--space-1);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-tactile);
+}
+
+.emmy2-center-thread .emmy2-bubble:hover .emmy2-bubble-footer {
+  opacity: 0.55;
 }
 
 .emmy2-bubble-report {
@@ -2932,6 +2105,26 @@ button.active {
   font-size: var(--fs-sm);
 }
 
+/* --- Server-Terminal, opened directly from the Emmy center stage --- */
+
+.emmy2-terminal-panel {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  width: min(900px, 95vw);
+  height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: var(--shadow-popover);
+}
+
+.emmy2-terminal-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
 /* --- Full-document viewer for long Emmy reports --- */
 
 .emmy2-doc-panel {
@@ -3106,8 +2299,10 @@ button.active {
 
 .emmy2-attach {
   flex-shrink: 0;
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--fs-base);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2);
 }
 
 .emmy2-textarea {
@@ -3133,17 +2328,19 @@ button.active {
   white-space: nowrap;
 }
 
+.emmy2-send:hover:not(:disabled) {
+  background: var(--c-accent-hover);
+  border-color: var(--c-accent-hover);
+}
+
+.emmy2-send:active:not(:disabled) {
+  background: var(--c-accent-active);
+  border-color: var(--c-accent-active);
+}
+
 .emmy2-send:disabled {
   opacity: 0.5;
   cursor: default;
-}
-
-/* Two-line chat rows: title plus what the chat is currently up to. */
-.emmy2-chat-lines {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: var(--space-0);
 }
 
 .emmy2-chat-sub {
@@ -3152,16 +2349,6 @@ button.active {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* Emmy is working in this chat right now — same slot as the status dot. */
-.emmy2-working-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--c-accent);
-  animation: emmy2-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes emmy2-pulse {
@@ -3227,7 +2414,6 @@ button.active {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .emmy2-working-dot,
   .emmy2-typing i {
     animation: none;
   }
@@ -3243,33 +2429,6 @@ button.active {
 }
 
 .emmy2-source-badge {
-  white-space: nowrap;
-}
-
-.emmy2-knowledge {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.emmy2-knowledge-bar {
-  display: inline-block;
-  width: 44px;
-  height: 5px;
-  border-radius: var(--radius-sm);
-  background: var(--c-border);
-  overflow: hidden;
-}
-
-.emmy2-knowledge-fill {
-  display: block;
-  height: 100%;
-  background: var(--c-accent);
-  border-radius: inherit;
-  transition: width 0.4s ease;
-}
-
-.emmy2-knowledge-pct {
   white-space: nowrap;
 }
 
@@ -3308,11 +2467,6 @@ button.active {
   width: 5rem;
 }
 
-.emmy2-archive-row {
-  margin-top: auto;
-  color: var(--c-text-2);
-}
-
 .emmy2-archive-item {
   display: flex;
   align-items: center;
@@ -3342,58 +2496,276 @@ button.active {
   .os-shell {
     flex-direction: column;
   }
-
-  .os-sidebar {
-    width: 100%;
-    flex-direction: row;
-    align-items: center;
-    order: 2;
-    gap: var(--space-1);
-    padding: var(--space-1) var(--space-2) calc(var(--space-1) + env(safe-area-inset-bottom));
-    border-right: none;
-    border-top: 1px solid var(--c-surface-2);
-    overflow-x: auto;
-    overflow-y: visible;
-  }
-
-  .os-sidebar-brand,
-  .os-sidebar-section {
-    flex-direction: row;
-    margin: 0;
-    padding: 0;
-    border-top: none;
-    gap: var(--space-1);
-  }
-
-  .os-sidebar-brand-label {
-    display: none;
-  }
-
-  .os-sidebar-section--push-end {
-    margin-left: auto;
-  }
-
-  .os-sidebar-button {
-    flex-direction: column;
-    gap: var(--space-0);
-    padding: var(--space-1);
-    font-size: var(--fs-xs);
-  }
 }
 
 /* Narrow screens (kiosk portrait, iPhone): one pane at a time. */
 @media (max-width: 720px) {
-  .emmy2-app[data-view="chat"] .emmy2-sidebar {
-    display: none;
-  }
-  .emmy2-app[data-view="list"] .emmy2-main {
-    display: none;
-  }
-  .emmy2-sidebar {
-    width: 100%;
-    border-right: none;
-  }
   .emmy2-back {
     display: inline-block;
   }
+}
+
+/* ===== Übersicht-Sidebar (Strg/Cmd+B) =====
+   Startseite bleibt nackt; alles Nachschlagbare (Server-Status, Checks,
+   Aufgaben, später Python-Dashboards) lebt hier. Schiebt von rechts über
+   den Chat. */
+.emmy2-sidebar-trigger {
+  position: fixed;
+  left: var(--space-2);
+  bottom: var(--space-2);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: none;
+  color: var(--c-text-3);
+  font-size: var(--fs-sm);
+}
+
+.emmy2-sidebar-trigger:hover {
+  color: var(--c-text);
+}
+
+.emmy2-sidebar-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-base) var(--ease-tactile);
+}
+
+.emmy2-sidebar-scrim.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.emmy2-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 41;
+  height: 100%;
+  width: min(92vw, 380px);
+  display: flex;
+  flex-direction: column;
+  background: var(--c-surface);
+  border-left: 1px solid var(--c-border);
+  box-shadow: var(--shadow-popover);
+  transform: translateX(100%);
+  transition: transform var(--motion-base) var(--ease-tactile);
+}
+
+.emmy2-sidebar.open {
+  transform: translateX(0);
+}
+
+.emmy2-sidebar-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.emmy2-sidebar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 600;
+}
+
+.emmy2-sidebar-head button {
+  display: flex;
+  padding: var(--space-1);
+  background: transparent;
+  border: none;
+  color: var(--c-text-2);
+}
+
+.emmy2-sidebar-head button:hover {
+  color: var(--c-text);
+}
+
+.emmy2-sidebar-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.emmy2-sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.emmy2-sidebar-section h4 {
+  margin: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-text-3);
+}
+
+.emmy2-sidebar-section .os-widget {
+  cursor: default;
+}
+
+.emmy2-sidebar-more {
+  align-self: flex-start;
+  padding: var(--space-1) 0;
+  background: transparent;
+  border: none;
+  color: var(--c-text-2);
+  font-size: var(--fs-sm);
+}
+
+.emmy2-sidebar-more:hover {
+  color: var(--c-text);
+}
+
+/* Aktion in der Nachrichten-Fußzeile (im Center-Thread nur bei Hover
+   sichtbar, s. .emmy2-bubble-footer opacity). */
+.emmy2-bubble-action {
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--c-text-3);
+  font-size: var(--fs-xs);
+}
+
+.emmy2-bubble-action:hover {
+  color: var(--c-text);
+}
+
+/* ===== Themen-Fenster ===== verschiebbares, größenveränderbares
+   Referenz-Fenster (Browser-Fenster-artig). Emmy füllt es mit einem
+   Dossier, du schiebst es zur Seite und chattest weiter. */
+.emmy2-topicwin {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  min-width: 300px;
+  min-height: 200px;
+  max-width: 96vw;
+  max-height: 92vh;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+  overflow: hidden;
+}
+
+.emmy2-topicwin-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background: var(--c-surface-2);
+  border-bottom: 1px solid var(--c-border);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.emmy2-topicwin-head:active {
+  cursor: grabbing;
+}
+
+.emmy2-topicwin-title {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emmy2-topicwin-head button {
+  flex-shrink: 0;
+  display: flex;
+  padding: var(--space-0);
+  background: transparent;
+  border: none;
+  color: var(--c-text-2);
+}
+
+.emmy2-topicwin-head button:hover {
+  color: var(--c-text);
+}
+
+.emmy2-topicwin-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+}
+
+.emmy2-topicwin-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+
+.emmy2-topicwin-resize::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--c-text-3);
+  border-bottom: 2px solid var(--c-text-3);
+}
+
+.emmy2-topicwin-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.emmy2-topicwin-row-open {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--c-text);
+  font-size: var(--fs-sm);
+  padding: var(--space-1) 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emmy2-topicwin-row-open:hover {
+  color: var(--c-accent-hover);
+}
+
+.emmy2-topicwin-row-del {
+  flex-shrink: 0;
+  display: flex;
+  padding: var(--space-0);
+  background: transparent;
+  border: none;
+  color: var(--c-text-3);
+}
+
+.emmy2-topicwin-row-del:hover {
+  color: var(--c-danger);
 }

@@ -197,6 +197,19 @@ const schema = z.object({
   // a prompt, and the minimum similarity score for a hit to count at all.
   EMMY_MEMORY_TOP_K: z.coerce.number().int().positive().default(6),
   EMMY_MEMORY_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.55),
+  // Model the recurring-tasks scheduler (emmy-scheduler.ts) retries a check
+  // with if the first (default-model) OpenClaw agent turn fails outright —
+  // e.g. the primary model's usage limit is exhausted. Same optional/
+  // best-effort pattern as OLLAMA_MODEL: empty disables the retry, the
+  // check is just marked failed and picked up again next tick.
+  EMMY_RECURRING_FALLBACK_MODEL: z.string().default(""),
+  // Model the *research gathering* phase runs on (category "research", before
+  // it flips to "discussion"). That phase is the token-heavy part — reading
+  // many web sources — so it goes to Gemini to spare the Claude subscription;
+  // the discussion phase, normal chat and recurring checks stay on the
+  // gateway default (Claude), where judgement and tone matter. Empty disables
+  // the split (everything stays on the default model). See turnModelFor().
+  EMMY_RESEARCH_MODEL: z.string().default(""),
   // How many of the current chat's own recent messages ride along on every
   // turn, independent of the embedding tier above — this alone is what fixes
   // Emmy forgetting mid-task even with no Ollama configured at all.

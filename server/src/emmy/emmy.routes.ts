@@ -17,7 +17,13 @@ import {
   purgeArchiveEntry,
   GENERAL_CHAT_ID,
 } from "./emmy-store.js";
-import { publishEmmyMessage, publishEmmyChats } from "./emmy-bus.js";
+import { publishEmmyMessage, publishEmmyChats, publishEmmyTopicWindows } from "./emmy-bus.js";
+import {
+  listTopicWindows,
+  createTopicWindow,
+  patchTopicWindow,
+  deleteTopicWindow,
+} from "./topic-window-store.js";
 import { listActivities, markWorking, markIdle } from "./emmy-activity.js";
 import { classifyTask, DEFAULT_INTERVAL_HOURS, DEFAULT_RESEARCH_WINDOW_HOURS } from "./emmy-categorize.js";
 import type { EmmyCategory, EmmyChat, EmmyMessage, EmmyResearchPhase } from "@overlay/shared";
@@ -25,7 +31,7 @@ import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
 import { saveEmmyAttachments, attachmentsDir } from "./emmy-attachments.js";
 import { resolveSafePath, UnsafePathError } from "../files/safe-path.js";
 import { indexMessageForMemory, retrieveMemory, purgeMessagesFromMemory } from "./emmy-memory.js";
-import { buildEmmyTurnMessage, sessionKeyFor } from "./emmy-turn-message.js";
+import { buildEmmyTurnMessage, sessionKeyFor, turnModelFor } from "./emmy-turn-message.js";
 
 // CRUD + reads (normal JSON body limit, mounted under protectedApi).
 export const emmyRouter = Router();
@@ -57,6 +63,73 @@ emmyRouter.get("/chats/:id/messages", async (req, res) => {
 /** What Emmy is busy with right now; the same list the /ws/emmy socket pushes. */
 emmyRouter.get("/activity", (_req, res) => {
   res.json(listActivities());
+});
+
+// ---- topic windows --------------------------------------------------------
+// Free-floating reference windows on the home screen. Persisted so they
+// survive reloads; the /ws/emmy socket pushes the whole list on any change.
+
+async function broadcastTopicWindows(): Promise<void> {
+  publishEmmyTopicWindows(await listTopicWindows());
+}
+
+const topicWindowCreateSchema = z.object({
+  title: z.string().max(200),
+  content: z.string(),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  w: z.number().optional(),
+  h: z.number().optional(),
+});
+
+const topicWindowPatchSchema = z.object({
+  title: z.string().max(200).optional(),
+  content: z.string().optional(),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  w: z.number().optional(),
+  h: z.number().optional(),
+  minimized: z.boolean().optional(),
+});
+
+emmyRouter.get("/topic-windows", async (_req, res) => {
+  res.json(await listTopicWindows());
+});
+
+emmyRouter.post("/topic-windows", async (req, res) => {
+  const parsed = topicWindowCreateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_request", details: parsed.error.issues });
+    return;
+  }
+  const win = await createTopicWindow(parsed.data);
+  await broadcastTopicWindows();
+  res.status(201).json(win);
+});
+
+emmyRouter.patch("/topic-windows/:id", async (req, res) => {
+  const parsed = topicWindowPatchSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "invalid_request", details: parsed.error.issues });
+    return;
+  }
+  const win = await patchTopicWindow(req.params.id, parsed.data);
+  if (!win) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  await broadcastTopicWindows();
+  res.json(win);
+});
+
+emmyRouter.delete("/topic-windows/:id", async (req, res) => {
+  const ok = await deleteTopicWindow(req.params.id);
+  if (!ok) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  await broadcastTopicWindows();
+  res.status(204).end();
 });
 
 const createSchema = z.object({
@@ -283,10 +356,13 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
     await updateChat(chat.id, { pendingFinalDocument: true });
   }
 
+  // SOFORT PING: UI sieht jetzt sofort „arbeitet daran"
+  markWorking(chat.id, undefined, undefined, category);
+
   try {
-    await sendEmmyHookTurn(sessionKeyFor(chat.id), name, prompt);
+    await sendEmmyHookTurn(sessionKeyFor(chat.id), name, prompt, turnModelFor(category, chat.researchPhase));
   } catch (err) {
-    // Nothing is running on the other side, so the chat must not claim she's on it.
+    // Nur bei echtem Fehler wieder auf „idle" setzen
     markIdle(chat.id);
     // The turn never made it out, so no reply will land on /api/emmy/inbound
     // to consume this flag — leaving it set would wrongly tag the next
@@ -296,9 +372,6 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
     return;
   }
 
-  // The turn was accepted; from here the chat shows "arbeitet daran" until her
-  // reply lands on /api/emmy/inbound (or the note goes stale).
-  markWorking(chat.id, undefined, undefined, category);
   res.status(201).json(message);
 });
 

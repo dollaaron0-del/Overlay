@@ -1,7 +1,7 @@
 import { config } from "../config.js";
 import type { EmmyChat } from "@overlay/shared";
 import { listChats, listMessages, updateChat } from "./emmy-store.js";
-import { buildEmmyTurnMessage, sessionKeyFor } from "./emmy-turn-message.js";
+import { buildEmmyTurnMessage, sessionKeyFor, turnModelFor } from "./emmy-turn-message.js";
 import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
 import { markWorking } from "./emmy-activity.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
@@ -50,7 +50,18 @@ export async function runRecurringTasksTick(): Promise<{ triggered: string[]; fa
       const recentMessages = (await listMessages(chat.id)).slice(-config.EMMY_MEMORY_RECENT_MESSAGES);
       const userText = `[Automatischer wiederkehrender Check, alle ${chat.intervalHours}h] Bitte die Aufgabe dieses Chats erneut prüfen und ein Update posten.`;
       const prompt = buildEmmyTurnMessage(chat.title, chat.kind, chat.id, userText, recentMessages, chat.category, chat.researchPhase);
-      await sendEmmyHookTurn(sessionKeyFor(chat.id), "Overlay Scheduler", prompt);
+      try {
+        await sendEmmyHookTurn(sessionKeyFor(chat.id), "Overlay Scheduler", prompt);
+      } catch (primaryErr) {
+        // The primary model call failed outright (e.g. usage limit exhausted).
+        // Retry once with the configured fallback model instead of leaving
+        // this check hanging until the next tick — see EMMY_RECURRING_FALLBACK_MODEL.
+        if (!config.EMMY_RECURRING_FALLBACK_MODEL) throw primaryErr;
+        console.error(
+          `[emmy-scheduler] chat ${chat.id} failed on primary model, retrying with fallback ${config.EMMY_RECURRING_FALLBACK_MODEL}: ${(primaryErr as Error).message}`,
+        );
+        await sendEmmyHookTurn(sessionKeyFor(chat.id), "Overlay Scheduler", prompt, config.EMMY_RECURRING_FALLBACK_MODEL);
+      }
       await updateChat(chat.id, { lastRecurringCheckAt: new Date(now).toISOString() });
       markWorking(chat.id, undefined, undefined, chat.category);
       triggered.push(chat.id);
@@ -107,7 +118,12 @@ export async function runResearchDueChecksTick(): Promise<{ triggered: string[];
       const prompt = buildEmmyTurnMessage(chat.title, chat.kind, chat.id, userText, recentMessages, chat.category, chat.researchPhase, {
         dueAt: chat.dueAt,
       });
-      await sendEmmyHookTurn(sessionKeyFor(chat.id), "Overlay Scheduler", prompt);
+      await sendEmmyHookTurn(
+        sessionKeyFor(chat.id),
+        "Overlay Scheduler",
+        prompt,
+        turnModelFor(chat.category, chat.researchPhase),
+      );
       await updateChat(chat.id, { dueCheckSentAt: new Date(now).toISOString() });
       markWorking(chat.id, undefined, undefined, chat.category);
       triggered.push(chat.id);

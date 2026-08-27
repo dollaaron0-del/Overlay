@@ -6,6 +6,7 @@ import { attachWebSocketServer } from "./ws/ws.server.js";
 import { reconcileMemoryIndex } from "./emmy/emmy-memory.js";
 import { sharedCredentialsFile } from "./pty/claude-home.js";
 import { startGitDeployWatcher, stopGitDeployWatcher } from "./projects/git-deploy-watcher.js";
+import { startCpuHealthScheduler } from "./cpu-health/cpu-health-scheduler.js";
 
 // Defense in depth: Express 4 does not catch a rejected promise thrown by an
 // async route handler on its own — without this, one unexpected rejection
@@ -30,6 +31,8 @@ void reconcileMemoryIndex();
 // script when one appears — see git-deploy-watcher.ts. Opt-in per project
 // via autoDeployOnCommit (PATCH /:id), off by default.
 startGitDeployWatcher();
+
+startCpuHealthScheduler();
 
 const app = createApp();
 const server = http.createServer(app);

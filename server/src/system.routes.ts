@@ -8,11 +8,28 @@ import {
   UPDATE_UNIT_PROPERTIES,
   UPDATE_JOURNAL_LINES,
 } from "./update-status.js";
+import { captureCpuHealthSnapshot } from "./cpu-health/cpu-health.js";
+import { readCpuHealthHistory } from "./cpu-health/cpu-health-store.js";
 
 export const systemRouter = Router();
 
 systemRouter.get("/stats", async (_req, res) => {
   res.json(await getSystemStats());
+});
+
+// Live snapshot (sensors + ping run fresh on every call, ~2s worst case) —
+// deliberately not read from the history store so the widget's "current
+// values" are never more than a poll interval stale.
+systemRouter.get("/health/current", async (_req, res) => {
+  res.json(await captureCpuHealthSnapshot());
+});
+
+const MAX_HISTORY_HOURS = 24 * 31;
+
+systemRouter.get("/health/history", async (req, res) => {
+  const requestedHours = Number(req.query.hours);
+  const hours = Math.min(Math.max(Number.isFinite(requestedHours) ? requestedHours : 24, 1), MAX_HISTORY_HOURS);
+  res.json(await readCpuHealthHistory(hours * 60 * 60 * 1000));
 });
 
 // Pulls whatever branch /opt/overlay currently tracks — that branch is

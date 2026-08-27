@@ -136,7 +136,31 @@ export interface EmmyArchiveSummary {
 // activity list are pushed whole on connect and whenever they change;
 // individual new messages stream in and the client routes them to the right
 // chat by chatId.
+/**
+ * A free-floating reference window on the home screen. Emmy fills it with a
+ * compiled dossier on a topic; the user drags/resizes it like a browser
+ * window and keeps chatting underneath. Persisted so it survives reloads;
+ * `minimized` hides the window but keeps it listed in the sidebar.
+ */
+export interface EmmyTopicWindow {
+  id: string;
+  title: string;
+  content: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  minimized: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type EmmyTopicWindowPatch = Partial<
+  Pick<EmmyTopicWindow, "title" | "content" | "x" | "y" | "w" | "h" | "minimized">
+>;
+
 export type EmmyServerMessage =
   | { type: "chats"; chats: EmmyChat[] }
   | { type: "message"; message: EmmyMessage }
-  | { type: "activity"; activities: EmmyActivity[] };
+  | { type: "activity"; activities: EmmyActivity[] }
+  | { type: "topic-windows"; topicWindows: EmmyTopicWindow[] };
