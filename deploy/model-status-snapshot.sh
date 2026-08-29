@@ -14,6 +14,14 @@ OUT=/opt/overlay/data/model-status.json
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 
+# cron gives us a bare PATH without nvm; make sure the `openclaw` CLI (installed
+# under the aaron user's nvm node) is reachable. Glob so a node version bump
+# doesn't silently break the snapshot again.
+for _nvmbin in /home/aaron/.nvm/versions/node/*/bin; do
+  [ -x "$_nvmbin/openclaw" ] && PATH="$_nvmbin:$PATH" && break
+done
+export PATH
+
 export OPENCLAW_STATE_DIR=/home/emmy/.openclaw
 export OPENCLAW_CONFIG_PATH=/home/emmy/.openclaw/openclaw.json
 export HOME=/home/emmy
@@ -51,13 +59,43 @@ def profile_count(provider):
             return int(p.get("profiles", {}).get("count", 0) or 0)
     return 0
 
+fallbacks = [m for m in (j.get("fallbacks") or []) if isinstance(m, str)]
+
+claude_accounts = profile_count("anthropic")
+gemini_keys = profile_count("google")
+
+# `openclaw models status` only reports provider profile counts when the agent
+# state DB is readable; from the aaron cron user it usually is not, so the auth
+# block comes back empty. Fall back to the gateway config file (aaron has an ACL
+# read grant on it) and count credential profiles directly.
+if claude_accounts == 0 or gemini_keys == 0:
+    try:
+        with open("/home/emmy/.openclaw/openclaw.json") as f:
+            cfg = json.load(f)
+        profiles = (cfg.get("auth") or {}).get("profiles") or {}
+        cfg_gemini = sum(1 for p in profiles.values() if p.get("provider") == "google")
+        # claude-cli OAuth subscription profiles, plus the claude-cli2 second-account
+        # plugin backend if it is enabled (its account lives outside auth.profiles).
+        cfg_claude = sum(
+            1 for p in profiles.values()
+            if p.get("provider") == "claude-cli" and p.get("mode") == "oauth"
+        )
+        entries = (cfg.get("plugins") or {}).get("entries") or {}
+        cli2 = entries.get("claude-cli2") or {}
+        if cli2.get("enabled") or any(m.startswith("claude-cli2/") for m in fallbacks):
+            cfg_claude += 1
+        claude_accounts = claude_accounts or cfg_claude
+        gemini_keys = gemini_keys or cfg_gemini
+    except Exception:
+        pass
+
 out = {
     "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     "instance": "emmy",
     "default": j.get("resolvedDefault") or j.get("defaultModel") or None,
-    "fallbacks": [m for m in (j.get("fallbacks") or []) if isinstance(m, str)],
-    "claudeAccounts": profile_count("anthropic"),
-    "geminiKeys": profile_count("google"),
+    "fallbacks": fallbacks,
+    "claudeAccounts": claude_accounts,
+    "geminiKeys": gemini_keys,
 }
 with open(sys.argv[2], "w") as f:
     json.dump(out, f, indent=2)
