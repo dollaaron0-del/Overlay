@@ -32,10 +32,12 @@ try {
   const result = (await response.json()) as {
     recurring: { triggered: string[]; failed: string[] };
     researchDueChecks: { triggered: string[]; failed: string[] };
+    researchWatchdog?: { redispatched: string[]; gaveUp: string[] };
   };
   console.log(
     `[emmy-scheduler] recurring: triggered=${result.recurring.triggered.length} failed=${result.recurring.failed.length}; ` +
-      `researchDueChecks: triggered=${result.researchDueChecks.triggered.length} failed=${result.researchDueChecks.failed.length}`,
+      `researchDueChecks: triggered=${result.researchDueChecks.triggered.length} failed=${result.researchDueChecks.failed.length}; ` +
+      `researchWatchdog: redispatched=${result.researchWatchdog?.redispatched.length ?? 0} gaveUp=${result.researchWatchdog?.gaveUp.length ?? 0}`,
   );
   process.exit(0);
 } catch (err) {

@@ -159,15 +159,6 @@ const schema = z.object({
   // with a clear "nicht konfiguriert" error, but the message stays saved.
   OPENCLAW_HOOK_URL: z.string().default(""),
   OPENCLAW_HOOK_TOKEN: z.string().default(""),
-  // OpenClaw Gateway admin HTTP RPC endpoint (POST /api/v1/admin/rpc), used
-  // by the sidebar "Modelle" widget to show which Claude CLI account is live
-  // and whether Gemini still has quota. Needs the bundled `admin-http-rpc`
-  // plugin enabled on the Emmy gateway + a gateway operator token here.
-  // Empty (the default) = the widget shows a "noch nicht verbunden"
-  // placeholder and never calls out. See server/src/system-models.ts and
-  // docs/DEPLOYMENT.md (admin-http-rpc) before filling these in.
-  OPENCLAW_ADMIN_RPC_URL: z.string().default(""),
-  OPENCLAW_ADMIN_RPC_TOKEN: z.string().default(""),
   // Token-authenticated automation API (/api/automation/*) — lets OpenClaw
   // (or any other script) start/stop/restart/deploy projects and trigger a
   // backup/scan, e.g. from a chat command. Deliberately separate from the
@@ -223,6 +214,14 @@ const schema = z.object({
   // gateway default (Claude), where judgement and tone matter. Empty disables
   // the split (everything stays on the default model). See turnModelFor().
   EMMY_RESEARCH_MODEL: z.string().default(""),
+  // Model a research turn is retried with when the primary (EMMY_RESEARCH_MODEL,
+  // or the gateway default) call fails outright — e.g. the Gemini flash model
+  // stalls a long agentic research turn into a 429-backoff loop until the
+  // gateway timeout kills it, and the turn never calls /api/emmy/inbound back.
+  // Pick a *different provider* (Claude) so the retry can actually go through.
+  // Empty disables the retry. Used by spinOffResearchTask + the scheduler's
+  // research-due and stalled-research watchdog ticks.
+  EMMY_RESEARCH_FALLBACK_MODEL: z.string().default(""),
   // How many of the current chat's own recent messages ride along on every
   // turn, independent of the embedding tier above — this alone is what fixes
   // Emmy forgetting mid-task even with no Ollama configured at all.

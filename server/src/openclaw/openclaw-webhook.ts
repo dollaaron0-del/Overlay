@@ -78,3 +78,33 @@ export async function sendEmmyHookTurn(sessionKey: string, name: string, message
     ...(model ? { model } : {}),
   });
 }
+
+/**
+ * sendEmmyHookTurn with a one-shot model fallback: if the primary call throws
+ * (the gateway rejected the turn outright — usage limit, bad model id, network
+ * blip), retry once on `fallbackModel`. A 200 still only means "accepted", not
+ * "answered" — a turn that dies mid-run without calling /api/emmy/inbound back
+ * is caught by the stalled-research watchdog, not here. Returns which model the
+ * accepted turn went out on (or undefined if it ran on the gateway default),
+ * so the caller can log/track it.
+ */
+export async function sendEmmyHookTurnWithFallback(
+  sessionKey: string,
+  name: string,
+  message: string,
+  primaryModel: string | undefined,
+  fallbackModel: string | undefined,
+): Promise<{ usedFallback: boolean; model: string | undefined }> {
+  try {
+    await sendEmmyHookTurn(sessionKey, name, message, primaryModel || undefined);
+    return { usedFallback: false, model: primaryModel || undefined };
+  } catch (primaryErr) {
+    if (!fallbackModel || fallbackModel === primaryModel) throw primaryErr;
+    console.error(
+      `[openclaw] hook turn for ${sessionKey} failed on primary model ${primaryModel ?? "(default)"}, ` +
+        `retrying with fallback ${fallbackModel}: ${(primaryErr as Error).message}`,
+    );
+    await sendEmmyHookTurn(sessionKey, name, message, fallbackModel);
+    return { usedFallback: true, model: fallbackModel };
+  }
+}

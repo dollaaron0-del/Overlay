@@ -27,7 +27,7 @@ import {
 import { listActivities, markWorking, markIdle } from "./emmy-activity.js";
 import { classifyTask, DEFAULT_INTERVAL_HOURS, DEFAULT_RESEARCH_WINDOW_HOURS } from "./emmy-categorize.js";
 import type { EmmyCategory, EmmyChat, EmmyMessage, EmmyResearchPhase } from "@overlay/shared";
-import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
+import { sendEmmyHookTurn, sendEmmyHookTurnWithFallback } from "../openclaw/openclaw-webhook.js";
 import { saveEmmyAttachments, attachmentsDir } from "./emmy-attachments.js";
 import { resolveSafePath, UnsafePathError } from "../files/safe-path.js";
 import { indexMessageForMemory, retrieveMemory, purgeMessagesFromMemory } from "./emmy-memory.js";
@@ -339,11 +339,12 @@ async function spinOffResearchTask(
   });
   markWorking(task.id, undefined, undefined, cls.category);
   try {
-    await sendEmmyHookTurn(
+    await sendEmmyHookTurnWithFallback(
       sessionKeyFor(task.id),
       `Overlay-Aufgabe: ${task.title}`,
       prompt,
-      turnModelFor(cls.category, undefined),
+      turnModelFor(cls.category, undefined) || undefined,
+      cls.category === "research" ? config.EMMY_RESEARCH_FALLBACK_MODEL || undefined : undefined,
     );
   } catch {
     markIdle(task.id);
@@ -497,8 +498,20 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
   // SOFORT PING: UI sieht jetzt sofort „arbeitet daran"
   markWorking(chat.id, undefined, undefined, category);
 
+  const turnFallbackModel =
+    category === "research" && chat.researchPhase !== "discussion"
+      ? config.EMMY_RESEARCH_FALLBACK_MODEL || undefined
+      : category === "recurring"
+        ? config.EMMY_RECURRING_FALLBACK_MODEL || undefined
+        : undefined;
   try {
-    await sendEmmyHookTurn(sessionKeyFor(chat.id), name, prompt, turnModelFor(category, chat.researchPhase));
+    await sendEmmyHookTurnWithFallback(
+      sessionKeyFor(chat.id),
+      name,
+      prompt,
+      turnModelFor(category, chat.researchPhase) || undefined,
+      turnFallbackModel,
+    );
   } catch (err) {
     // Nur bei echtem Fehler wieder auf „idle" setzen
     markIdle(chat.id);
