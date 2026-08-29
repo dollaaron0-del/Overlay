@@ -11,6 +11,7 @@ import {
 import { captureCpuHealthSnapshot } from "./cpu-health/cpu-health.js";
 import { readCpuHealthHistory } from "./cpu-health/cpu-health-store.js";
 import { getNetworkThroughput } from "./network-throughput.js";
+import { getModelStatus } from "./system-models.js";
 
 export const systemRouter = Router();
 
@@ -30,6 +31,13 @@ systemRouter.get("/health/current", async (_req, res) => {
 // on a fresh measurement.
 systemRouter.get("/network", (_req, res) => {
   res.json(getNetworkThroughput());
+});
+
+// Which model each Emmy lane runs on + a non-secret account inventory of the
+// Emmy gateway (from data/model-status.json, refreshed by
+// deploy/model-status-snapshot.sh). See system-models.ts.
+systemRouter.get("/models", async (_req, res) => {
+  res.json(await getModelStatus());
 });
 
 const MAX_HISTORY_HOURS = 24 * 31;

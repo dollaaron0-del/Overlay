@@ -2787,6 +2787,49 @@ button.active {
   color: var(--c-text);
 }
 
+/* Modelle-Widget: eine Zeile je Emmy-Spur (Modell + optional Fallback),
+   plus eine kleine Fußzeile mit der Konten-Übersicht der Emmy-Instanz. */
+.emmy2-model-widget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.emmy2-model-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+}
+
+.emmy2-model-key {
+  flex-shrink: 0;
+  width: 9rem;
+  color: var(--c-text-3);
+}
+
+.emmy2-model-val {
+  color: var(--c-text-2);
+  min-width: 0;
+}
+
+.emmy2-model-muted {
+  color: var(--c-text-3);
+  font-style: italic;
+}
+
+.emmy2-model-foot {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--c-border);
+  font-size: var(--fs-sm);
+  color: var(--c-text-3);
+}
+
+.emmy2-model-stale {
+  color: var(--c-warn, #c77);
+}
+
 /* Reduzierte Status-Liste: eine Zeile je Check / laufender Recherche.
    Punkt orange = wiederkehrender Check, blau = tiefe Recherche. Solange
    aktiv gearbeitet wird, pulst der Punkt ruhig (dimmt und wird wieder hell). */

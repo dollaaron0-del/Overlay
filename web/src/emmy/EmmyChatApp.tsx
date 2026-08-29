@@ -19,6 +19,7 @@ import { formatTimestamp } from "../format";
 import { renderMiniMarkdown } from "./miniMarkdown";
 import { defaultProjectIcon } from "../os/project-icon";
 import { SystemStatsWidget } from "../os/widgets/SystemStatsWidget";
+import { ModelStatusWidget } from "../os/widgets/ModelStatusWidget";
 import { BackupWidget } from "../os/widgets/BackupWidget";
 import { TerminalPanel } from "../terminal/TerminalPanel";
 import { SettingsApp } from "../settings/SettingsApp";
@@ -1251,6 +1252,11 @@ function EmmySidebar({
         <div className="emmy2-sidebar-body">
           <section className="emmy2-sidebar-section">
             <SystemStatsWidget />
+          </section>
+
+          <section className="emmy2-sidebar-section">
+            <h4>Modelle</h4>
+            <ModelStatusWidget />
           </section>
 
           <section className="emmy2-sidebar-section">
