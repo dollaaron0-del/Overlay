@@ -131,6 +131,18 @@ test("hour-granular windows keep their exact time instead of snapping to end of 
   assert.equal(due.getMinutes(), 0);
 });
 
+test("'bis heute 19 Uhr' honours the stated clock time instead of 23:59", () => {
+  const due = detectDueAt("bis heute abend um 19.00uhr", MONDAY)!;
+  assert.equal(due.getDate(), 10);
+  assert.equal(due.getHours(), 19);
+  assert.equal(due.getMinutes(), 0);
+
+  // A time already past today falls back to end of day.
+  const past = detectDueAt("heute 7 uhr", MONDAY)!;
+  assert.equal(past.getHours(), 23);
+  assert.equal(past.getMinutes(), 59);
+});
+
 test("'über Nacht' means done by tomorrow morning, not just sometime tomorrow", () => {
   const due = detectDueAt("schau dir das über nacht an", MONDAY)!;
   assert.equal(due.getDate(), 11);

@@ -22,6 +22,8 @@ import { requireEmmyInboundToken } from "./emmy/emmy-inbound.middleware.js";
 import { agentDecisionsRouter } from "./agent-decisions/agent-decisions.routes.js";
 import { agentDecisionsInboundRouter } from "./agent-decisions/agent-decisions-inbound.routes.js";
 import { emmySchedulerRouter } from "./emmy/emmy-scheduler.routes.js";
+import { programsRouter } from "./programs/programs.routes.js";
+import { programsProxyMiddleware } from "./programs/programs.proxy.js";
 import { apiRateLimiter } from "./rate-limit.js";
 import { hasActiveSessions } from "./pty/pty.manager.js";
 
@@ -55,6 +57,15 @@ export function createApp() {
   // to set X-Forwarded-For, so a remote client still can't spoof its own IP.
   app.set("trust proxy", "loopback");
 
+  // Reverse proxy for the program UIs shown in the sidebar dashboard windows
+  // (/x/aktien/… -> Streamlit, /x/ki-nachhilfe/… -> the Next.js Lernprogramm).
+  // Mounted *before* helmet and any body parser: the proxied app must keep its
+  // own response headers — helmet's X-Frame-Options: DENY + strict CSP would
+  // otherwise land on the iframe document and break it (sad-page). requireAuth
+  // is the same gate as the rest of the app (Authelia at the Caddy edge for
+  // remote, open on the kiosk).
+  app.use("/x", requireAuth, programsProxyMiddleware);
+
   // Everything served by this app is same-origin (the built SPA + our own
   // API/WS) — a strict, self-only CSP costs nothing here and blocks the
   // classic "inject a <script src=evil.com>" XSS payload outright. style-src
@@ -62,6 +73,11 @@ export function createApp() {
   // cursor/cell positioning; that's a much lower-value CSP restriction than
   // script-src, so the trade-off is worth it rather than risking broken
   // terminal rendering.
+  //
+  // The two program UIs (Aktien Streamlit dashboard, KI-Nachhilfe
+  // Lernprogramm) are shown in an iframe by the sidebar "Dashboards" tiles,
+  // but they are reverse-proxied same-origin under /x/<id>/ (see
+  // programs.proxy.ts), so no frame-src exception is needed here.
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -76,6 +92,18 @@ export function createApp() {
           objectSrc: ["'none'"],
           baseUri: ["'self'"],
           frameAncestors: ["'none'"],
+          // The sidebar "Dashboards" tiles iframe the two program UIs, which
+          // are reverse-proxied same-origin under /x/<id>/ — so 'self' is all
+          // that's needed. Spelled out because it otherwise inherits from
+          // default-src and is easy to miss.
+          frameSrc: ["'self'"],
+          // Must NOT upgrade: the kiosk loads this app over plain
+          // http://127.0.0.1:4317 (see overlay-kiosk.service — physical
+          // access, no HTTPS listener on loopback). With the default
+          // upgrade-insecure-requests, the same-origin /x/<id>/ iframe URL
+          // gets rewritten to https:// and fails → blank dashboard windows.
+          // Remote access is HTTPS end-to-end via Caddy regardless.
+          upgradeInsecureRequests: null,
         },
       },
       frameguard: { action: "deny" },
@@ -167,6 +195,7 @@ export function createApp() {
   protectedApi.use("/idea-chats", ideaChatRouter);
   protectedApi.use("/emmy", emmyRouter);
   protectedApi.use("/agent-decisions", agentDecisionsRouter);
+  protectedApi.use("/programs", programsRouter);
   app.use("/api", protectedApi);
 
   if (config.isProduction) {

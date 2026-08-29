@@ -7,6 +7,7 @@ import { reconcileMemoryIndex } from "./emmy/emmy-memory.js";
 import { sharedCredentialsFile } from "./pty/claude-home.js";
 import { startGitDeployWatcher, stopGitDeployWatcher } from "./projects/git-deploy-watcher.js";
 import { startCpuHealthScheduler } from "./cpu-health/cpu-health-scheduler.js";
+import { startNetworkThroughputSampler } from "./network-throughput.js";
 
 // Defense in depth: Express 4 does not catch a rejected promise thrown by an
 // async route handler on its own — without this, one unexpected rejection
@@ -33,6 +34,7 @@ void reconcileMemoryIndex();
 startGitDeployWatcher();
 
 startCpuHealthScheduler();
+startNetworkThroughputSampler();
 
 const app = createApp();
 const server = http.createServer(app);

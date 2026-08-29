@@ -9,6 +9,7 @@ import { handleDeployConnection } from "../projects/deploy.ws.js";
 import { handleEmmyConnection } from "../emmy/emmy.ws.js";
 import { handleAgentDecisionsConnection } from "../agent-decisions/agent-decisions.ws.js";
 import { isAllowedOrigin } from "./origin-check.js";
+import { tryProxyUpgrade } from "../programs/programs.proxy.js";
 
 // Returns the underlying WebSocketServer so callers (see index.ts's shutdown)
 // can force-close every live connection (terminal/status/logs/…) on
@@ -19,6 +20,11 @@ export function attachWebSocketServer(server: HttpServer): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (req, socket, head) => {
+    // Program-dashboard reverse proxy (e.g. Streamlit's websocket under
+    // /x/aktien/_stcore/stream) — handled before our own /ws router and its
+    // auth check, same as the HTTP proxy mount.
+    if (tryProxyUpgrade(req, socket, head)) return;
+
     if (!isAllowedOrigin(req)) {
       socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
       socket.destroy();

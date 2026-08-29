@@ -6,6 +6,7 @@ import {
   subscribeToEmmyChats,
   subscribeToEmmyActivity,
   subscribeToEmmyTopicWindows,
+  subscribeToEmmyChatCleared,
 } from "./emmy-bus.js";
 import { listActivities } from "./emmy-activity.js";
 import { listTopicWindows } from "./topic-window-store.js";
@@ -31,10 +32,12 @@ export function handleEmmyConnection(ws: WebSocket): void {
   const unsubTopicWindows = subscribeToEmmyTopicWindows((topicWindows) =>
     send({ type: "topic-windows", topicWindows }),
   );
+  const unsubChatCleared = subscribeToEmmyChatCleared((chatId) => send({ type: "chat-cleared", chatId }));
   ws.on("close", () => {
     unsubMessages();
     unsubChats();
     unsubActivity();
     unsubTopicWindows();
+    unsubChatCleared();
   });
 }

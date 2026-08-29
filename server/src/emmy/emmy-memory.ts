@@ -242,6 +242,44 @@ export async function indexMessageForMemory(
   }
 }
 
+/**
+ * Best-effort: embeds and persists one free-standing text entry that is not a
+ * chat message — currently the distilled digest written when the general chat
+ * is reset (see emmy-conversation-reset.ts), so a future turn can recall what
+ * an earlier, now-archived conversation was about without the raw transcript.
+ * Keyed by an arbitrary id (use a "digest:"-prefixed uuid). Never throws.
+ */
+export async function indexTextForMemory(
+  entryId: string,
+  text: string,
+  chatTitle: string,
+  at: string,
+  deps: EmmyMemoryDeps = defaultDeps,
+): Promise<boolean> {
+  if (!config.EMMY_MEMORY_EMBEDDING_MODEL) return false;
+  const indexedText = truncateForPrompt(text.trim(), MAX_INDEX_TEXT_CHARS);
+  if (!indexedText) return false;
+  try {
+    const embedding = await deps.embed(
+      config.EMMY_MEMORY_OLLAMA_URL,
+      config.EMMY_MEMORY_EMBEDDING_MODEL,
+      indexedText,
+      config.EMMY_MEMORY_EMBEDDING_TIMEOUT_MS,
+    );
+    await mutateIndex((index) => ({
+      next: {
+        ...index,
+        [entryId]: { chatId: "digest", chatTitle, role: "emmy", indexedText, embedding, at },
+      },
+      result: undefined,
+    }));
+    return true;
+  } catch (err) {
+    console.error(`[emmy-memory] digest indexing failed for ${entryId}: ${(err as Error).message}`);
+    return false;
+  }
+}
+
 /** Best-effort: returns [] (no network call) if the feature isn't configured, and never throws. */
 export async function retrieveMemory(
   queryText: string,

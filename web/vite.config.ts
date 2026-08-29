@@ -40,7 +40,7 @@ export default defineConfig({
         globIgnores: ["**/mermaid-vendor-*.js"],
         // This is a live dashboard, not an offline-first content app: never
         // let the service worker cache API calls or WebSocket upgrades.
-        navigateFallbackDenylist: [/^\/api\//, /^\/ws\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/ws\//, /^\/x\//],
         // ...and never answer a *navigation* from the precache either.
         //
         // Overlay can sit behind an auth portal (Authelia, see
@@ -58,6 +58,13 @@ export default defineConfig({
         runtimeCaching: [
           {
             urlPattern: /^\/api\//,
+            handler: "NetworkOnly",
+          },
+          {
+            // The program dashboards are reverse-proxied live under /x/… —
+            // the service worker must never cache or shortcut these (a stale
+            // or precache-matched response renders as a broken iframe).
+            urlPattern: /^\/x\//,
             handler: "NetworkOnly",
           },
           {

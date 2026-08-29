@@ -159,6 +159,15 @@ const schema = z.object({
   // with a clear "nicht konfiguriert" error, but the message stays saved.
   OPENCLAW_HOOK_URL: z.string().default(""),
   OPENCLAW_HOOK_TOKEN: z.string().default(""),
+  // OpenClaw Gateway admin HTTP RPC endpoint (POST /api/v1/admin/rpc), used
+  // by the sidebar "Modelle" widget to show which Claude CLI account is live
+  // and whether Gemini still has quota. Needs the bundled `admin-http-rpc`
+  // plugin enabled on the Emmy gateway + a gateway operator token here.
+  // Empty (the default) = the widget shows a "noch nicht verbunden"
+  // placeholder and never calls out. See server/src/system-models.ts and
+  // docs/DEPLOYMENT.md (admin-http-rpc) before filling these in.
+  OPENCLAW_ADMIN_RPC_URL: z.string().default(""),
+  OPENCLAW_ADMIN_RPC_TOKEN: z.string().default(""),
   // Token-authenticated automation API (/api/automation/*) — lets OpenClaw
   // (or any other script) start/stop/restart/deploy projects and trigger a
   // backup/scan, e.g. from a chat command. Deliberately separate from the
@@ -197,11 +206,15 @@ const schema = z.object({
   // a prompt, and the minimum similarity score for a hit to count at all.
   EMMY_MEMORY_TOP_K: z.coerce.number().int().positive().default(6),
   EMMY_MEMORY_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.55),
-  // Model the recurring-tasks scheduler (emmy-scheduler.ts) retries a check
-  // with if the first (default-model) OpenClaw agent turn fails outright —
-  // e.g. the primary model's usage limit is exhausted. Same optional/
-  // best-effort pattern as OLLAMA_MODEL: empty disables the retry, the
-  // check is just marked failed and picked up again next tick.
+  // Model recurring checks run on (emmy-scheduler.ts runRecurringTasksTick).
+  // Checks are frequent and lightweight, so they go to Gemini to spare the
+  // Claude subscription. Empty = stay on the gateway default (Claude).
+  EMMY_RECURRING_MODEL: z.string().default(""),
+  // Model the recurring-tasks scheduler retries a check with if the primary
+  // (EMMY_RECURRING_MODEL, or the gateway default) turn fails outright — e.g.
+  // that model's usage limit is exhausted. Pick a *different provider* so the
+  // retry can actually succeed. Empty disables the retry; the check is just
+  // marked failed and picked up again next tick.
   EMMY_RECURRING_FALLBACK_MODEL: z.string().default(""),
   // Model the *research gathering* phase runs on (category "research", before
   // it flips to "discussion"). That phase is the token-heavy part — reading
@@ -214,6 +227,14 @@ const schema = z.object({
   // turn, independent of the embedding tier above — this alone is what fixes
   // Emmy forgetting mid-task even with no Ollama configured at all.
   EMMY_MEMORY_RECENT_MESSAGES: z.coerce.number().int().positive().default(10),
+  // Reverse-proxy target for each program's full UI — the Overlay serves it
+  // same-origin under /x/<id>/ so the sidebar dashboard windows can iframe it
+  // from any device (see programs.proxy.ts). Defaults are the documented local
+  // ports (Aktien: Streamlit; KI-Nachhilfe: the v276 Nachhilfelehrer app).
+  // Streamlit serves under /x/aktien via --server.baseUrlPath; the Nachhilfe
+  // app serves at "/" and the proxy strips the /x/ki-nachhilfe prefix.
+  AKTIEN_APP_URL: z.string().default("http://127.0.0.1:8503"),
+  KI_NACHHILFE_APP_URL: z.string().default("http://127.0.0.1:3000"),
 });
 
 function loadConfig() {

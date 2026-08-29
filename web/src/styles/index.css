@@ -1364,6 +1364,24 @@ button.active {
   padding: var(--space-2) var(--space-3);
 }
 
+/* Chat scroll areas keep scrolling but hide the scrollbar — a visible
+   gutter bar broke the calm of the single-column chat (Aaron, 2026-08-28).
+   Wheel/touch/keyboard scroll and scroll-into-view are unaffected. */
+.emmy2-center-stage,
+.emmy2-center-thread,
+.emmy2-messages {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+.emmy2-center-stage::-webkit-scrollbar,
+.emmy2-center-thread::-webkit-scrollbar,
+.emmy2-messages::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none; /* Chromium/WebKit — kiosk + iPad Safari */
+}
+
 /* Center stage: the idle state is just the input, vertically centered;
    anything relevant (active/upcoming tasks, server status) sits below it as
    quiet, borderless-until-hover cards rather than a fixed dashboard. */
@@ -1380,10 +1398,9 @@ button.active {
   padding: var(--space-4) var(--space-3);
 }
 
-/* Spacer-Paar statt fixer vh-Werte: das Eingabefeld landet an der
-   Grenze zwischen oberen 2/3 und unterem Drittel, egal wie hoch der
-   Bildschirm ist. Aarons Vorgabe vom 26.08.: soll das Erste sein, was
-   man wahrnimmt. */
+/* Die Eingabezeile steht IMMER an derselben Stelle: fester Bodenabstand
+   (12vh), alles darüber füllt der obere Spacer bzw. im Gespräch der
+   Thread. So springt das Feld nicht, wenn der erste Verlauf startet. */
 .emmy2-center-stage::before {
   content: "";
   flex: 2;
@@ -1391,12 +1408,13 @@ button.active {
 
 .emmy2-center-stage::after {
   content: "";
-  flex: 1;
+  flex: none;
+  height: 12vh;
 }
 
 .emmy2-center-input-wrap {
   width: 100%;
-  max-width: min(90vw, 840px);
+  max-width: min(92vw, 1040px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1475,19 +1493,11 @@ button.active {
   gap: var(--space-3);
 }
 
-/* Nur der obere Spacer entfällt — der Thread füllt die oberen zwei Drittel
-   selbst. Der untere Spacer bleibt, damit die Eingabezeile auf derselben
-   2/3-Linie steht wie im Leerzustand statt an den unteren Rand zu rutschen. */
+/* Im Gespräch übernimmt der Thread die Rolle des oberen Spacers. Der untere
+   12vh-Spacer bleibt für beide Zustände gleich, damit die Eingabezeile nicht
+   springt. */
 .emmy2-center-stage[data-conversation="true"]::before {
   display: none;
-}
-
-/* Der untere Spacer darf NICHT schrumpfen: wenn die Eingabezeile beim
-   Tippen wächst, soll ihr unterer Rand auf der 2/3-Linie bleiben und das
-   Feld nach OBEN wachsen — der Thread gibt die Höhe her, nicht der
-   Bodenabstand. */
-.emmy2-center-stage[data-conversation="true"]::after {
-  flex-shrink: 0;
 }
 
 .emmy2-center-thread {
@@ -1495,7 +1505,7 @@ button.active {
   min-height: 0;
   overflow-y: auto;
   width: 100%;
-  max-width: min(90vw, 840px);
+  max-width: min(92vw, 1040px);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -1947,9 +1957,15 @@ button.active {
   border-top: 1px solid var(--c-border);
 }
 
-.emmy2-markdown table {
-  width: 100%;
+.emmy2-table-wrap {
   margin: var(--space-2) 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.emmy2-markdown table {
+  width: auto;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.9em;
 }
@@ -2071,11 +2087,14 @@ button.active {
   background: var(--c-surface-2);
   border: 1px solid var(--c-border);
   border-radius: var(--radius-md);
-  overflow-x: auto;
+  overflow: auto;
+  max-height: 70vh;
+  -webkit-overflow-scrolling: touch;
 }
 
 .emmy2-mermaid svg {
   max-width: 100%;
+  height: auto;
 }
 
 .emmy2-mermaid-error {
@@ -2507,8 +2526,8 @@ button.active {
 
 /* ===== Übersicht-Sidebar (Strg/Cmd+B) =====
    Startseite bleibt nackt; alles Nachschlagbare (Server-Status, Checks,
-   Aufgaben, später Python-Dashboards) lebt hier. Schiebt von rechts über
-   den Chat. */
+   Aufgaben, später Python-Dashboards) lebt hier. Schiebt von links über
+   den Chat (gleiche Seite wie der Trigger). */
 .emmy2-sidebar-trigger {
   position: fixed;
   left: var(--space-2);
@@ -2546,16 +2565,16 @@ button.active {
 .emmy2-sidebar {
   position: fixed;
   top: 0;
-  right: 0;
+  left: 0;
   z-index: 41;
   height: 100%;
   width: min(92vw, 380px);
   display: flex;
   flex-direction: column;
   background: var(--c-surface);
-  border-left: 1px solid var(--c-border);
+  border-right: 1px solid color-mix(in srgb, var(--c-accent) 28%, var(--c-border));
   box-shadow: var(--shadow-popover);
-  transform: translateX(100%);
+  transform: translateX(-100%);
   transition: transform var(--motion-base) var(--ease-tactile);
 }
 
@@ -2569,7 +2588,8 @@ button.active {
   align-items: center;
   justify-content: space-between;
   padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--c-border);
+  background: var(--c-accent-bg);
+  border-bottom: 1px solid color-mix(in srgb, var(--c-accent) 32%, var(--c-border));
 }
 
 .emmy2-sidebar-brand {
@@ -2577,6 +2597,11 @@ button.active {
   align-items: center;
   gap: var(--space-1);
   font-weight: 600;
+}
+
+/* Fox-/Emmy-Marker: nur das Icon trägt den Akzent, Text bleibt neutral. */
+.emmy2-sidebar-brand svg {
+  color: var(--c-accent-hover);
 }
 
 .emmy2-sidebar-head button {
@@ -2608,6 +2633,9 @@ button.active {
 }
 
 .emmy2-sidebar-section h4 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
   margin: 0;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: var(--fs-xs);
@@ -2617,8 +2645,91 @@ button.active {
   color: var(--c-text-3);
 }
 
+/* Dezenter Akzent-Tick vor jedem Sidebar-Abschnittstitel. */
+.emmy2-sidebar-section h4::before {
+  content: "";
+  flex-shrink: 0;
+  width: 2px;
+  height: 0.85em;
+  border-radius: 1px;
+  background: var(--c-accent);
+}
+
 .emmy2-sidebar-section .os-widget {
   cursor: default;
+}
+
+/* Fuß der Sidebar: dezenter „hart neu laden"-Schalter (SW + Cache leeren). */
+.emmy2-sidebar-foot {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--c-border);
+}
+
+.emmy2-sidebar-reload {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  color: var(--c-text-3);
+  font-size: var(--fs-xs);
+}
+
+.emmy2-sidebar-reload:hover {
+  color: var(--c-text);
+  border-color: var(--c-accent);
+}
+
+/* Server-Status: Überschrift ist der Auf-/Zuklapp-Schalter für die nicht
+   kritischen Werte (Load/RAM/Disk). Optik wie ein Abschnittstitel. */
+.system-stats-widget .system-stats-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  background: transparent;
+  border: none;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-text-3);
+  cursor: pointer;
+}
+
+.system-stats-widget .system-stats-head::before {
+  content: "";
+  flex-shrink: 0;
+  width: 2px;
+  height: 0.85em;
+  border-radius: 1px;
+  background: var(--c-accent);
+}
+
+.system-stats-widget .system-stats-head:hover {
+  color: var(--c-text-2);
+}
+
+.system-stats-caret {
+  margin-left: auto;
+  font-size: 0.9em;
+  color: var(--c-text-3);
+  transition: transform var(--motion-fast) var(--ease-tactile);
+}
+
+.system-stats-caret.open {
+  transform: rotate(180deg);
+}
+
+.system-stats-more {
+  margin-top: var(--space-2);
+  margin-bottom: 0;
 }
 
 .emmy2-sidebar-more {
@@ -2630,8 +2741,143 @@ button.active {
   font-size: var(--fs-sm);
 }
 
+/* Zwei schlichte Kacheln zu den Programm-Dashboards, unter dem Server-Widget. */
+.emmy2-dash-links {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.emmy2-dash-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  aspect-ratio: 1;
+  padding: var(--space-3) var(--space-2);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  color: var(--c-text-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--motion-fast) var(--ease-tactile), color var(--motion-fast) var(--ease-tactile);
+}
+
+.emmy2-dash-card svg {
+  color: var(--c-text-3);
+  transition: color var(--motion-fast) var(--ease-tactile);
+}
+
+.emmy2-dash-card:hover {
+  color: var(--c-text);
+  border-color: color-mix(in srgb, var(--c-accent) 45%, var(--c-border));
+}
+
+.emmy2-dash-card:hover svg {
+  color: var(--c-accent-hover);
+}
+
 .emmy2-sidebar-more:hover {
   color: var(--c-text);
+}
+
+/* Modelle-Widget: zwei knappe Zeilen (Claude CLI / Gemini). */
+.emmy2-model-widget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.emmy2-model-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+}
+
+.emmy2-model-key {
+  flex-shrink: 0;
+  width: 5.5rem;
+  color: var(--c-text-3);
+}
+
+.emmy2-model-val {
+  color: var(--c-text-2);
+}
+
+.emmy2-model-muted {
+  color: var(--c-text-3);
+  font-style: italic;
+}
+
+/* Reduzierte Status-Liste: eine Zeile je Check / laufender Recherche.
+   Punkt orange = wiederkehrender Check, blau = tiefe Recherche. Solange
+   aktiv gearbeitet wird, pulst der Punkt ruhig (dimmt und wird wieder hell). */
+.emmy2-status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) 0;
+  background: transparent;
+  border: none;
+  color: var(--c-text-2);
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.emmy2-status-row:hover {
+  color: var(--c-text);
+}
+
+.emmy2-status-row-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emmy2-status-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-text-3);
+}
+
+.emmy2-status-dot--check {
+  background: var(--c-warning);
+}
+
+.emmy2-status-dot--research {
+  background: var(--c-info);
+}
+
+.emmy2-status-dot.is-active {
+  animation: emmy-dot-pulse 1.9s ease-in-out infinite;
+}
+
+@keyframes emmy-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .emmy2-status-dot.is-active {
+    animation: none;
+  }
 }
 
 /* Aktion in der Nachrichten-Fußzeile (im Center-Thread nur bei Hover
@@ -2768,4 +3014,157 @@ button.active {
 
 .emmy2-topicwin-row-del:hover {
   color: var(--c-danger);
+}
+
+/* Check-/Recherche-Detailfenster: Ergebnisliste links, feste Ein-Drittel-
+   Leiste mit den Rahmenbedingungen rechts. */
+.emmy2-checkwin-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.emmy2-checkwin-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.emmy2-checkwin-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.emmy2-checkwin-result:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.emmy2-checkwin-result-time {
+  font-size: var(--fs-xs);
+  color: var(--c-text-3);
+}
+
+.emmy2-checkwin-rail {
+  flex-shrink: 0;
+  width: 33%;
+  min-width: 180px;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border-left: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+}
+
+.emmy2-checkwin-rail h5 {
+  margin: 0 0 var(--space-2);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-text-3);
+}
+
+.emmy2-checkwin-rail h5:not(:first-child) {
+  margin-top: var(--space-4);
+}
+
+.emmy2-checkwin-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--fs-sm);
+}
+
+.emmy2-checkwin-facts dt {
+  color: var(--c-text-3);
+}
+
+.emmy2-checkwin-facts dd {
+  margin: 0;
+  color: var(--c-text-2);
+}
+
+.emmy2-checkwin-brief {
+  font-size: var(--fs-sm);
+  color: var(--c-text-2);
+}
+
+/* Recherche-Fenster: alles Gesammelte als ein Lesetext. */
+.emmy2-checkwin-fliesstext {
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  color: var(--c-text);
+}
+
+.emmy2-checkwin-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.emmy2-checkwin-done {
+  padding: 2px var(--space-2);
+  background: transparent;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--radius-md);
+  color: var(--c-text-2);
+  font-size: var(--fs-xs);
+}
+
+.emmy2-checkwin-done:hover {
+  color: var(--c-text);
+  border-color: color-mix(in srgb, var(--c-accent) 45%, var(--c-border));
+}
+
+/* Programm-Dashboard-Fenster (Sidebar-Kacheln „Aktien-Bot" / „KI-Nachhilfe").
+   Teilt die Fenster-Chrome mit .emmy2-topicwin; der Body ist ein iframe mit
+   der vollen Programm-Oberfläche. */
+.emmy2-dashwin-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.emmy2-dashwin-actions button,
+.emmy2-dashwin-actions a {
+  flex-shrink: 0;
+  display: flex;
+  padding: var(--space-0);
+  background: transparent;
+  border: none;
+  color: var(--c-text-2);
+}
+
+.emmy2-dashwin-actions button:hover,
+.emmy2-dashwin-actions a:hover {
+  color: var(--c-text);
+}
+
+.emmy2-dashwin-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  background: var(--c-surface-2);
+}
+
+.emmy2-dashwin-body .empty-hint {
+  margin: auto;
+  padding: var(--space-4);
+}
+
+.emmy2-dashwin-frame {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: #fff;
 }

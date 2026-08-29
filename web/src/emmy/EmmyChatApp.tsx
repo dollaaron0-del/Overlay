@@ -10,6 +10,8 @@ import type {
   EmmyServerMessage,
   EmmyTaskStatus,
   EmmyTopicWindow,
+  ProgramId,
+  ProgramMeta,
 } from "@overlay/shared";
 import { api, ApiError } from "../api/client";
 import { ReconnectingSocket, wsUrl } from "../api/ws";
@@ -17,6 +19,7 @@ import { formatTimestamp } from "../format";
 import { renderMiniMarkdown } from "./miniMarkdown";
 import { defaultProjectIcon } from "../os/project-icon";
 import { SystemStatsWidget } from "../os/widgets/SystemStatsWidget";
+import { ModelStatusWidget } from "../os/widgets/ModelStatusWidget";
 import { BackupWidget } from "../os/widgets/BackupWidget";
 import { TerminalPanel } from "../terminal/TerminalPanel";
 import { SettingsApp } from "../settings/SettingsApp";
@@ -341,6 +344,24 @@ function IconChevronDown(props: { size?: number }) {
   );
 }
 
+function IconTrendingUp(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+      <polyline points="17 6 23 6 23 12" />
+    </Icon>
+  );
+}
+
+function IconGraduationCap(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <path d="M22 10 12 5 2 10l10 5 10-5z" />
+      <path d="M6 12v5c0 1 2.7 3 6 3s6-2 6-3v-5" />
+    </Icon>
+  );
+}
+
 function IconSidebar(props: { size?: number }) {
   return (
     <Icon {...props}>
@@ -348,6 +369,38 @@ function IconSidebar(props: { size?: number }) {
       <line x1="15" y1="4" x2="15" y2="20" />
     </Icon>
   );
+}
+
+function IconRefresh(props: { size?: number }) {
+  return (
+    <Icon {...props}>
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </Icon>
+  );
+}
+
+/**
+ * Service-Worker abmelden + alle Caches leeren + neu laden. Für die Fälle, in
+ * denen der PWA-Precache alten Code festhält (Kiosk-Display ohne Tastatur,
+ * iPad-Safari das zäh alte SWs hält). Danach zieht sich der Client alles frisch.
+ */
+async function hardReload() {
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+  } catch {
+    /* egal — trotzdem neu laden */
+  } finally {
+    location.reload();
+  }
 }
 
 export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: string) => void }) {
@@ -394,6 +447,18 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
         });
       } else if (msg.type === "topic-windows") {
         setTopicWindows(msg.topicWindows);
+      } else if (msg.type === "chat-cleared") {
+        // The general chat's history was archived + blanked server-side (/neu
+        // or a research spin-off). Drop the local copy and the "loaded" mark so
+        // the fresh transcript (just the seed line) is refetched as the truth.
+        const clearedId = msg.chatId;
+        setMessagesByChat((prev) => ({ ...prev, [clearedId]: [] }));
+        setLoadedChats((prev) => {
+          if (!prev.has(clearedId)) return prev;
+          const next = new Set(prev);
+          next.delete(clearedId);
+          return next;
+        });
       }
     });
     // Anything that lands while the socket is reconnecting (sleep, network
@@ -644,33 +709,11 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
   };
 
   const showCenter = !selectedId && !archiveOpen;
-  const activeTasks = useMemo(() => taskChats.filter((c) => !!activityByChat[c.id]), [taskChats, activityByChat]);
-  const idleTasks = useMemo(
-    () => taskChats.filter((c) => !activityByChat[c.id] && c.status !== "done"),
-    [taskChats, activityByChat],
-  );
-  // Recurring checks are almost always idle (they only "activate" during their
-  // own check window) — showing every one permanently is exactly the clutter
-  // Aaron doesn't want, so they collapse into one summary line by default.
-  const recurringIdleTasks = useMemo(
-    () => idleTasks.filter((c) => categoryOf(c) === "recurring"),
-    [idleTasks],
-  );
-  // A research task with a due date coming up soon is worth surfacing on its
-  // own; everything else idle (instant tasks with no due date, research far
-  // out) collapses into a plain count instead of a permanent card each.
-  const urgentOtherTasks = useMemo(
-    () => idleTasks.filter((c) => categoryOf(c) !== "recurring" && isDueSoon(c, now)),
-    [idleTasks, now],
-  );
-  const restOtherTasks = useMemo(
-    () => idleTasks.filter((c) => categoryOf(c) !== "recurring" && !isDueSoon(c, now)),
-    [idleTasks, now],
-  );
-  const [recurringExpanded, setRecurringExpanded] = useState(false);
-  const [restExpanded, setRestExpanded] = useState(false);
-  const [systemExpanded, setSystemExpanded] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Which check / research task, if any, is open in its detail window.
+  const [checkWindowId, setCheckWindowId] = useState<string | null>(null);
+  // Which program dashboard, if any, is open in its floating window.
+  const [dashboardId, setDashboardId] = useState<ProgramId | null>(null);
   // Topic windows live on the server (persisted, pushed over /ws/emmy); the
   // z-order is a pure view concern and stays local.
   const [topicWindows, setTopicWindows] = useState<EmmyTopicWindow[]>([]);
@@ -681,6 +724,15 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
       .post("/api/emmy/topic-windows", { title, content })
       .catch(() => setError("Themen-Fenster konnte nicht erstellt werden."));
   };
+
+  // A program dashboard opens as its own floating window (same chrome as the
+  // topic/check windows): an iframe onto the program's real UI, reverse-proxied
+  // same-origin under /x/<id>/ (no CORS, no external tab). Ephemeral: one at a
+  // time, closes with X.
+  const openDashboard = (id: ProgramId) => {
+    setSidebarOpen(false);
+    setDashboardId(id);
+  };
   const focusTopicWindow = (id: string) =>
     setTopicOrder((o) => (o[o.length - 1] === id ? o : [...o.filter((x) => x !== id), id]));
   /** Live, local-only geometry update during a drag — no network. */
@@ -690,10 +742,6 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
     void api.patch(`/api/emmy/topic-windows/${id}`, patch).catch(() => {});
   };
   const minimizeTopicWindow = (id: string) => persistTopicWindow(id, { minimized: true });
-  const reopenTopicWindow = (id: string) => {
-    persistTopicWindow(id, { minimized: false });
-    focusTopicWindow(id);
-  };
   const deleteTopicWindow = (id: string) => {
     void api.delete(`/api/emmy/topic-windows/${id}`).catch(() => {});
   };
@@ -750,17 +798,11 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
         onClose={() => setSidebarOpen(false)}
         taskChats={taskChats}
         activityByChat={activityByChat}
-        now={now}
-        onOpenChat={(id) => {
+        onOpenDashboard={openDashboard}
+        onOpenCheck={(id) => {
           setSidebarOpen(false);
-          openChat(id);
+          setCheckWindowId(id);
         }}
-        topicWindows={topicWindows}
-        onOpenTopicWindow={(id) => {
-          setSidebarOpen(false);
-          reopenTopicWindow(id);
-        }}
-        onDeleteTopicWindow={deleteTopicWindow}
       />
       {showCenter && (
         <div className="emmy2-center-stage" data-conversation={centerHasThread}>
@@ -1105,41 +1147,48 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
             onCommit={(geometry) => persistTopicWindow(w.id, geometry)}
           />
         ))}
+      {(() => {
+        const c = checkWindowId ? taskChats.find((t) => t.id === checkWindowId) : undefined;
+        return c ? (
+          <CheckWindow
+            chat={c}
+            now={now}
+            onClose={() => setCheckWindowId(null)}
+            onMarkDone={() => {
+              void patchChat(c.id, { status: "done" }, "Konnte nicht als erledigt markiert werden.");
+              setCheckWindowId(null);
+            }}
+          />
+        ) : null;
+      })()}
+      {dashboardId && <DashboardWindow id={dashboardId} onClose={() => setDashboardId(null)} />}
     </div>
   );
 }
 
-/** One ambient card in the center-stage grid: active tasks show their live note, everything else shows its normal status line. */
-function AmbientTaskCard({
-  chat,
-  activity,
-  now,
-  onOpen,
+/**
+ * One line in the reduced sidebar list: a coloured status dot (orange =
+ * recurring check, blue = deep research) plus the task's short title. The
+ * dot pulses gently while Emmy is actively working the item.
+ */
+function StatusRow({
+  title,
+  kind,
+  active,
+  onClick,
 }: {
-  chat: EmmyChat;
-  activity: EmmyActivity | undefined;
-  now: number;
-  onOpen: () => void;
+  title: string;
+  kind: "check" | "research";
+  active: boolean;
+  onClick: () => void;
 }) {
-  const category = categoryOf(chat);
-  const progress = progressOf(chat, activity);
   return (
-    <button className={`emmy2-ambient-card${activity ? " emmy2-ambient-card-active" : ""}`} onClick={onOpen}>
-      <span className="emmy2-ambient-card-head">
-        <span>{CATEGORY_ICON[category]}</span>
-        <span className="emmy2-chat-title">{chat.title}</span>
-      </span>
-      <span className="emmy2-chat-sub">
-        {activity
-          ? activity.note || "arbeitet gerade daran…"
-          : category === "research" && chat.dueAt
-            ? `bis ${formatDue(chat.dueAt)}`
-            : category === "recurring" && chat.intervalHours
-              ? `${formatInterval(chat.intervalHours)} · ${nextCheckLabel(chat, now)}`
-              : STATUS_LABEL[chat.status]}
-      </span>
-      <ProgressMeta sourcesSearched={progress.sourcesSearched} knowledgeLevel={progress.knowledgeLevel} />
-      {activity && <span className="emmy2-bubble-time">{formatSince(activity.since, now)}</span>}
+    <button type="button" className="emmy2-status-row" onClick={onClick}>
+      <span className="emmy2-status-row-title">{title}</span>
+      <span
+        className={`emmy2-status-dot emmy2-status-dot--${kind}${active ? " is-active" : ""}`}
+        aria-hidden="true"
+      />
     </button>
   );
 }
@@ -1155,25 +1204,16 @@ function EmmySidebar({
   onClose,
   taskChats,
   activityByChat,
-  now,
-  onOpenChat,
-  topicWindows,
-  onOpenTopicWindow,
-  onDeleteTopicWindow,
+  onOpenDashboard,
+  onOpenCheck,
 }: {
   open: boolean;
   onClose: () => void;
   taskChats: EmmyChat[];
   activityByChat: Record<string, EmmyActivity>;
-  now: number;
-  onOpenChat: (id: string) => void;
-  topicWindows: EmmyTopicWindow[];
-  onOpenTopicWindow: (id: string) => void;
-  onDeleteTopicWindow: (id: string) => void;
+  onOpenDashboard: (id: ProgramId) => void;
+  onOpenCheck: (id: string) => void;
 }) {
-  const [showIdleRecurring, setShowIdleRecurring] = useState(false);
-  const [showAllOther, setShowAllOther] = useState(false);
-
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -1183,13 +1223,18 @@ function EmmySidebar({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  const recurring = taskChats.filter((c) => categoryOf(c) === "recurring" && c.status !== "done");
-  const runningRecurring = recurring.filter((c) => activityByChat[c.id]);
-  const idleRecurring = recurring.filter((c) => !activityByChat[c.id]);
-  const otherTasks = taskChats.filter(
-    (c) => categoryOf(c) !== "recurring" && c.status !== "done",
+  // Radikal reduziert: jeder wiederkehrende Check bekommt eine Zeile.
+  // Recherchen bleiben stehen, sobald sie einmal angelaufen sind
+  // (status "in_progress") oder gerade aktiv laufen — abgeschlossene
+  // behalten einen ruhigen (nicht blinkenden) blauen Punkt und geben beim
+  // Klick die gesammelten Infos als Fließtext.
+  const checks = taskChats.filter((c) => categoryOf(c) === "recurring" && c.status !== "done");
+  const research = taskChats.filter(
+    (c) =>
+      categoryOf(c) === "research" &&
+      c.status !== "done" &&
+      (c.status === "in_progress" || !!activityByChat[c.id]),
   );
-  const shownOther = showAllOther ? otherTasks : otherTasks.slice(0, 4);
 
   return (
     <>
@@ -1206,81 +1251,70 @@ function EmmySidebar({
 
         <div className="emmy2-sidebar-body">
           <section className="emmy2-sidebar-section">
-            <h4>Server</h4>
-            <SystemStatsWidget onOpen={onClose} />
+            <SystemStatsWidget />
           </section>
 
           <section className="emmy2-sidebar-section">
-            <h4>Wiederkehrende Checks</h4>
-            {recurring.length === 0 && <p className="empty-hint">Keine eingerichtet.</p>}
-            {runningRecurring.map((c) => (
-              <AmbientTaskCard
-                key={c.id}
-                chat={c}
-                activity={activityByChat[c.id]}
-                now={now}
-                onOpen={() => onOpenChat(c.id)}
-              />
-            ))}
-            {idleRecurring.length > 0 && !showIdleRecurring && (
-              <button className="emmy2-sidebar-more" onClick={() => setShowIdleRecurring(true)}>
-                {idleRecurring.length} ruhend · {soonestNextCheckLabel(idleRecurring, now)}
-              </button>
-            )}
-            {showIdleRecurring &&
-              idleRecurring.map((c) => (
-                <AmbientTaskCard key={c.id} chat={c} activity={undefined} now={now} onOpen={() => onOpenChat(c.id)} />
-              ))}
-          </section>
-
-          <section className="emmy2-sidebar-section">
-            <h4>Offene Aufgaben</h4>
-            {otherTasks.length === 0 && <p className="empty-hint">Nichts offen.</p>}
-            {shownOther.map((c) => (
-              <AmbientTaskCard
-                key={c.id}
-                chat={c}
-                activity={activityByChat[c.id]}
-                now={now}
-                onOpen={() => onOpenChat(c.id)}
-              />
-            ))}
-            {!showAllOther && otherTasks.length > 4 && (
-              <button className="emmy2-sidebar-more" onClick={() => setShowAllOther(true)}>
-                {otherTasks.length - 4} weitere
-              </button>
-            )}
-          </section>
-
-          <section className="emmy2-sidebar-section">
-            <h4>Themen-Fenster</h4>
-            {topicWindows.length === 0 && (
-              <p className="empty-hint">
-                Über „Themen-Fenster" an einer Emmy-Nachricht öffnen — sie bleiben hier, auch minimiert.
-              </p>
-            )}
-            {topicWindows.map((w) => (
-              <div key={w.id} className="emmy2-topicwin-row">
-                <button className="emmy2-topicwin-row-open" onClick={() => onOpenTopicWindow(w.id)}>
-                  {w.title}
-                  {w.minimized && <span className="emmy2-chat-sub"> minimiert</span>}
-                </button>
-                <button
-                  className="emmy2-topicwin-row-del"
-                  onClick={() => onDeleteTopicWindow(w.id)}
-                  title="Löschen"
-                >
-                  <IconTrash size={13} />
-                </button>
-              </div>
-            ))}
+            <h4>Modelle</h4>
+            <ModelStatusWidget />
           </section>
 
           <section className="emmy2-sidebar-section">
             <h4>Dashboards</h4>
-            <p className="empty-hint">
-              Werden auf Python umgestellt — landen hier, sobald sie eine Schnittstelle haben.
-            </p>
+            <div className="emmy2-dash-links">
+              <button
+                type="button"
+                className="emmy2-dash-card"
+                onClick={() => onOpenDashboard("aktien")}
+              >
+                <IconTrendingUp size={28} />
+                <span>Aktien-Bot</span>
+              </button>
+              <button
+                type="button"
+                className="emmy2-dash-card"
+                onClick={() => onOpenDashboard("ki-nachhilfe")}
+              >
+                <IconGraduationCap size={28} />
+                <span>KI-Nachhilfe</span>
+              </button>
+            </div>
+          </section>
+
+          <section className="emmy2-sidebar-section">
+            <h4>Checks &amp; Recherche</h4>
+            {checks.length === 0 && research.length === 0 && (
+              <p className="empty-hint">Keine Checks, keine Recherchen.</p>
+            )}
+            {checks.map((c) => (
+              <StatusRow
+                key={c.id}
+                title={c.title}
+                kind="check"
+                active={!!activityByChat[c.id]}
+                onClick={() => onOpenCheck(c.id)}
+              />
+            ))}
+            {research.map((c) => (
+              <StatusRow
+                key={c.id}
+                title={c.title}
+                kind="research"
+                active={!!activityByChat[c.id]}
+                onClick={() => onOpenCheck(c.id)}
+              />
+            ))}
+          </section>
+
+          <section className="emmy2-sidebar-section emmy2-sidebar-foot">
+            <button
+              type="button"
+              className="emmy2-sidebar-reload"
+              onClick={hardReload}
+              title="Service-Worker + Cache leeren und komplett neu laden"
+            >
+              <IconRefresh size={13} /> Neu laden (hart)
+            </button>
           </section>
         </div>
       </aside>
@@ -1573,6 +1607,302 @@ function TopicWindow({
         </button>
       </header>
       <div className="emmy2-topicwin-body emmy2-markdown">{renderMiniMarkdown(win.content)}</div>
+      <div className="emmy2-topicwin-resize" onPointerDown={start("resize")} />
+    </div>
+  );
+}
+
+function formatResultStamp(iso: string): string {
+  return new Date(iso).toLocaleString("de-DE", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * Detail window for one recurring check / research task. Left pane lists the
+ * results (Emmy's replies, newest first); the right third is a fixed rail
+ * with the task's framing — cadence/deadline, when it last ran, and the
+ * original brief that says what it is meant to do. Ephemeral: opens on a
+ * sidebar-row click, closes with X, geometry is not persisted.
+ */
+function CheckWindow({
+  chat,
+  now,
+  onClose,
+  onMarkDone,
+}: {
+  chat: EmmyChat;
+  now: number;
+  onClose: () => void;
+  onMarkDone: () => void;
+}) {
+  const isCheck = categoryOf(chat) === "recurring";
+  const [messages, setMessages] = useState<EmmyMessage[] | null>(null);
+  const [geo, setGeo] = useState(() => ({
+    x: Math.max(16, Math.round(window.innerWidth / 2 - 340)),
+    y: Math.max(16, Math.round(window.innerHeight / 2 - 240)),
+    w: 680,
+    h: 480,
+  }));
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .get<EmmyMessage[]>(`/api/emmy/chats/${chat.id}/messages`)
+      .then((m) => alive && setMessages(m))
+      .catch(() => alive && setMessages([]));
+    return () => {
+      alive = false;
+    };
+  }, [chat.id]);
+
+  const start = (mode: "move" | "resize") => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const { x: ox, y: oy, w: ow, h: oh } = geo;
+    document.body.style.userSelect = "none";
+    const onMove = (ev: PointerEvent) => {
+      ev.preventDefault();
+      const dx = ev.clientX - sx;
+      const dy = ev.clientY - sy;
+      if (mode === "move") {
+        setGeo((g) => ({
+          ...g,
+          x: Math.max(0, Math.min(window.innerWidth - 80, ox + dx)),
+          y: Math.max(0, Math.min(window.innerHeight - 40, oy + dy)),
+        }));
+      } else {
+        setGeo((g) => ({ ...g, w: Math.max(420, ow + dx), h: Math.max(260, oh + dy) }));
+      }
+    };
+    const onUp = () => {
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  const emmyReplies = (messages ?? []).filter((m) => m.role === "emmy");
+  // Check: einzelne Läufe, neueste zuerst. Recherche: alles Gesammelte als
+  // ein Fließtext — das angeforderte Abschlussdokument, sonst alle Antworten
+  // in Reihenfolge aneinander.
+  const results = emmyReplies.slice().reverse();
+  const finalDoc = emmyReplies.find((m) => m.isFinalDocument);
+  const researchText = finalDoc ? finalDoc.text : emmyReplies.map((m) => m.text).join("\n\n");
+  const brief = (messages ?? []).find((m) => m.role === "me");
+  const researchPhaseLabel =
+    chat.researchPhase === "discussion" ? "abgeschlossen" : chat.researchPhase === "deep_research" ? "sammelt" : "—";
+
+  return (
+    <div
+      className="emmy2-topicwin emmy2-checkwin"
+      style={{ left: geo.x, top: geo.y, width: geo.w, height: geo.h, zIndex: 60 }}
+    >
+      <header className="emmy2-topicwin-head" onPointerDown={start("move")}>
+        <span className="emmy2-topicwin-title">
+          {isCheck ? "Check" : "Recherche"}: {chat.title}
+        </span>
+        <div className="emmy2-checkwin-actions">
+          {!isCheck && (
+            <button className="emmy2-checkwin-done" onClick={onMarkDone} title="Recherche abschließen">
+              Erledigt
+            </button>
+          )}
+          <button onClick={onClose} title="Schließen">
+            <IconX size={14} />
+          </button>
+        </div>
+      </header>
+      <div className="emmy2-checkwin-body">
+        <div className="emmy2-checkwin-main">
+          {messages === null && <p className="empty-hint">Lädt…</p>}
+          {messages !== null && emmyReplies.length === 0 && (
+            <p className="empty-hint">{isCheck ? "Noch keine Checkergebnisse." : "Noch nichts gesammelt."}</p>
+          )}
+          {messages !== null && emmyReplies.length > 0 && isCheck &&
+            results.map((m) => (
+              <article key={m.id} className="emmy2-checkwin-result">
+                <time className="emmy2-checkwin-result-time">{formatResultStamp(m.at)}</time>
+                <div className="emmy2-markdown">{renderMiniMarkdown(m.text)}</div>
+              </article>
+            ))}
+          {messages !== null && emmyReplies.length > 0 && !isCheck && (
+            <div className="emmy2-markdown emmy2-checkwin-fliesstext">{renderMiniMarkdown(researchText)}</div>
+          )}
+        </div>
+        <aside className="emmy2-checkwin-rail">
+          <h5>Rahmenbedingungen</h5>
+          <dl className="emmy2-checkwin-facts">
+            {isCheck && chat.intervalHours != null && (
+              <>
+                <dt>Intervall</dt>
+                <dd>{formatInterval(chat.intervalHours)}</dd>
+              </>
+            )}
+            {isCheck && (
+              <>
+                <dt>Letzter Lauf</dt>
+                <dd>{chat.lastRecurringCheckAt ? formatSince(chat.lastRecurringCheckAt, now) : "noch nie"}</dd>
+              </>
+            )}
+            {isCheck && (
+              <>
+                <dt>Ergebnisse</dt>
+                <dd>{messages === null ? "…" : results.length}</dd>
+              </>
+            )}
+            {!isCheck && chat.dueAt && (
+              <>
+                <dt>Frist</dt>
+                <dd>{formatDue(chat.dueAt)}</dd>
+              </>
+            )}
+            {!isCheck && (
+              <>
+                <dt>Stand</dt>
+                <dd>{researchPhaseLabel}</dd>
+              </>
+            )}
+            {!isCheck && chat.sourcesSearched != null && (
+              <>
+                <dt>Quellen</dt>
+                <dd>{chat.sourcesSearched}</dd>
+              </>
+            )}
+            {!isCheck && chat.knowledgeLevel != null && (
+              <>
+                <dt>Wissensstand</dt>
+                <dd>{chat.knowledgeLevel} %</dd>
+              </>
+            )}
+            <dt>Angelegt</dt>
+            <dd>{formatSince(chat.createdAt, now)}</dd>
+          </dl>
+          <h5>Auftrag</h5>
+          <div className="emmy2-markdown emmy2-checkwin-brief">
+            {brief ? renderMiniMarkdown(brief.text) : <span className="empty-hint">—</span>}
+          </div>
+        </aside>
+      </div>
+      <div className="emmy2-topicwin-resize" onPointerDown={start("resize")} />
+    </div>
+  );
+}
+
+/**
+ * Floating window for a program dashboard. Loads the program's full UI (the
+ * Aktien Streamlit dashboard / the KI-Nachhilfe Lernprogramm) in an iframe,
+ * so the tile actually opens the program — not just a status readout. Same
+ * drag/resize chrome as TopicWindow/CheckWindow; ephemeral (geometry not
+ * persisted). The iframe URL comes from GET /api/programs (server config).
+ */
+function DashboardWindow({ id, onClose }: { id: ProgramId; onClose: () => void }) {
+  const [meta, setMeta] = useState<ProgramMeta | null>(null);
+  const [metaError, setMetaError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [geo, setGeo] = useState(() => ({
+    x: Math.max(16, Math.round(window.innerWidth / 2 - Math.min(600, window.innerWidth * 0.46))),
+    y: Math.max(16, Math.round(window.innerHeight / 2 - Math.min(400, window.innerHeight * 0.44))),
+    w: Math.min(1200, Math.round(window.innerWidth * 0.92)),
+    h: Math.min(800, Math.round(window.innerHeight * 0.88)),
+  }));
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .get<ProgramMeta[]>("/api/programs")
+      .then((list) => {
+        if (!alive) return;
+        const found = list.find((p) => p.id === id) ?? null;
+        // Harden the iframe src against a stray trailing character (a garbled
+        // path once wedged the dashboard as e.g. "/x/aktien/`" → 404 loop).
+        const m = found ? { ...found, path: found.path.trim().replace(/[^A-Za-z0-9/_-]+$/, "") } : null;
+        setMeta(m);
+        setMetaError(!m);
+      })
+      .catch(() => alive && setMetaError(true));
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
+  const start = (mode: "move" | "resize") => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const { x: ox, y: oy, w: ow, h: oh } = geo;
+    document.body.style.userSelect = "none";
+    setDragging(true); // let pointer events pass over the iframe during drag
+    const onMove = (ev: PointerEvent) => {
+      ev.preventDefault();
+      const dx = ev.clientX - sx;
+      const dy = ev.clientY - sy;
+      if (mode === "move") {
+        setGeo((gg) => ({
+          ...gg,
+          x: Math.max(0, Math.min(window.innerWidth - 80, ox + dx)),
+          y: Math.max(0, Math.min(window.innerHeight - 40, oy + dy)),
+        }));
+      } else {
+        setGeo((gg) => ({ ...gg, w: Math.max(480, ow + dx), h: Math.max(360, oh + dy) }));
+      }
+    };
+    const onUp = () => {
+      document.body.style.userSelect = "";
+      setDragging(false);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  return (
+    <div
+      className="emmy2-topicwin emmy2-dashwin"
+      style={{ left: geo.x, top: geo.y, width: geo.w, height: geo.h, zIndex: 60 }}
+    >
+      <header className="emmy2-topicwin-head" onPointerDown={start("move")}>
+        <span className="emmy2-topicwin-title">{meta?.title ?? "Dashboard"}</span>
+        <div className="emmy2-dashwin-actions">
+          {meta && (
+            <>
+              <button onClick={() => setReloadNonce((n) => n + 1)} title="Neu laden">
+                <IconRefresh size={13} />
+              </button>
+              <a href={meta.path} target="_blank" rel="noreferrer" title="In neuem Tab öffnen">
+                <IconLink size={13} />
+              </a>
+            </>
+          )}
+          <button onClick={onClose} title="Schließen">
+            <IconX size={14} />
+          </button>
+        </div>
+      </header>
+      <div className="emmy2-dashwin-body">
+        {metaError && <p className="empty-hint">Programm ist nicht konfiguriert oder nicht erreichbar.</p>}
+        {!metaError && !meta && <p className="empty-hint">Lädt…</p>}
+        {meta && (
+          <iframe
+            key={reloadNonce}
+            className="emmy2-dashwin-frame"
+            src={meta.path}
+            title={meta.title}
+            style={{ pointerEvents: dragging ? "none" : "auto" }}
+          />
+        )}
+      </div>
       <div className="emmy2-topicwin-resize" onPointerDown={start("resize")} />
     </div>
   );

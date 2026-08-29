@@ -51,7 +51,12 @@ export async function runRecurringTasksTick(): Promise<{ triggered: string[]; fa
       const userText = `[Automatischer wiederkehrender Check, alle ${chat.intervalHours}h] Bitte die Aufgabe dieses Chats erneut prüfen und ein Update posten.`;
       const prompt = buildEmmyTurnMessage(chat.title, chat.kind, chat.id, userText, recentMessages, chat.category, chat.researchPhase);
       try {
-        await sendEmmyHookTurn(sessionKeyFor(chat.id), "Overlay Scheduler", prompt);
+        await sendEmmyHookTurn(
+          sessionKeyFor(chat.id),
+          "Overlay Scheduler",
+          prompt,
+          config.EMMY_RECURRING_MODEL || undefined,
+        );
       } catch (primaryErr) {
         // The primary model call failed outright (e.g. usage limit exhausted).
         // Retry once with the configured fallback model instead of leaving
