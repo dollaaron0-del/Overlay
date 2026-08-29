@@ -10,6 +10,8 @@ import {
 } from "./emmy-store.js";
 import { publishEmmyMessage, publishEmmyChats, publishEmmyChatCleared } from "./emmy-bus.js";
 import { indexTextForMemory } from "./emmy-memory.js";
+import { config } from "../config.js";
+import { generateOllamaCompletion } from "../security/ollama-client.js";
 
 // One file per reset, dropped here for the workspace-side sync (a cron as the
 // aaron user folds these into ~/.openclaw/workspace/memory/ — the same memory
@@ -73,10 +75,88 @@ export function buildConversationDigest(
   return parts.join("\n");
 }
 
+// The prose digest: same job as buildConversationDigest, but a local model
+// writes it as a short paragraph in Emmy's voice instead of a mechanical
+// bullet list. Kept deliberately close to the rest of emmy-memory's Ollama
+// use — best-effort, never throws, and the caller always has the mechanical
+// digest to fall back to, so a slow/unreachable Ollama or a garbage
+// completion just means the old behaviour, never a lost memory.
+
+const PROSE_TRANSCRIPT_LINE_MAX = 600;
+const PROSE_TRANSCRIPT_MAX_MESSAGES = 80;
+const PROSE_MIN_CHARS = 40;
+const PROSE_MAX_CHARS = 1500;
+
+/** Ollama /api/generate call, injectable so the prompt shaping can be unit-tested without a model. */
+export type ProseGenerator = (
+  baseUrl: string,
+  model: string,
+  prompt: string,
+  timeoutMs: number,
+) => Promise<string>;
+
+export function buildProseDigestPrompt(
+  messages: { role: "me" | "emmy"; text: string; at: string }[],
+): string {
+  const kept = messages.filter((m) => m.text.trim().length > 0).slice(-PROSE_TRANSCRIPT_MAX_MESSAGES);
+  const transcript = kept
+    .map((m) => `${m.role === "me" ? "Aaron" : "Emmy"}: ${firstLine(m.text, PROSE_TRANSCRIPT_LINE_MAX)}`)
+    .join("\n");
+  return [
+    "Du bist Emmy. Fasse die folgende Unterhaltung mit Aaron für dein eigenes",
+    "Langzeitgedächtnis zusammen — so, dass du später weißt, worum es ging,",
+    "was entschieden wurde und was noch offen ist.",
+    "",
+    "Regeln:",
+    "- Deutsch, 3–7 Sätze, ein zusammenhängender Absatz, keine Aufzählungspunkte.",
+    "- Nüchtern und konkret: Themen, Entscheidungen, offene Fäden, zugesagte",
+    "  nächste Schritte. Keine Höflichkeitsfloskeln, keine Einleitung wie",
+    '  "In dieser Unterhaltung…".',
+    "- Nur was wirklich gesagt wurde. Nichts dazuerfinden.",
+    "",
+    "Unterhaltung:",
+    transcript,
+    "",
+    "Zusammenfassung:",
+  ].join("\n");
+}
+
+/**
+ * Returns a prose digest, or null to signal "use the mechanical one" — when
+ * the model is unset, the conversation is empty, Ollama fails, or the model
+ * gives back something too short or implausibly long to be a real summary.
+ * The model id is passed in (not read from config here) so the shaping stays
+ * unit-testable without touching the config singleton.
+ */
+export async function buildProseDigest(
+  messages: { role: "me" | "emmy"; text: string; at: string }[],
+  model: string,
+  generate: ProseGenerator = generateOllamaCompletion,
+): Promise<string | null> {
+  if (!model) return null;
+  if (messages.filter((m) => m.text.trim().length > 0).length === 0) return null;
+  try {
+    const raw = await generate(
+      config.EMMY_MEMORY_OLLAMA_URL,
+      model,
+      buildProseDigestPrompt(messages),
+      config.EMMY_MEMORY_DIGEST_TIMEOUT_MS,
+    );
+    const prose = raw.trim();
+    if (prose.length < PROSE_MIN_CHARS || prose.length > PROSE_MAX_CHARS) return null;
+    return prose;
+  } catch (err) {
+    console.error(`[emmy] prose digest failed, falling back to mechanical: ${(err as Error).message}`);
+    return null;
+  }
+}
+
 export interface ResetResult {
   cleared: boolean;
   messageCount: number;
   digestStored: boolean;
+  /** true if the stored digest was model-written prose, false if the mechanical fallback. */
+  digestProse: boolean;
 }
 
 /**
@@ -92,12 +172,24 @@ export async function resetGeneralChat(
   const messages = await listMessages(GENERAL_CHAT_ID);
   const content = messages.filter((m) => m.text.trim().length > 0);
   if (content.length === 0) {
-    return { cleared: false, messageCount: 0, digestStored: false };
+    return { cleared: false, messageCount: 0, digestStored: false, digestProse: false };
   }
 
-  const digest = buildConversationDigest(
-    content.map((m) => ({ role: m.role, text: m.text, at: m.at })),
-  );
+  const shaped = content.map((m) => ({ role: m.role, text: m.text, at: m.at }));
+  const from = formatDay(content[0].at);
+  const to = formatDay(content[content.length - 1].at);
+  const span = from === to ? from : `${from}–${to}`;
+
+  // Prefer a model-written prose summary; fall back to the mechanical digest
+  // whenever that isn't available. Either way the digest opens with the same
+  // dated header line so cross-chat retrieval keeps the "when / how much"
+  // metadata regardless of which path produced the body.
+  const prose = await buildProseDigest(shaped, config.EMMY_MEMORY_DIGEST_MODEL);
+  const digest = prose
+    ? `Frühere Unterhaltung im Allgemein-Chat (${span}, ${content.length} Nachrichten).\n\n${prose}`
+    : buildConversationDigest(shaped);
+  const digestProse = prose !== null;
+
   const digestStored = digest
     ? await indexTextForMemory(
         `digest:${crypto.randomUUID()}`,
@@ -107,10 +199,6 @@ export async function resetGeneralChat(
       )
     : false;
   if (digest) await dropDigestFile(digest);
-
-  const from = formatDay(content[0].at);
-  const to = formatDay(content[content.length - 1].at);
-  const span = from === to ? from : `${from}–${to}`;
 
   // Archives the verbatim history and leaves the general chat present but empty.
   await deleteChat(GENERAL_CHAT_ID);
@@ -124,5 +212,5 @@ export async function resetGeneralChat(
   publishEmmyMessage(seed);
   publishEmmyChats(await listChats());
 
-  return { cleared: true, messageCount: content.length, digestStored };
+  return { cleared: true, messageCount: content.length, digestStored, digestProse };
 }

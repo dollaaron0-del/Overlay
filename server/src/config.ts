@@ -193,6 +193,15 @@ const schema = z.object({
   EMMY_MEMORY_VISION_MODEL: z.string().default(""),
   EMMY_MEMORY_EMBEDDING_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
   EMMY_MEMORY_VISION_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+  // Optional: when the general chat is reset, have a local model write the
+  // one-paragraph "what was this about" digest in prose (in Emmy's voice)
+  // instead of the mechanical bullet list. Empty = keep the mechanical digest
+  // (buildConversationDigest). Runs entirely on local Ollama — no gateway
+  // round-trip, no Claude/Gemini quota — and falls straight back to the
+  // mechanical digest on any failure, so memory is never lost. Suggest a
+  // capable instruct model with decent German, e.g. "qwen2.5:7b-instruct".
+  EMMY_MEMORY_DIGEST_MODEL: z.string().default(""),
+  EMMY_MEMORY_DIGEST_TIMEOUT_MS: z.coerce.number().int().positive().default(90_000),
   // How many cross-chat memory hits (top-K by cosine similarity) get added to
   // a prompt, and the minimum similarity score for a hit to count at all.
   EMMY_MEMORY_TOP_K: z.coerce.number().int().positive().default(6),
