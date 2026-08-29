@@ -194,6 +194,9 @@ export function buildEmmyTurnMessage(
     lines.push(
       `Nimm dir dafür so viel Zeit wie nötig — mehrere Stunden oder über Nacht sind ausdrücklich erwünscht, nicht nur erlaubt. Arbeite dich wirklich tief ein: mehrere unabhängige Quellen statt nur der ersten Treffer, gegenläufige Positionen einholen, Zahlen/Fakten querchecken. Hör nicht auf, sobald du "genug" zu haben glaubst — schick stattdessen weitere Zwischenstand-Meldungen (activity/sourcesSearched) und recherchiere weiter, bis du das Thema wirklich fundiert einschätzen kannst.`,
     );
+    lines.push(
+      `Aarons Auftrag ist eine grobe Richtung, keine exakte Spezifikation. Methode und Quellen wählst du frei — es zählt nur, dass das Ergebnis fundiert und für sein Ziel brauchbar ist; woher es kommt, ist ihm egal.`,
+    );
     if (dueAt) {
       lines.push(
         `Zeitfenster für diese Aufgabe: bis ${new Date(dueAt).toLocaleString("de-DE", { dateStyle: "full", timeStyle: "short" })}. Das ist keine Deadline zum Draufloslegen kurz davor, sondern der Rahmen, den du ausnutzen sollst — schick deine erste vollständige Zusammenfassung nicht viel früher als nötig, sondern erst wenn du das Fenster für echte Tiefe genutzt hast.`,
@@ -230,17 +233,20 @@ export function buildEmmyTurnMessage(
       `Orientier dich dabei am VOLLSTÄNDIGEN ursprünglichen Auftrag aus dem Verlauf, nicht nur an einem einzelnen darin genannten Beispiel/Stichwort. Nennt der Auftrag z. B. "behalte meine Watchlist im Blick, z. B. Aktie X", dann prüfst du die ganze Watchlist — nicht nur Aktie X, das war nur ein Beispiel, kein Filter.`,
     );
     lines.push(
-      `Geht es bei diesem Check ums Finden/Entdecken (neue Tools, Skills, Plugins, Libraries, Modelle, Artikel, Ideen), dann ist "Stand prüfen" NICHT dasselbe wie "die zwei, drei Quellen von letztem Mal nochmal aufrufen". Jeder Lauf muss aktiv in ECHTE neue Richtungen suchen, die du in den letzten Läufen noch nicht abgegrast hast. Konkret:`,
+      `Aarons Auftrag ist eine GROBE RICHTUNG, keine exakte Spezifikation. Methode, Werkzeuge und Quellen wählst du frei — was zählt, ist ein gutes, relevantes Ergebnis; woher es kommt oder wie du drauf gekommen bist, ist Aaron egal. Nimm den Auftrag also als Ziel, nicht als Checkliste abzuarbeitender Schritte.`,
+    );
+    lines.push(
+      `Geht es bei diesem Check ums Finden/Entdecken (neue Tools, Angebote, Modelle, Artikel, Ideen, Verbesserungen — irgendwas, das laufend neu dazukommen kann), dann ist "Stand prüfen" NICHT "die zwei, drei Quellen von letztem Mal nochmal aufrufen". Jeder Lauf sucht aktiv in ECHTE neue Richtungen, die du zuletzt noch nicht abgegrast hast:`,
     );
     lines.push(
       [
-        `- Rotier die Quellen. Nicht jede Runde dieselbe Registry/denselben Suchbegriff. Wechsle bewusst durch: GitHub (Suche, Trending, Topics, "awesome-*"-Listen, neue Releases), Hugging Face (Models, Spaces, Papers/Daily), ClawHub, Reddit (z. B. r/LocalLLaMA, r/selfhosted, r/ClaudeAI), Hacker News, einschlägige Blogs/Changelogs, offizielle Doku-/Release-Notes.`,
-        `- Variier die Suchbegriffe und geh Tangenten nach. Ein Fund darf zu einem verwandten Thema führen, das Aaron noch gar nicht auf dem Schirm hat — dem darfst und sollst du folgen ("Rabbit Hole"), solange es zum Server/zu den Projekten passt.`,
-        `- Beziehe den konkreten Stack ein (OpenClaw-Gateway, Overlay, Aktien-Bot, KI-Nachhilfe, lokales Ollama auf einer 8-GB-GPU, Embeddings/Vision/Speech/TTS lokal) und such gezielt nach Dingen, die genau da etwas verbessern.`,
+        `- Rotier die Quellen und variier die Suchbegriffe. Nicht jede Runde dieselbe Seite/derselbe Query. Welche Quellen sinnvoll sind, hängt vom Thema ab (Code-Hosts, Modell-Hubs, Registries, Foren/Communities, Preisvergleiche, Händler, Blogs/Changelogs, Doku/Release-Notes …) — du entscheidest.`,
+        `- Geh Tangenten nach. Ein Fund darf zu einem verwandten Thema führen, das Aaron noch gar nicht auf dem Schirm hat — dem folgst du ("Rabbit Hole"), solange es zum Auftrag bzw. zum Server/den Projekten passt.`,
+        `- Denk an den konkreten Stack (OpenClaw-Gateway, Overlay, Aktien-Bot, KI-Nachhilfe, lokales Ollama auf einer 8-GB-GPU, lokale Embeddings/Vision/Speech/TTS), wenn der Auftrag dahin zielt.`,
       ].join("\n"),
     );
     lines.push(
-      `Antwortformat: Hast du nach ehrlicher, frischer Suche wirklich etwas Neues/Relevantes gefunden, beschreib es konkret (Name, Link, was es bringt, ob Sicherheitsbedenken). Hast du nichts gefunden, sag das in EINEM Satz — kein wiederholter Status-Report, kein Aufzählen der immer gleichen alten Kandidaten. Wenn schon mehrere Läufe in Folge "nichts Neues" ergaben, liegt das fast immer an zu enger Suche: erweitere dann spürbar den Radius (andere Plattformen, andere Begriffe, breiteres Themenfeld), statt dieselbe leere Runde zu wiederholen.`,
+      `Antwortformat: Hast du nach ehrlicher, frischer Suche wirklich etwas Neues/Relevantes, beschreib es konkret (Name, Link, was es bringt, ggf. Sicherheitsbedenken). Nichts gefunden → EIN Satz, kein Status-Report, kein Wiederkäuen der immer gleichen alten Kandidaten. Mehrere Leerrunden in Folge heißt fast immer: Suche zu eng — dann Radius spürbar erweitern (andere Quellen, andere Begriffe, breiteres Themenfeld) statt dieselbe leere Runde zu wiederholen.`,
     );
   }
   if (chatKind === "task") {
