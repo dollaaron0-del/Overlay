@@ -180,11 +180,15 @@ emmyInboundRouter.post("/", async (req, res) => {
   // pending final-document request has now been fulfilled by this reply.
   // A clarifying question is neither: she's still pre-research, so the phase
   // stays put and a pending final-document request stays queued.
+  const researchSummaryLanded =
+    effectiveCategory === "research" && chat.researchPhase !== "discussion" && needsClarification !== true;
   await updateChat(chatId, {
     pendingFinalDocument: needsClarification === true ? chat.pendingFinalDocument : false,
-    ...(effectiveCategory === "research" && chat.researchPhase !== "discussion" && needsClarification !== true
-      ? { researchPhase: "discussion" as const }
-      : {}),
+    ...(researchSummaryLanded ? { researchPhase: "discussion" as const } : {}),
+    // The gathering phase is over — drop the persisted "running" flag the
+    // dispatch set (emmy.routes.ts) so the sidebar stops listing it as active
+    // research. The report itself is in the chat as a message/PDF.
+    ...(researchSummaryLanded && chat.status === "in_progress" ? { status: "open" as const } : {}),
   });
 
   publishEmmyChats(await listChats());

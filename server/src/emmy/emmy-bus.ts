@@ -10,6 +10,7 @@ const MESSAGE_CHANNEL = "message";
 const CHATS_CHANNEL = "chats";
 const ACTIVITY_CHANNEL = "activity";
 const TOPIC_WINDOWS_CHANNEL = "topic-windows";
+const CHAT_CLEARED_CHANNEL = "chat-cleared";
 
 export function publishEmmyMessage(message: EmmyMessage): void {
   emitter.emit(MESSAGE_CHANNEL, message);
@@ -37,6 +38,16 @@ export function publishEmmyActivity(activities: EmmyActivity[]): void {
 export function subscribeToEmmyActivity(onActivity: (activities: EmmyActivity[]) => void): () => void {
   emitter.on(ACTIVITY_CHANNEL, onActivity);
   return () => emitter.off(ACTIVITY_CHANNEL, onActivity);
+}
+
+/** The general chat's history was archived + blanked; clients drop their local copy. */
+export function publishEmmyChatCleared(chatId: string): void {
+  emitter.emit(CHAT_CLEARED_CHANNEL, chatId);
+}
+
+export function subscribeToEmmyChatCleared(onCleared: (chatId: string) => void): () => void {
+  emitter.on(CHAT_CLEARED_CHANNEL, onCleared);
+  return () => emitter.off(CHAT_CLEARED_CHANNEL, onCleared);
 }
 
 /** Whole list — topic windows are few and always broadcast complete. */

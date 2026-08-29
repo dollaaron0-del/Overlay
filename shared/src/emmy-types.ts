@@ -163,4 +163,7 @@ export type EmmyServerMessage =
   | { type: "chats"; chats: EmmyChat[] }
   | { type: "message"; message: EmmyMessage }
   | { type: "activity"; activities: EmmyActivity[] }
-  | { type: "topic-windows"; topicWindows: EmmyTopicWindow[] };
+  | { type: "topic-windows"; topicWindows: EmmyTopicWindow[] }
+  /** A chat's live history was archived and blanked (the general chat after
+      /neu or a research/check spin-off) — clients drop their local copy. */
+  | { type: "chat-cleared"; chatId: string };

@@ -54,7 +54,8 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
 function renderTable(rows: string[][], key: string): ReactNode {
   const [head, ...body] = rows;
   return (
-    <table key={key}>
+    <div key={key} className="emmy2-table-wrap">
+    <table>
       <thead>
         <tr>
           {head.map((cell, i) => (
@@ -72,6 +73,7 @@ function renderTable(rows: string[][], key: string): ReactNode {
         ))}
       </tbody>
     </table>
+    </div>
   );
 }
 

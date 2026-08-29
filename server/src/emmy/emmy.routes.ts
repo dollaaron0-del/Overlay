@@ -32,6 +32,7 @@ import { saveEmmyAttachments, attachmentsDir } from "./emmy-attachments.js";
 import { resolveSafePath, UnsafePathError } from "../files/safe-path.js";
 import { indexMessageForMemory, retrieveMemory, purgeMessagesFromMemory } from "./emmy-memory.js";
 import { buildEmmyTurnMessage, sessionKeyFor, turnModelFor } from "./emmy-turn-message.js";
+import { resetGeneralChat } from "./emmy-conversation-reset.js";
 
 // CRUD + reads (normal JSON body limit, mounted under protectedApi).
 export const emmyRouter = Router();
@@ -263,6 +264,99 @@ emmyRouter.delete("/archive/:id", async (req, res) => {
 
 // ---- send a message (with optional attachments) -----------------------------
 
+/** Best-effort short sidebar label from a free-text research request. */
+function deriveResearchTaskTitle(text: string): string {
+  const cleaned = text
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^(hey |hi |hallo )?emmy[,:]?\s+/i, "")
+    .replace(/^(kannst du|könntest du|koenntest du|würdest du|wuerdest du|mach mal|mach|bitte)\s+/i, "")
+    .replace(/^(bitte|mal)\s+/i, "");
+  const firstClause = cleaned.split(/(?<=[.!?])\s|\s[–—-]\s|\b(?:in ?dem|und dann|damit wir|sodass|so dass)\b/i)[0] || cleaned;
+  const clipped = firstClause.length > 64 ? `${firstClause.slice(0, 61).trimEnd()}…` : firstClause;
+  return clipped.charAt(0).toUpperCase() + clipped.slice(1) || "Recherche";
+}
+
+/**
+ * Turns a research request typed into a non-research chat into its own task
+ * chat: seeds it with Aaron's message, hands the origin chat's recent history
+ * to the turn for context ("recherchier das mal" only makes sense with the
+ * conversation it followed), kicks off the research turn in the new chat's
+ * isolated session, and drops a pointer message into the origin chat.
+ * Returns the message as stored in the origin chat (what the POST responds
+ * with), or null if the hand-off to OpenClaw failed.
+ */
+async function spinOffResearchTask(
+  origin: EmmyChat,
+  text: string,
+  originHistory: EmmyMessage[],
+): Promise<EmmyMessage | null> {
+  const cls = classifyTask(text);
+  const title = deriveResearchTaskTitle(text);
+  const task = await createChat("task", title, { ...cls, categorySource: "auto" });
+
+  const inOrigin = await appendMessage(origin.id, "me", text);
+  publishEmmyMessage(inOrigin);
+  const seed = await appendMessage(task.id, "me", text);
+  publishEmmyMessage(seed);
+
+  const dueLabel = cls.dueAt
+    ? new Date(cls.dueAt).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })
+    : null;
+  const spinoffNote = `Recherche-Aufgabe „${title}“ läuft in der Seitenleiste${
+    dueLabel ? ` (Zeitfenster bis ${dueLabel})` : ""
+  }.`;
+  // In the general chat the pointer note would just be wiped by the reset
+  // below, which seeds its own line — so only post it in a task chat origin.
+  const isGeneralOrigin = origin.id === GENERAL_CHAT_ID;
+  if (!isGeneralOrigin) {
+    const note = await appendMessage(
+      origin.id,
+      "emmy",
+      `Das läuft ab jetzt als eigene Recherche-Aufgabe „${title}“ in der Seitenleiste${
+        dueLabel ? ` (Zeitfenster bis ${dueLabel})` : ""
+      } — dort siehst du den Fortschritt, und Nachrichten hier unterbrechen sie nicht.`,
+    );
+    publishEmmyMessage(note);
+  }
+  await broadcastChats();
+  void indexMessageForMemory(inOrigin, origin.title).catch(() => {});
+  void indexMessageForMemory(seed, task.title).catch(() => {});
+
+  // Aaron's model: a research spin-off ends the main conversation. Distil it
+  // to memory, archive the transcript, blank the chat (see emmy-conversation-reset).
+  if (isGeneralOrigin) {
+    await resetGeneralChat("spinoff", spinoffNote).catch((err) => {
+      console.error(`[emmy] general-chat reset after spin-off failed: ${(err as Error).message}`);
+    });
+  }
+
+  const context = originHistory.slice(-config.EMMY_MEMORY_RECENT_MESSAGES);
+  const memoryHits = await retrieveMemory(text, new Set(context.map((m) => m.id)));
+  const prompt = buildEmmyTurnMessage(task.title, "task", task.id, text, context, cls.category, undefined, {
+    memoryHits,
+    dueAt: cls.dueAt,
+  });
+  markWorking(task.id, undefined, undefined, cls.category);
+  try {
+    await sendEmmyHookTurn(
+      sessionKeyFor(task.id),
+      `Overlay-Aufgabe: ${task.title}`,
+      prompt,
+      turnModelFor(cls.category, undefined),
+    );
+  } catch {
+    markIdle(task.id);
+    return null;
+  }
+  // Turn is out — persist the "running" flag so the sidebar keeps the row
+  // across an Overlay restart / the gap before the first progress ping.
+  // Cleared when the summary lands (emmy-inbound.routes.ts).
+  await updateChat(task.id, { status: "in_progress" });
+  await broadcastChats();
+  return inOrigin;
+}
+
 const sendSchema = z.object({
   text: z.string().max(8_000).optional(),
   /** Set by the "Abschlussdokument erstellen" button — asks for a final, comprehensive write-up instead of a normal reply. */
@@ -298,6 +392,22 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
     return;
   }
 
+  // "/neu" (or /new, /reset): deliberately end the main conversation — digest
+  // it to memory, archive the transcript, start blank. The command itself is
+  // never stored as a message. Only meaningful for the general chat; a task
+  // chat *is* its task, so there it just answers with a hint.
+  if (/^\/(neu|new|reset)$/i.test(text) && attachmentInputs.length === 0) {
+    if (chat.kind !== "general") {
+      const hint = await appendMessage(chat.id, "emmy", "„/neu“ leert nur den Allgemein-Chat.");
+      publishEmmyMessage(hint);
+      res.status(200).json({ ok: true, cleared: false });
+      return;
+    }
+    const result = await resetGeneralChat("command");
+    res.status(200).json({ ok: true, cleared: result.cleared, messageCount: result.messageCount });
+    return;
+  }
+
   let saved: Awaited<ReturnType<typeof saveEmmyAttachments>>;
   try {
     saved = await saveEmmyAttachments(chat.id, attachmentInputs);
@@ -316,10 +426,38 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
   // first message re-decides — but never against a category Aaron pinned.
   const isFirstMessage = priorMessages.length === 0;
   let category = chat.category;
-  if (chat.kind === "task" && isFirstMessage && chat.categorySource !== "manual" && text) {
+  const freshTaskClassify = chat.kind === "task" && isFirstMessage && chat.categorySource !== "manual" && !!text;
+  if (freshTaskClassify) {
     const classification = classifyTask(`${chat.title}\n${text}`);
     await updateChat(chat.id, { ...classification, categorySource: "auto" });
     category = classification.category;
+  }
+
+  // A deep-research request typed *outside* a fresh research task — in the
+  // general chat, or as a follow-up in an instant/recurring chat or a
+  // research chat that has already moved on to discussion — is spun off into
+  // its own task chat. That puts it in the sidebar with a deadline and, just
+  // as importantly, runs it in an isolated agent session so later chatter in
+  // this chat can no longer abort the hours-long research turn (which is what
+  // silently killed the run on 2026-08-28). Skipped when the message carries
+  // attachments (they live under this chat's id and would 404 from a new one)
+  // and when the fresh-task classifier above already handled it.
+  const activeResearchHere =
+    chat.kind === "task" && chat.category === "research" && chat.researchPhase !== "discussion";
+  if (
+    text &&
+    attachmentInputs.length === 0 &&
+    !freshTaskClassify &&
+    !activeResearchHere &&
+    classifyTask(text).category === "research"
+  ) {
+    const inOrigin = await spinOffResearchTask(chat, text, priorMessages);
+    if (!inOrigin) {
+      res.status(502).json({ error: "openclaw_send_failed", message: "Recherche-Aufgabe konnte nicht gestartet werden" });
+      return;
+    }
+    res.status(201).json(inOrigin);
+    return;
   }
 
   const recentMessages = priorMessages.slice(-config.EMMY_MEMORY_RECENT_MESSAGES);
@@ -370,6 +508,20 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
     if (requestFinalDocument) await updateChat(chat.id, { pendingFinalDocument: false });
     res.status(502).json({ error: "openclaw_send_failed", message: (err as Error).message, saved: message });
     return;
+  }
+
+  // Turn is out: a research task whose gathering phase is still open now
+  // counts as "running" for the sidebar — persisted so the row survives an
+  // Overlay restart and the gap before the first progress ping. Cleared when
+  // the summary lands (emmy-inbound.routes.ts) or Aaron marks it done.
+  if (
+    chat.kind === "task" &&
+    category === "research" &&
+    chat.researchPhase !== "discussion" &&
+    chat.status !== "in_progress"
+  ) {
+    await updateChat(chat.id, { status: "in_progress" });
+    await broadcastChats();
   }
 
   res.status(201).json(message);

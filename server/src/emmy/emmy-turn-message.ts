@@ -128,10 +128,38 @@ export function buildEmmyTurnMessage(
     `Antworte standardmäßig kurz und im Ton eines echten Chats, nicht wie ein Bericht — ein bis drei Sätze reichen für die meisten Antworten. Schreib nur dann lang und vollständig ausformuliert, wenn du gerade eine Recherche-Aufgabe abschließt, ein Abschlussdokument gefragt ist, oder Aaron explizit um eine ausführliche/vollständige Darstellung bittet.`,
   );
   lines.push(
-    `Formatier nur dann mit Markdown (# Überschriften, **fett**, Listen, Tabellen, Codeblöcke), wenn die Antwort tatsächlich lang ist — Overlay stellt das im Chat entsprechend dar, und ab einer gewissen Länge bekommt Aaron zusätzlich einen "Als Dokument öffnen"-Button. Schick deine Antwort als ein "text"-Feld in einem POST, nicht aufgeteilt in mehrere Nachrichten.`,
+    `Formatier mit Markdown (# Überschriften, **fett**, Listen, Codeblöcke), wenn die Antwort dadurch klarer wird — Overlay rendert das im Chat, und ab einer gewissen Länge bekommt Aaron zusätzlich einen "Als Dokument öffnen"-Button. Schick deine Antwort als ein "text"-Feld in einem POST, nicht aufgeteilt in mehrere Nachrichten.`,
   );
   lines.push(
-    `Wenn ein Diagramm die Antwort klarer macht als Fließtext, häng es als Codeblock an, statt Zahlen nur in Prosa aufzuzählen: ein Ablauf-/Beziehungsdiagramm als \`\`\`mermaid (Mermaid-Syntax, z. B. flowchart/sequenceDiagram), eine Größenverteilung über Kategorien oder Zeit als \`\`\`chart mit JSON-Inhalt {"type":"bar"|"line","title":"optional","series":[{"name":"optional","data":[{"label":"...","value":<Zahl>}]}]} — beide werden im Chat direkt gerendert, nicht als Rohtext. Setz das gezielt ein, nicht bei jeder Antwort mit einer Zahl drin.`,
+    `Greif standardmäßig zu strukturierten Darstellungen, sobald sie die Antwort klarer machen als Fließtext — nicht erst bei langen Antworten. Alle vier Formen werden im Chat direkt gerendert, nicht als Rohtext:`,
+  );
+  lines.push(
+    `- Vergleich oder mehrere Dinge mit denselben Eigenschaften → Markdown-Tabelle (\`| Spalte | Spalte |\` plus Trennzeile).`,
+  );
+  lines.push(
+    [
+      `- Überblick / Brainstorm / "was gehört alles dazu" → \`\`\`mermaid mit einer mindmap, Struktur nur über Einrückung:`,
+      `  mindmap`,
+      `    root((Kernthema))`,
+      `      Ast A`,
+      `        Unterpunkt A1`,
+      `      Ast B`,
+    ].join("\n"),
+  );
+  lines.push(
+    [
+      `- Hierarchie / Gliederung / Ablauf / Stammbaum → \`\`\`mermaid mit flowchart TD:`,
+      `  flowchart TD`,
+      `    A[Oben] --> B[Ebene 2]`,
+      `    A --> C[Ebene 2]`,
+      `    B --> D[Ebene 3]`,
+    ].join("\n"),
+  );
+  lines.push(
+    `- Größenverteilung über Kategorien oder Zeit → \`\`\`chart mit JSON-Inhalt {"type":"bar"|"line","title":"optional","series":[{"name":"optional","data":[{"label":"...","value":<Zahl>}]}]}.`,
+  );
+  lines.push(
+    `Übertreib es nicht: eine reine Ja/Nein- oder Einzelfakt-Antwort braucht keine Tabelle oder Grafik.`,
   );
   lines.push(
     `Für Formeln nutz LaTeX in $$...$$ (auch einzeilig, z. B. "$$E = mc^2$$") — wird über KaTeX sauber gesetzt statt als Rohtext angezeigt.`,

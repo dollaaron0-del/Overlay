@@ -194,7 +194,21 @@ export function detectDueAt(text: string, now: Date): Date | undefined {
   }
   if (/(übermorgen|uebermorgen)/.test(text)) return endOfDay(addDays(now, 2));
   if (/\bmorgen\b/.test(text) && !/\bjeden morgen\b/.test(text)) return endOfDay(addDays(now, 1));
-  if (/\bheute\b|\bbis heute abend\b/.test(text)) return endOfDay(now);
+  if (/\bheute\b|\bbis heute abend\b/.test(text)) {
+    // "bis heute 19 Uhr" / "heute um 19.00 Uhr" — honour the stated clock time
+    // when it is still ahead of us, instead of snapping to 23:59.
+    const clock = text.match(/\b(\d{1,2})(?:[:.](\d{2}))?\s*uhr\b/);
+    if (clock) {
+      const h = Number(clock[1]);
+      const m = clock[2] ? Number(clock[2]) : 0;
+      if (h < 24 && m < 60) {
+        const at = new Date(now);
+        at.setHours(h, m, 0, 0);
+        if (at.getTime() > now.getTime()) return at;
+      }
+    }
+    return endOfDay(now);
+  }
   if (/(nächste|naechste|kommende) woche/.test(text)) {
     // End of next week: the Sunday after the coming one.
     const toSunday = (7 - now.getDay()) % 7;
