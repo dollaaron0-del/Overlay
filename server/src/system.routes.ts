@@ -11,7 +11,6 @@ import {
 import { captureCpuHealthSnapshot } from "./cpu-health/cpu-health.js";
 import { readCpuHealthHistory } from "./cpu-health/cpu-health-store.js";
 import { getNetworkThroughput } from "./network-throughput.js";
-import { getModelStatus } from "./system-models.js";
 
 export const systemRouter = Router();
 
@@ -31,13 +30,6 @@ systemRouter.get("/health/current", async (_req, res) => {
 // on a fresh measurement.
 systemRouter.get("/network", (_req, res) => {
   res.json(getNetworkThroughput());
-});
-
-// Which Claude CLI account is live + whether Gemini still has quota. Returns
-// a { configured: false } placeholder until the Emmy gateway's admin-http-rpc
-// plugin is wired up — see system-models.ts.
-systemRouter.get("/models", async (_req, res) => {
-  res.json(await getModelStatus());
 });
 
 const MAX_HISTORY_HOURS = 24 * 31;

@@ -91,6 +91,10 @@ export interface EmmyChat {
   pendingFinalDocument?: boolean;
   /** ISO timestamp of the automatic "dueAt reached, what's your status?" nudge (see emmy-scheduler.ts). Set once so the check fires only once per research task, not on every scheduler tick. */
   dueCheckSentAt?: string;
+  /** How many times the stalled-research watchdog has re-dispatched this task (see emmy-scheduler.ts runStalledResearchWatchdogTick). MAX_RETRIES+1 means it gave up and told Aaron. */
+  researchStallRetries?: number;
+  /** ISO timestamp of the last stalled-research watchdog re-dispatch — part of the "has anything happened here" staleness reference. */
+  researchStallNudgedAt?: string;
 }
 
 /**

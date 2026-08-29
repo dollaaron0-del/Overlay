@@ -186,6 +186,10 @@ export async function updateChat(
     lastRecurringCheckAt?: string;
     /** Only set by the research-due-check scheduler tick (emmy-scheduler.ts). */
     dueCheckSentAt?: string;
+    /** Only set by the stalled-research watchdog (emmy-scheduler.ts). */
+    researchStallRetries?: number;
+    /** Only set by the stalled-research watchdog (emmy-scheduler.ts). */
+    researchStallNudgedAt?: string;
   } & EmmyCategoryPatch,
 ): Promise<EmmyChat | undefined> {
   return mutateStore((store) => {
