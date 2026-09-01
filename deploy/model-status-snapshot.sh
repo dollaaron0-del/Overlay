@@ -74,20 +74,28 @@ if claude_accounts == 0 or gemini_keys == 0:
             cfg = json.load(f)
         profiles = (cfg.get("auth") or {}).get("profiles") or {}
         cfg_gemini = sum(1 for p in profiles.values() if p.get("provider") == "google")
-        # claude-cli OAuth subscription profiles, plus the claude-cli2 second-account
-        # plugin backend if it is enabled (its account lives outside auth.profiles).
+        # claude-cli OAuth subscription profiles. The claude-cli2 second account
+        # is added once, unconditionally, further down (it never appears here).
         cfg_claude = sum(
             1 for p in profiles.values()
             if p.get("provider") == "claude-cli" and p.get("mode") == "oauth"
         )
-        entries = (cfg.get("plugins") or {}).get("entries") or {}
-        cli2 = entries.get("claude-cli2") or {}
-        if cli2.get("enabled") or any(m.startswith("claude-cli2/") for m in fallbacks):
-            cfg_claude += 1
         claude_accounts = claude_accounts or cfg_claude
         gemini_keys = gemini_keys or cfg_gemini
     except Exception:
         pass
+
+# The claude-cli2 second-account plugin backend keeps its OAuth outside the
+# agent state DB, so `openclaw models status` never lists it as a profile —
+# it only shows up as a referenced-but-"missing" provider. Whenever a
+# claude-cli2/* model is in the fallback chain (or the provider is flagged
+# in use), that's a real second Claude subscription the widget should count,
+# on top of whatever the profile scan above found.
+uses_cli2 = any(m.startswith("claude-cli2/") for m in fallbacks) or (
+    "claude-cli2" in (auth.get("missingProvidersInUse") or [])
+)
+if uses_cli2:
+    claude_accounts += 1
 
 out = {
     "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
