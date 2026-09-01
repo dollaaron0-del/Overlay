@@ -140,6 +140,9 @@ export function buildEmmyTurnMessage(
     lines.push(
       `Tipp: Schreib die JSON-Payload in eine temporäre Datei und sende sie mit "curl --data @datei", um Quoting-Probleme zu vermeiden. Sende deine Antwort nur einmal.`,
     );
+    lines.push(
+      `Häng an den finalen POST (den mit "text") zusätzlich "model":"<deine aktuelle Modell-Identität aus deinem Runtime-Kontext, z. B. claude-sonnet-5 oder google/gemini-3.1-flash>" an — Overlay zeigt Aaron damit in der Seitenleiste, welche KI ihm gerade geantwortet hat. Bei Zwischenständen ("activity") nicht nötig.`,
+    );
 
     if (!lean) {
       lines.push("");
@@ -222,7 +225,7 @@ export function buildEmmyTurnMessage(
     lines.push("");
     lines.push("--- Wie gehabt ---");
     lines.push(
-      `Antworte wie im Auftakt dieses Chats erklärt. Post an http://127.0.0.1:${config.PORT}/api/emmy/inbound, Header Authorization: Bearer ${config.EMMY_INBOUND_TOKEN}, Body {"chatId":"${chatId}","text":"<Antwort>"}.` +
+      `Antworte wie im Auftakt dieses Chats erklärt. Post an http://127.0.0.1:${config.PORT}/api/emmy/inbound, Header Authorization: Bearer ${config.EMMY_INBOUND_TOKEN}, Body {"chatId":"${chatId}","text":"<Antwort>","model":"<deine Modell-Identität>"}.` +
         (lean
           ? ""
           : ` Zwischenstand weiter per "activity" (bei Recherche kumulativ "sourcesSearched" dazu, kein %-Wert).`) +

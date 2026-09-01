@@ -54,6 +54,13 @@ const inboundSchema = z
     text: z.string().min(1).max(300_000).optional(),
     /** One line on what she's doing right now. */
     activity: z.string().max(300).optional(),
+    /**
+     * Which model produced this reply — her runtime "Current model identity"
+     * (e.g. "claude-sonnet-5", "google/gemini-3.1-flash"). Only sent with the
+     * final "text" POST; drives the sidebar "Modelle" widget's "answered last"
+     * line. Optional: a turn that omits it just leaves the previous value.
+     */
+    model: z.string().min(1).max(120).optional(),
     /** Her own correction of Overlay's automatic categorization; ignored once Aaron picked one. */
     category: z.enum(["instant", "research", "recurring"]).optional(),
     dueAt: z.string().datetime().optional(),
@@ -98,6 +105,7 @@ emmyInboundRouter.post("/", async (req, res) => {
     chatId,
     text,
     activity,
+    model,
     category,
     dueAt,
     intervalHours,
@@ -173,7 +181,15 @@ emmyInboundRouter.post("/", async (req, res) => {
     }
   }
 
-  const message = await appendMessage(chatId, "emmy", text, attachments, isFinalDocument, needsClarification === true);
+  const message = await appendMessage(
+    chatId,
+    "emmy",
+    text,
+    attachments,
+    isFinalDocument,
+    needsClarification === true,
+    model,
+  );
   publishEmmyMessage(message);
   void indexMessageForMemory(message, chat.title).catch(() => {});
   // The answer is here, so she is no longer working on this chat.

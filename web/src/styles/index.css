@@ -2843,6 +2843,21 @@ button.active {
   font-size: var(--fs-sm);
 }
 
+/* Modell der letzten Emmy-Antwort, direkt in der Widget-Überschrift —
+   sichtbar auch im eingeklappten Zustand (die eigentliche Frage: "welche
+   KI antwortet mir gerade"). Nicht in Versalien wie der Rest der Zeile. */
+.emmy2-model-head-current {
+  margin-left: var(--space-2);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+  color: var(--c-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .emmy2-model-key {
   flex-shrink: 0;
   width: 9rem;

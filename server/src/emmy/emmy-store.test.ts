@@ -95,6 +95,38 @@ test("appendMessage persists attachments only when present", async () => {
   assert.equal(plain.attachments, undefined);
 });
 
+test("appendMessage persists the reporting model only when given", async () => {
+  const chat = await store.createChat("task", "Modell");
+  const withModel = await store.appendMessage(
+    chat.id,
+    "emmy",
+    "antwort",
+    undefined,
+    undefined,
+    undefined,
+    "claude-sonnet-5",
+  );
+  assert.equal(withModel.model, "claude-sonnet-5");
+
+  const withoutModel = await store.appendMessage(chat.id, "emmy", "noch eine");
+  assert.equal(withoutModel.model, undefined);
+});
+
+test("getLastAnsweredModel returns the newest emmy reply that carried a model", async () => {
+  // Scans globally, newest-first across all chats.
+  const chat = await store.createChat("task", "Neuestes Modell");
+  await store.appendMessage(chat.id, "emmy", "gemini diesmal", undefined, undefined, undefined, "google/gemini-3.1-flash");
+  assert.equal((await store.getLastAnsweredModel())?.model, "google/gemini-3.1-flash");
+
+  // A later reply without a model does not clear the last known one.
+  await store.appendMessage(chat.id, "emmy", "ohne modell");
+  assert.equal((await store.getLastAnsweredModel())?.model, "google/gemini-3.1-flash");
+
+  // A user message with a stray model-ish text is ignored (role gate).
+  await store.appendMessage(chat.id, "me", "claude", undefined, undefined, undefined, "should-be-ignored");
+  assert.equal((await store.getLastAnsweredModel())?.model, "google/gemini-3.1-flash");
+});
+
 test("updateChat patches title and status without touching other chats", async () => {
   const chat = await store.createChat("task", "Alt");
   const updated = await store.updateChat(chat.id, { title: "Neu", status: "done" });

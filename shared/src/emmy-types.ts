@@ -63,6 +63,15 @@ export interface EmmyMessage {
   isFinalDocument?: boolean;
   /** Marks a reply where Emmy is asking Aaron to clarify a vague research task instead of diving in. */
   needsClarification?: boolean;
+  /**
+   * Which model actually produced this reply, self-reported by Emmy via
+   * /api/emmy/inbound (her runtime "Current model identity", e.g.
+   * "claude-sonnet-5" or "google/gemini-3.1-flash"). Only on `role: "emmy"`
+   * messages, and only when she reported it — absent on older messages and
+   * whenever the turn didn't include it. Feeds the sidebar "Modelle" widget's
+   * "which AI answered last" line (see system-models.ts).
+   */
+  model?: string;
 }
 
 export interface EmmyChat {
