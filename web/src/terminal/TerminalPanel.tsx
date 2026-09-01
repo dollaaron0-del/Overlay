@@ -11,7 +11,22 @@ const STATUS_LABEL = {
   reconnecting: "Verbindung wird wiederhergestellt…",
 };
 
-export function TerminalPanel({ wsPath }: { wsPath: string }) {
+export function TerminalPanel({
+  wsPath,
+  pendingSend,
+  onPendingSent,
+}: {
+  wsPath: string;
+  /**
+   * A command to drop onto the shell's prompt line the moment the socket is
+   * connected — used by the chat's "In Terminal ausführen" action so Aaron
+   * doesn't retype a command Emmy gave him. Goes through the same no-auto-
+   * submit paste path as a manual paste (see pty.ws.ts): the line is filled,
+   * Enter stays his to press.
+   */
+  pendingSend?: string | null;
+  onPendingSent?: () => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const pasteTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -298,6 +313,16 @@ export function TerminalPanel({ wsPath }: { wsPath: string }) {
   }, []);
 
   const status = useTerminalSocket(wsPath, terminal, sendPasteRef);
+
+  // Fill the prompt with a command handed over from the chat, once connected.
+  // Trailing newline stripped so it never auto-runs — Aaron reviews and hits
+  // Enter (he'll also need to for the sudo password prompt).
+  useEffect(() => {
+    if (status !== "connected" || !pendingSend) return;
+    sendPasteRef.current(pendingSend.replace(/\n+$/, ""));
+    terminal?.focus();
+    onPendingSent?.();
+  }, [status, pendingSend, terminal, onPendingSent]);
 
   // Autofocus the moment the box opens so the very next keystroke (or a
   // right-click "Paste" on a real, visible textarea) lands there — this is

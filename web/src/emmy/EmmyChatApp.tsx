@@ -403,6 +403,53 @@ async function hardReload() {
   }
 }
 
+// ---- Aufgaben-Panel (stehende delegierte Aufgaben aus dem Workspace) -------
+
+interface TaskLogEntry {
+  ts?: string;
+  run?: string;
+  action?: string;
+  digest?: string;
+  observed?: string;
+  result?: string;
+}
+
+interface TaskPanelItem {
+  slug: string;
+  title: string;
+  status: string;
+  ziel: string | null;
+  erfolgskriterium: string | null;
+  meldeTakt: string | null;
+  angelegt: string | null;
+  hatLedger: boolean;
+  lastActivity: string | null;
+  logCount: number;
+  recentLog: TaskLogEntry[];
+  mandateLog: string[];
+  offenePunkte: string[];
+}
+
+interface TasksPanel {
+  tasks: TaskPanelItem[];
+  generatedAt: string | null;
+  ageSeconds: number | null;
+  stale: boolean;
+}
+
+/** Polls GET /api/emmy/tasks (fed by a cron snapshot of tasks/<slug>/). */
+function useTasksPanel(): TasksPanel | null {
+  const [panel, setPanel] = useState<TasksPanel | null>(null);
+  useEffect(() => {
+    const fetchPanel = () =>
+      api.get<TasksPanel>("/api/emmy/tasks").then(setPanel).catch(() => undefined);
+    fetchPanel();
+    const interval = setInterval(fetchPanel, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+  return panel;
+}
+
 export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: string) => void }) {
   const [chats, setChats] = useState<EmmyChat[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -421,6 +468,13 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
   const [openDocument, setOpenDocument] = useState<{ message: EmmyMessage; chatTitle: string } | null>(null);
   const [projectPickerRequest, setProjectPickerRequest] = useState<{ text: string; heading: string } | null>(null);
   const [hostTerminalOpen, setHostTerminalOpen] = useState(false);
+  // A command from a chat bubble waiting to be dropped onto the terminal's
+  // prompt line once the modal's socket connects.
+  const [hostTerminalPending, setHostTerminalPending] = useState<string | null>(null);
+  const runInTerminal = (command: string) => {
+    setHostTerminalPending(command);
+    setHostTerminalOpen(true);
+  };
   const [settingsOpen, setSettingsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -712,6 +766,9 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Which check / research task, if any, is open in its detail window.
   const [checkWindowId, setCheckWindowId] = useState<string | null>(null);
+  // Which standing delegated task, if any, is open in its detail window.
+  const [taskWindowSlug, setTaskWindowSlug] = useState<string | null>(null);
+  const tasksPanel = useTasksPanel();
   // Which program dashboard, if any, is open in its floating window.
   const [dashboardId, setDashboardId] = useState<ProgramId | null>(null);
   // Topic windows live on the server (persisted, pushed over /ws/emmy); the
@@ -798,10 +855,19 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
         onClose={() => setSidebarOpen(false)}
         taskChats={taskChats}
         activityByChat={activityByChat}
+        tasksPanel={tasksPanel}
         onOpenDashboard={openDashboard}
         onOpenCheck={(id) => {
           setSidebarOpen(false);
           setCheckWindowId(id);
+        }}
+        onOpenTask={(slug) => {
+          setSidebarOpen(false);
+          setTaskWindowSlug(slug);
+        }}
+        onOpenHostTerminal={() => {
+          setSidebarOpen(false);
+          setHostTerminalOpen(true);
         }}
       />
       {showCenter && (
@@ -823,6 +889,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                     })
                   }
                   onOpenTopicWindow={() => openTopicWindow(topicTitleFrom(m.text), m.text)}
+                  onRunInTerminal={runInTerminal}
                 />
               ))}
               {centerActivity && <ActivityBubble activity={centerActivity} now={now} />}
@@ -1036,6 +1103,7 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
                     })
                   }
                   onOpenTopicWindow={() => openTopicWindow(topicTitleFrom(m.text), m.text)}
+                  onRunInTerminal={runInTerminal}
                 />
               ))}
               {activeActivity && <ActivityBubble activity={activeActivity} now={now} />}
@@ -1105,16 +1173,32 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
         />
       )}
       {hostTerminalOpen && (
-        <div className="home-modal-backdrop" onClick={() => setHostTerminalOpen(false)}>
+        <div
+          className="home-modal-backdrop"
+          onClick={() => {
+            setHostTerminalOpen(false);
+            setHostTerminalPending(null);
+          }}
+        >
           <div className="emmy2-terminal-panel" onClick={(e) => e.stopPropagation()}>
             <header className="emmy2-doc-head">
               <h3>Server-Terminal</h3>
-              <button onClick={() => setHostTerminalOpen(false)} title="Schließen">
+              <button
+                onClick={() => {
+                  setHostTerminalOpen(false);
+                  setHostTerminalPending(null);
+                }}
+                title="Schließen"
+              >
                 <kbd>[X]</kbd>
               </button>
             </header>
             <div className="emmy2-terminal-body">
-              <TerminalPanel wsPath="/ws/host-terminal" />
+              <TerminalPanel
+                wsPath="/ws/host-terminal"
+                pendingSend={hostTerminalPending}
+                onPendingSent={() => setHostTerminalPending(null)}
+              />
             </div>
           </div>
         </div>
@@ -1162,6 +1246,12 @@ export function EmmyChatApp({ onOpenProject }: { onOpenProject?: (projectId: str
         ) : null;
       })()}
       {dashboardId && <DashboardWindow id={dashboardId} onClose={() => setDashboardId(null)} />}
+      {(() => {
+        const t = taskWindowSlug
+          ? tasksPanel?.tasks.find((x) => x.slug === taskWindowSlug)
+          : undefined;
+        return t ? <TaskWindow task={t} now={now} onClose={() => setTaskWindowSlug(null)} /> : null;
+      })()}
     </div>
   );
 }
@@ -1175,20 +1265,56 @@ function StatusRow({
   title,
   kind,
   active,
+  ready,
   onClick,
 }: {
   title: string;
   kind: "check" | "research";
   active: boolean;
+  /** Research only: summary has landed, waiting for Aaron to read it and mark it done. */
+  ready?: boolean;
   onClick: () => void;
 }) {
+  const showReady = !!ready && !active;
   return (
     <button type="button" className="emmy2-status-row" onClick={onClick}>
       <span className="emmy2-status-row-title">{title}</span>
+      {showReady && <span className="emmy2-status-row-flag">fertig</span>}
       <span
-        className={`emmy2-status-dot emmy2-status-dot--${kind}${active ? " is-active" : ""}`}
+        className={`emmy2-status-dot emmy2-status-dot--${kind}${active ? " is-active" : ""}${
+          showReady ? " is-ready" : ""
+        }`}
         aria-hidden="true"
       />
+    </button>
+  );
+}
+
+/** Kürzt einen langen Satz für die schmale Sidebar-Zeile. */
+function clip(text: string | null, max = 70): string {
+  if (!text) return "";
+  return text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text;
+}
+
+/**
+ * One line in the sidebar "Aufgaben" list: task title, a status pill, and the
+ * goal clipped to one line. Click opens the detail window.
+ */
+function TaskRow({ task, onClick }: { task: TaskPanelItem; onClick: () => void }) {
+  const done = task.status === "erledigt" || task.status === "abgebrochen";
+  return (
+    <button type="button" className="emmy2-task-row" onClick={onClick}>
+      <span className="emmy2-task-row-head">
+        <span className="emmy2-task-row-title">{task.title}</span>
+        <span
+          className={`emmy2-task-row-status${done ? " is-done" : ""}${
+            task.status === "pausiert" ? " is-paused" : ""
+          }`}
+        >
+          {task.status}
+        </span>
+      </span>
+      {task.ziel && <span className="emmy2-task-row-goal">{clip(task.ziel)}</span>}
     </button>
   );
 }
@@ -1204,15 +1330,21 @@ function EmmySidebar({
   onClose,
   taskChats,
   activityByChat,
+  tasksPanel,
   onOpenDashboard,
   onOpenCheck,
+  onOpenTask,
+  onOpenHostTerminal,
 }: {
   open: boolean;
   onClose: () => void;
   taskChats: EmmyChat[];
   activityByChat: Record<string, EmmyActivity>;
+  tasksPanel: TasksPanel | null;
   onOpenDashboard: (id: ProgramId) => void;
   onOpenCheck: (id: string) => void;
+  onOpenTask: (slug: string) => void;
+  onOpenHostTerminal: () => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -1224,16 +1356,17 @@ function EmmySidebar({
   }, [open, onClose]);
 
   // Radikal reduziert: jeder wiederkehrende Check bekommt eine Zeile.
-  // Recherchen bleiben stehen, sobald sie einmal angelaufen sind
-  // (status "in_progress") oder gerade aktiv laufen — abgeschlossene
-  // behalten einen ruhigen (nicht blinkenden) blauen Punkt und geben beim
-  // Klick die gesammelten Infos als Fließtext.
+  // Eine Recherche bleibt in der Liste, bis Aaron sie selbst als erledigt
+  // markiert: solange sie läuft (status "in_progress" / aktiv) UND danach —
+  // sobald ihre Zusammenfassung gelandet ist (researchPhase gesetzt), mit
+  // ruhigem grünem Punkt + "fertig"-Marke, damit er das Gesammelte nachlesen
+  // und die Zeile im Detailfenster per "Erledigt" schließen kann.
   const checks = taskChats.filter((c) => categoryOf(c) === "recurring" && c.status !== "done");
   const research = taskChats.filter(
     (c) =>
       categoryOf(c) === "research" &&
       c.status !== "done" &&
-      (c.status === "in_progress" || !!activityByChat[c.id]),
+      (c.status === "in_progress" || !!activityByChat[c.id] || c.researchPhase != null),
   );
 
   return (
@@ -1255,7 +1388,6 @@ function EmmySidebar({
           </section>
 
           <section className="emmy2-sidebar-section">
-            <h4>Modelle</h4>
             <ModelStatusWidget />
           </section>
 
@@ -1282,6 +1414,19 @@ function EmmySidebar({
           </section>
 
           <section className="emmy2-sidebar-section">
+            <h4>Aufgaben</h4>
+            {(!tasksPanel || tasksPanel.tasks.length === 0) && (
+              <p className="empty-hint">Keine laufenden Aufgaben.</p>
+            )}
+            {tasksPanel?.tasks.map((t) => (
+              <TaskRow key={t.slug} task={t} onClick={() => onOpenTask(t.slug)} />
+            ))}
+            {tasksPanel?.stale && tasksPanel.tasks.length > 0 && (
+              <p className="empty-hint">Stand veraltet – Snapshot läuft nicht.</p>
+            )}
+          </section>
+
+          <section className="emmy2-sidebar-section">
             <h4>Checks &amp; Recherche</h4>
             {checks.length === 0 && research.length === 0 && (
               <p className="empty-hint">Keine Checks, keine Recherchen.</p>
@@ -1301,12 +1446,21 @@ function EmmySidebar({
                 title={c.title}
                 kind="research"
                 active={!!activityByChat[c.id]}
+                ready={c.researchPhase === "discussion"}
                 onClick={() => onOpenCheck(c.id)}
               />
             ))}
           </section>
 
           <section className="emmy2-sidebar-section emmy2-sidebar-foot">
+            <button
+              type="button"
+              className="emmy2-sidebar-reload"
+              onClick={onOpenHostTerminal}
+              title="Ein Server-Terminal öffnen (läuft als aaron, sudo möglich)"
+            >
+              <IconTerminal size={13} /> Server-Terminal
+            </button>
             <button
               type="button"
               className="emmy2-sidebar-reload"
@@ -1469,12 +1623,14 @@ function MessageBubble({
   onSendToProject,
   onImplementInProject,
   onOpenTopicWindow,
+  onRunInTerminal,
 }: {
   message: EmmyMessage;
   onOpenDocument: () => void;
   onSendToProject: () => void;
   onImplementInProject: () => void;
   onOpenTopicWindow?: () => void;
+  onRunInTerminal?: (command: string) => void;
 }) {
   const isFinalDocument = message.role === "emmy" && message.isFinalDocument === true;
   const needsClarification = message.role === "emmy" && message.needsClarification === true;
@@ -1495,7 +1651,9 @@ function MessageBubble({
       )}
       {message.text &&
         (message.role === "emmy" ? (
-          <div className={isLongReport ? "emmy2-report-preview" : "emmy2-markdown"}>{renderMiniMarkdown(message.text)}</div>
+          <div className={isLongReport ? "emmy2-report-preview" : "emmy2-markdown"}>
+            {renderMiniMarkdown(message.text, { onRunInTerminal })}
+          </div>
         ) : (
           <p>{message.text}</p>
         ))}
@@ -1759,7 +1917,13 @@ function CheckWindow({
                 <dd>{messages === null ? "…" : results.length}</dd>
               </>
             )}
-            {!isCheck && chat.dueAt && (
+            {!isCheck && chat.sourceBound != null && (
+              <>
+                <dt>Fertig-Kriterium</dt>
+                <dd>{chat.sourceBound ? "Quelle durchgearbeitet" : "Zeitfenster genutzt"}</dd>
+              </>
+            )}
+            {!isCheck && chat.dueAt && chat.sourceBound !== true && (
               <>
                 <dt>Frist</dt>
                 <dd>{formatDue(chat.dueAt)}</dd>
@@ -1789,6 +1953,156 @@ function CheckWindow({
           <h5>Auftrag</h5>
           <div className="emmy2-markdown emmy2-checkwin-brief">
             {brief ? renderMiniMarkdown(brief.text) : <span className="empty-hint">—</span>}
+          </div>
+        </aside>
+      </div>
+      <div className="emmy2-topicwin-resize" onPointerDown={start("resize")} />
+    </div>
+  );
+}
+
+/** The most meaningful text a task log entry carries, for the results feed. */
+function taskLogText(e: TaskLogEntry): string {
+  return e.digest || e.result || e.action || e.observed || e.run || "—";
+}
+
+/**
+ * Detail window for one standing delegated task (workspace tasks/<slug>/).
+ * Left: the results feed (log entries + the mandate's own Log section, newest
+ * first). Right rail: goal, framing and open points. Same drag/resize chrome
+ * as CheckWindow; read-only — the task itself lives in the workspace.
+ */
+function TaskWindow({
+  task,
+  now,
+  onClose,
+}: {
+  task: TaskPanelItem;
+  now: number;
+  onClose: () => void;
+}) {
+  const [geo, setGeo] = useState(() => ({
+    x: Math.max(16, Math.round(window.innerWidth / 2 - 340)),
+    y: Math.max(16, Math.round(window.innerHeight / 2 - 240)),
+    w: 680,
+    h: 480,
+  }));
+
+  const start = (mode: "move" | "resize") => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const sx = e.clientX;
+    const sy = e.clientY;
+    const { x: ox, y: oy, w: ow, h: oh } = geo;
+    document.body.style.userSelect = "none";
+    const onMove = (ev: PointerEvent) => {
+      ev.preventDefault();
+      const dx = ev.clientX - sx;
+      const dy = ev.clientY - sy;
+      if (mode === "move") {
+        setGeo((g) => ({
+          ...g,
+          x: Math.max(0, Math.min(window.innerWidth - 80, ox + dx)),
+          y: Math.max(0, Math.min(window.innerHeight - 40, oy + dy)),
+        }));
+      } else {
+        setGeo((g) => ({ ...g, w: Math.max(420, ow + dx), h: Math.max(260, oh + dy) }));
+      }
+    };
+    const onUp = () => {
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  const hasResults = task.recentLog.length > 0 || task.mandateLog.length > 0;
+
+  return (
+    <div
+      className="emmy2-topicwin emmy2-checkwin"
+      style={{ left: geo.x, top: geo.y, width: geo.w, height: geo.h, zIndex: 60 }}
+    >
+      <header className="emmy2-topicwin-head" onPointerDown={start("move")}>
+        <span className="emmy2-topicwin-title">Aufgabe: {task.title}</span>
+        <div className="emmy2-checkwin-actions">
+          <button onClick={onClose} title="Schließen">
+            <IconX size={14} />
+          </button>
+        </div>
+      </header>
+      <div className="emmy2-checkwin-body">
+        <div className="emmy2-checkwin-main">
+          {!hasResults && <p className="empty-hint">Noch keine Ergebnisse.</p>}
+          {task.recentLog.map((e, i) => (
+            <article key={`log-${i}`} className="emmy2-checkwin-result">
+              <time className="emmy2-checkwin-result-time">
+                {e.ts ? formatResultStamp(e.ts) : "—"}
+                {e.run ? ` · ${e.run}` : ""}
+              </time>
+              <div className="emmy2-markdown">{renderMiniMarkdown(taskLogText(e))}</div>
+            </article>
+          ))}
+          {task.mandateLog.length > 0 && (
+            <article className="emmy2-checkwin-result">
+              <time className="emmy2-checkwin-result-time">Mandats-Log</time>
+              <div className="emmy2-markdown">
+                {renderMiniMarkdown(task.mandateLog.map((l) => `- ${l}`).join("\n"))}
+              </div>
+            </article>
+          )}
+        </div>
+        <aside className="emmy2-checkwin-rail">
+          <h5>Rahmenbedingungen</h5>
+          <dl className="emmy2-checkwin-facts">
+            <dt>Status</dt>
+            <dd>{task.status}</dd>
+            {task.angelegt && (
+              <>
+                <dt>Angelegt</dt>
+                <dd>{task.angelegt}</dd>
+              </>
+            )}
+            {task.lastActivity && (
+              <>
+                <dt>Letzte Aktivität</dt>
+                <dd>{formatSince(task.lastActivity, now)}</dd>
+              </>
+            )}
+            <dt>Läufe</dt>
+            <dd>{task.logCount}</dd>
+            {task.meldeTakt && (
+              <>
+                <dt>Melde-Takt</dt>
+                <dd>{task.meldeTakt}</dd>
+              </>
+            )}
+            {task.hatLedger && (
+              <>
+                <dt>Budget</dt>
+                <dd>Ledger im Workspace</dd>
+              </>
+            )}
+          </dl>
+          {task.erfolgskriterium && (
+            <>
+              <h5>Erfolgskriterium</h5>
+              <p className="emmy2-checkwin-brief">{task.erfolgskriterium}</p>
+            </>
+          )}
+          {task.offenePunkte.length > 0 && (
+            <>
+              <h5>Offene Punkte</h5>
+              <div className="emmy2-markdown emmy2-checkwin-brief">
+                {renderMiniMarkdown(task.offenePunkte.map((p) => `- ${p}`).join("\n"))}
+              </div>
+            </>
+          )}
+          <h5>Ziel</h5>
+          <div className="emmy2-markdown emmy2-checkwin-brief">
+            {task.ziel ? renderMiniMarkdown(task.ziel) : <span className="empty-hint">—</span>}
           </div>
         </aside>
       </div>

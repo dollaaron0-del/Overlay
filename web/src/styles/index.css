@@ -1951,6 +1951,43 @@ button.active {
   padding: 0;
 }
 
+/* Shell code block with a "run in the host terminal" action in its corner. */
+.emmy2-markdown pre.emmy2-code-runnable {
+  position: relative;
+}
+
+.emmy2-code-run {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  padding: var(--space-0) var(--space-2);
+  background: var(--c-surface-1);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-sm);
+  color: var(--c-text-3);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-tactile), color var(--motion-fast) var(--ease-tactile);
+}
+
+.emmy2-markdown pre.emmy2-code-runnable:hover .emmy2-code-run,
+.emmy2-code-run:focus-visible {
+  opacity: 1;
+}
+
+.emmy2-code-run:hover {
+  color: var(--c-text);
+  border-color: var(--c-accent);
+}
+
+/* Touch: no hover, so keep the button visible at reduced emphasis. */
+@media (hover: none) {
+  .emmy2-code-run {
+    opacity: 0.7;
+  }
+}
+
 .emmy2-markdown hr {
   margin: var(--space-3) 0;
   border: none;
@@ -2664,6 +2701,10 @@ button.active {
   margin-top: auto;
   padding-top: var(--space-3);
   border-top: 1px solid var(--c-border);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
 .emmy2-sidebar-reload {
@@ -2847,6 +2888,62 @@ button.active {
   cursor: pointer;
 }
 
+/* Sidebar "Aufgaben": zwei Zeilen — Titel + Status-Pille, darunter das Ziel. */
+.emmy2-task-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: var(--space-1) 0;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.emmy2-task-row-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.emmy2-task-row-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-2);
+  font-size: var(--fs-sm);
+}
+
+.emmy2-task-row:hover .emmy2-task-row-title {
+  color: var(--c-text);
+}
+
+.emmy2-task-row-status {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--c-success);
+}
+
+.emmy2-task-row-status.is-paused {
+  color: var(--c-warning);
+}
+
+.emmy2-task-row-status.is-done {
+  color: var(--c-text-3);
+}
+
+.emmy2-task-row-goal {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--c-text-3);
+  font-size: var(--fs-xs);
+}
+
 .emmy2-status-row:hover {
   color: var(--c-text);
 }
@@ -2876,6 +2973,20 @@ button.active {
 
 .emmy2-status-dot.is-active {
   animation: emmy-dot-pulse 1.9s ease-in-out infinite;
+}
+
+/* Recherche fertig, wartet auf Aarons "Erledigt": ruhiger grüner Punkt. */
+.emmy2-status-dot--research.is-ready {
+  background: var(--c-success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-success) 28%, transparent);
+}
+
+.emmy2-status-row-flag {
+  flex-shrink: 0;
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-success);
 }
 
 @keyframes emmy-dot-pulse {

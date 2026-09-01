@@ -217,20 +217,41 @@ const schema = z.object({
   // marked failed and picked up again next tick.
   EMMY_RECURRING_FALLBACK_MODEL: z.string().default(""),
   // Model the *research gathering* phase runs on (category "research", before
-  // it flips to "discussion"). That phase is the token-heavy part — reading
-  // many web sources — so it goes to Gemini to spare the Claude subscription;
-  // the discussion phase, normal chat and recurring checks stay on the
-  // gateway default (Claude), where judgement and tone matter. Empty disables
+  // it flips to "discussion"). 2026-08-31: switched from a bare Gemini Flash
+  // turn (hallucinated when a tool/fetch failed instead of saying so — see
+  // memory/overlay-research-source-bound.md) to a Claude Haiku *orchestrator*
+  // that spawns EMMY_RESEARCH_WORKER_MODEL sub-agents for the bulk reading.
+  // Haiku runs through the same anthropic:claude-cli OAuth profile as every
+  // other Claude model on this gateway (confirmed via `models` — no separate
+  // API-key profile exists here), so it DOES count against the weekly
+  // subscription limit; it's just the cheapest tier, and most of the token
+  // volume is meant to go to the Gemini worker sub-agents instead. Unlike
+  // Flash, it doesn't paper over a blocked source with an invented finding.
+  // The discussion phase, normal chat and recurring checks stay on the
+  // gateway default, where judgement and tone matter most. Empty disables
   // the split (everything stays on the default model). See turnModelFor().
   EMMY_RESEARCH_MODEL: z.string().default(""),
-  // Model a research turn is retried with when the primary (EMMY_RESEARCH_MODEL,
-  // or the gateway default) call fails outright — e.g. the Gemini flash model
-  // stalls a long agentic research turn into a 429-backoff loop until the
-  // gateway timeout kills it, and the turn never calls /api/emmy/inbound back.
-  // Pick a *different provider* (Claude) so the retry can actually go through.
-  // Empty disables the retry. Used by spinOffResearchTask + the scheduler's
-  // research-due and stalled-research watchdog ticks.
+  // Cheap worker model the research orchestrator (EMMY_RESEARCH_MODEL) is
+  // told to spawn sub-agents on for pure reading/extraction of already-
+  // fetched source text (transcripts, page dumps, code) — the token-heavy,
+  // judgement-light part. Workers get pasted text, not URLs, so a model
+  // without tool-calling (e.g. a Flash-Lite tier) is fine here on purpose.
+  // Empty: the prompt tells the orchestrator to read everything itself.
+  EMMY_RESEARCH_WORKER_MODEL: z.string().default(""),
+  // Research fallback chain, tried in order when EMMY_RESEARCH_MODEL (or the
+  // previous tier) fails outright — e.g. the model stalls a long agentic
+  // research turn into a backoff loop until the gateway timeout kills it, and
+  // the turn never calls /api/emmy/inbound back. 2026-08-31: two tiers by
+  // design (Aaron's call, overriding the 2026-08-30 "keep it Claude-free"
+  // decision): tier 1 = the *other* Claude subscription (claude-cli2), so a
+  // Claude orchestrator keeps driving/watching the research as long as either
+  // account has quota; tier 2 = Gemini, a bare worker turn with no Claude
+  // supervision, only reached once both Claude accounts are exhausted. Each
+  // tier disabled by leaving it empty. Used by spinOffResearchTask + the
+  // scheduler's research-due and stalled-research watchdog ticks — see
+  // sendEmmyHookTurnWithFallback (openclaw-webhook.ts) for the chain logic.
   EMMY_RESEARCH_FALLBACK_MODEL: z.string().default(""),
+  EMMY_RESEARCH_FALLBACK_MODEL_2: z.string().default(""),
   // How many of the current chat's own recent messages ride along on every
   // turn, independent of the embedding tier above — this alone is what fixes
   // Emmy forgetting mid-task even with no Ollama configured at all.

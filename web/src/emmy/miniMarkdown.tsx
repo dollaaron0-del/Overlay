@@ -14,6 +14,14 @@ import { EmmyMermaid } from "./EmmyMermaid.js";
 
 const SAFE_LINK_SCHEME = /^(https?:|mailto:)/i;
 
+/** Fenced-code languages we offer a "run in the host terminal" button for. */
+const SHELL_LANGS = new Set(["", "bash", "sh", "shell", "zsh", "console", "shell-session", "shellsession", "terminal", "sudo"]);
+
+export interface MiniMarkdownOptions {
+  /** When set, shell code blocks get a button that hands the command to the host terminal (see EmmyChatApp). */
+  onRunInTerminal?: (command: string) => void;
+}
+
 const INLINE_PATTERN = /`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|\*([^*]+)\*|_([^_]+)_/g;
 
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
@@ -141,7 +149,7 @@ function renderListGroups(groups: ListGroup[], keyPrefix: string): ReactNode {
   );
 }
 
-export function renderMiniMarkdown(markdown: string): ReactNode {
+export function renderMiniMarkdown(markdown: string, opts: MiniMarkdownOptions = {}): ReactNode {
   const lines = markdown.split("\n");
   const blocks: ReactNode[] = [];
   let listItems: ListItem[] | null = null;
@@ -183,8 +191,19 @@ export function renderMiniMarkdown(markdown: string): ReactNode {
       } else if (chartSpec) {
         blocks.push(<EmmyChart key={`chart-${blockKey++}`} spec={chartSpec} />);
       } else {
+        const runnable = opts.onRunInTerminal && SHELL_LANGS.has(lang) && body.trim().length > 0;
         blocks.push(
-          <pre key={`code-${blockKey++}`}>
+          <pre key={`code-${blockKey++}`} className={runnable ? "emmy2-code-runnable" : undefined}>
+            {runnable && (
+              <button
+                type="button"
+                className="emmy2-code-run"
+                onClick={() => opts.onRunInTerminal!(body.trim())}
+                title="Im Server-Terminal einfügen (Enter drückst du selbst)"
+              >
+                In Terminal
+              </button>
+            )}
             <code>{body}</code>
           </pre>,
         );

@@ -27,12 +27,13 @@ import {
 import { listActivities, markWorking, markIdle } from "./emmy-activity.js";
 import { classifyTask, DEFAULT_INTERVAL_HOURS, DEFAULT_RESEARCH_WINDOW_HOURS } from "./emmy-categorize.js";
 import type { EmmyCategory, EmmyChat, EmmyMessage, EmmyResearchPhase } from "@overlay/shared";
-import { sendEmmyHookTurn, sendEmmyHookTurnWithFallback } from "../openclaw/openclaw-webhook.js";
+import { sendEmmyHookTurnWithFallback } from "../openclaw/openclaw-webhook.js";
 import { saveEmmyAttachments, attachmentsDir } from "./emmy-attachments.js";
 import { resolveSafePath, UnsafePathError } from "../files/safe-path.js";
 import { indexMessageForMemory, retrieveMemory, purgeMessagesFromMemory } from "./emmy-memory.js";
 import { buildEmmyTurnMessage, sessionKeyFor, turnModelFor } from "./emmy-turn-message.js";
 import { resetGeneralChat } from "./emmy-conversation-reset.js";
+import { getTasksPanel } from "./tasks-panel.js";
 
 // CRUD + reads (normal JSON body limit, mounted under protectedApi).
 export const emmyRouter = Router();
@@ -64,6 +65,13 @@ emmyRouter.get("/chats/:id/messages", async (req, res) => {
 /** What Emmy is busy with right now; the same list the /ws/emmy socket pushes. */
 emmyRouter.get("/activity", (_req, res) => {
   res.json(listActivities());
+});
+
+// Standing delegated tasks (workspace tasks/<slug>/) for the sidebar "Aufgaben"
+// panel. Served from a sanitized snapshot written by a cron job running as the
+// aaron user — see tasks-panel.ts.
+emmyRouter.get("/tasks", async (_req, res) => {
+  res.json(await getTasksPanel());
 });
 
 // ---- topic windows --------------------------------------------------------
@@ -182,6 +190,8 @@ const patchSchema = z.object({
   category: z.enum(["instant", "research", "recurring"]).optional(),
   dueAt: z.string().datetime().nullable().optional(),
   intervalHours: z.number().positive().max(24 * 365).nullable().optional(),
+  /** Manual override of Emmy's self-reported research completion mode — see EmmyChat.sourceBound. */
+  sourceBound: z.boolean().nullable().optional(),
 });
 
 emmyRouter.patch("/chats/:id", async (req, res) => {
@@ -336,6 +346,8 @@ async function spinOffResearchTask(
   const prompt = buildEmmyTurnMessage(task.title, "task", task.id, text, context, cls.category, undefined, {
     memoryHits,
     dueAt: cls.dueAt,
+    sourceBound: task.sourceBound,
+    isFirstMessage: true, // spin-off always seeds a brand-new task chat
   });
   markWorking(task.id, undefined, undefined, cls.category);
   try {
@@ -344,7 +356,9 @@ async function spinOffResearchTask(
       `Overlay-Aufgabe: ${task.title}`,
       prompt,
       turnModelFor(cls.category, undefined) || undefined,
-      cls.category === "research" ? config.EMMY_RESEARCH_FALLBACK_MODEL || undefined : undefined,
+      cls.category === "research"
+        ? [config.EMMY_RESEARCH_FALLBACK_MODEL || undefined, config.EMMY_RESEARCH_FALLBACK_MODEL_2 || undefined]
+        : undefined,
     );
   } catch {
     markIdle(task.id);
@@ -461,8 +475,20 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
     return;
   }
 
-  const recentMessages = priorMessages.slice(-config.EMMY_MEMORY_RECENT_MESSAGES);
-  const memoryHits = await retrieveMemory(text, new Set(recentMessages.map((m) => m.id)));
+  // The OpenClaw session for this chat already carries the conversation, so
+  // re-quoting the whole recent history into every turn is mostly wasted
+  // tokens (it noticeably inflated the per-message cost vs. a terminal
+  // session — see EMMY_MEMORY_RECENT_MESSAGES note in .env). Send the full
+  // window only on the first message; after that a 2-message tail is enough
+  // to survive a compaction that just happened. Same for the cross-chat
+  // memory search: valuable when a conversation opens, redundant to re-run
+  // per follow-up.
+  const recentMessages = isFirstMessage
+    ? priorMessages.slice(-config.EMMY_MEMORY_RECENT_MESSAGES)
+    : priorMessages.slice(-2);
+  const memoryHits = isFirstMessage
+    ? await retrieveMemory(text, new Set(recentMessages.map((m) => m.id)))
+    : [];
 
   // Saved + broadcast before the outbound turn is even attempted — a failed
   // hand-off to OpenClaw must not make the message vanish from the chat; it
@@ -485,6 +511,8 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
     memoryHits,
     requestFinalDocument,
     dueAt: chat.dueAt,
+    sourceBound: chat.sourceBound,
+    isFirstMessage,
   });
   const name = chat.kind === "task" ? `Overlay-Aufgabe: ${chat.title}` : "Overlay-Chat";
 
@@ -498,9 +526,9 @@ emmySendRouter.post("/:id/messages", async (req, res) => {
   // SOFORT PING: UI sieht jetzt sofort „arbeitet daran"
   markWorking(chat.id, undefined, undefined, category);
 
-  const turnFallbackModel =
+  const turnFallbackModel: (string | undefined) | (string | undefined)[] =
     category === "research" && chat.researchPhase !== "discussion"
-      ? config.EMMY_RESEARCH_FALLBACK_MODEL || undefined
+      ? [config.EMMY_RESEARCH_FALLBACK_MODEL || undefined, config.EMMY_RESEARCH_FALLBACK_MODEL_2 || undefined]
       : category === "recurring"
         ? config.EMMY_RECURRING_FALLBACK_MODEL || undefined
         : undefined;

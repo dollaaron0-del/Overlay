@@ -2,7 +2,7 @@ import { config } from "../config.js";
 import type { EmmyChat, EmmyMessage } from "@overlay/shared";
 import { appendMessage, listChats, listMessages, updateChat } from "./emmy-store.js";
 import { buildEmmyTurnMessage, sessionKeyFor, turnModelFor } from "./emmy-turn-message.js";
-import { sendEmmyHookTurn, sendEmmyHookTurnWithFallback } from "../openclaw/openclaw-webhook.js";
+import { sendEmmyHookTurnWithFallback } from "../openclaw/openclaw-webhook.js";
 import { publishEmmyMessage } from "./emmy-bus.js";
 import { markWorking } from "./emmy-activity.js";
 import { appendAuditEntry } from "../audit/audit-log.js";
@@ -101,7 +101,9 @@ export async function runRecurringTasksTick(): Promise<{ triggered: string[]; fa
 
       const recentMessages = allMessages.slice(-config.EMMY_MEMORY_RECENT_MESSAGES);
       const userText = `[Automatischer wiederkehrender Check, alle ${chat.intervalHours}h] Bitte die Aufgabe dieses Chats erneut prüfen und ein Update posten.`;
-      const prompt = buildEmmyTurnMessage(chat.title, chat.kind, chat.id, userText, recentMessages, chat.category, chat.researchPhase);
+      const prompt = buildEmmyTurnMessage(chat.title, chat.kind, chat.id, userText, recentMessages, chat.category, chat.researchPhase, {
+        isFirstMessage: false, // recurring check on an existing chat, never the chat's first turn
+      });
       await sendEmmyHookTurnWithFallback(
         sessionKeyFor(chat.id),
         "Overlay Scheduler",
@@ -164,13 +166,15 @@ export async function runResearchDueChecksTick(): Promise<{ triggered: string[];
       const userText = `[Automatischer Status-Check] Das Zeitfenster für diese Recherche ist abgelaufen. Wie ist der Stand?`;
       const prompt = buildEmmyTurnMessage(chat.title, chat.kind, chat.id, userText, recentMessages, chat.category, chat.researchPhase, {
         dueAt: chat.dueAt,
+        sourceBound: chat.sourceBound,
+        isFirstMessage: false, // due-check on an existing research chat
       });
       await sendEmmyHookTurnWithFallback(
         sessionKeyFor(chat.id),
         "Overlay Scheduler",
         prompt,
         turnModelFor(chat.category, chat.researchPhase) || undefined,
-        config.EMMY_RESEARCH_FALLBACK_MODEL || undefined,
+        [config.EMMY_RESEARCH_FALLBACK_MODEL || undefined, config.EMMY_RESEARCH_FALLBACK_MODEL_2 || undefined],
       );
       await updateChat(chat.id, { dueCheckSentAt: new Date(now).toISOString() });
       markWorking(chat.id, undefined, undefined, chat.category);
@@ -227,7 +231,12 @@ export async function runStalledResearchWatchdogTick(): Promise<{ redispatched: 
 
   for (const chat of chats) {
     const messages = await listMessages(chat.id);
-    const lastMessageAt = messages.length > 0 ? new Date(messages[messages.length - 1].at).getTime() : 0;
+    // Only Emmy's own messages count as a sign of life. Aaron nudging "did
+    // this start yet?" is stored as a "me" message and must not reset the
+    // stall clock — that would mask a turn that died on the gateway without
+    // ever answering.
+    const lastEmmyMessage = [...messages].reverse().find((m) => m.role === "emmy");
+    const lastMessageAt = lastEmmyMessage ? new Date(lastEmmyMessage.at).getTime() : 0;
     if (!isResearchStalled(chat, lastMessageAt, now)) continue;
 
     const retries = chat.researchStallRetries ?? 0;
@@ -251,14 +260,24 @@ export async function runStalledResearchWatchdogTick(): Promise<{ redispatched: 
       const userText = `[Automatischer Watchdog] Zu dieser Recherche kam bisher keine Antwort zurück — der vorige Durchlauf ist abgebrochen. Bitte die Recherche neu aufnehmen und wie vereinbart einen Zwischenstand bzw. das Ergebnis an /api/emmy/inbound posten.`;
       const prompt = buildEmmyTurnMessage(chat.title, chat.kind, chat.id, userText, recentMessages, chat.category, chat.researchPhase, {
         dueAt: chat.dueAt,
+        sourceBound: chat.sourceBound,
+        // Deliberately full instructions here (not isFirstMessage: false like
+        // the other scheduler call sites): this fires precisely when the
+        // prior turn died mid-run, so we can't be sure the model ever
+        // actually saw/retained the full protocol from an earlier turn.
+        isFirstMessage: true,
       });
       // Skip the (suspect) primary research model entirely on a re-dispatch —
-      // go straight to the fallback if there is one, else the gateway default.
-      await sendEmmyHookTurn(
+      // start straight at fallback tier 1 (the other Claude account), then
+      // walk the rest of the chain if that's also down. Reuses
+      // sendEmmyHookTurnWithFallback's chain/dedup logic rather than a bespoke
+      // single-model call, so this stays in sync with the rest of the chain.
+      await sendEmmyHookTurnWithFallback(
         sessionKeyFor(chat.id),
         "Overlay Watchdog",
         prompt,
         config.EMMY_RESEARCH_FALLBACK_MODEL || undefined,
+        [config.EMMY_RESEARCH_FALLBACK_MODEL_2 || undefined],
       );
       await updateChat(chat.id, {
         researchStallRetries: retries + 1,
