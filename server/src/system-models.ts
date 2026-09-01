@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config.js";
+import { getLastAnsweredModel } from "./emmy/emmy-store.js";
 
 /**
  * Feeds the sidebar "Modelle" widget: which model each Emmy lane runs on, and
@@ -36,6 +37,13 @@ export interface ModelLane {
 
 export interface ModelStatus {
   lanes: ModelLane[];
+  /**
+   * The model that actually produced the most recent Emmy reply (any chat),
+   * as she self-reported it — the honest "which AI is answering me" signal
+   * that the lane config above can't give (it can't see which fallback tier
+   * a turn resolved to). Null until a reply has carried a model.
+   */
+  lastAnswered: { model: string; at: string; ageSeconds: number } | null;
   instance:
     | {
         name: string;
@@ -107,7 +115,18 @@ export async function getModelStatus(): Promise<ModelStatus> {
     };
   }
 
-  const value: ModelStatus = { lanes, instance };
+  let lastAnswered: ModelStatus["lastAnswered"] = null;
+  const last = await getLastAnsweredModel().catch(() => null);
+  if (last) {
+    const ageMs = Date.now() - new Date(last.at).getTime();
+    lastAnswered = {
+      model: last.model,
+      at: last.at,
+      ageSeconds: Number.isFinite(ageMs) ? Math.max(0, Math.round(ageMs / 1000)) : 0,
+    };
+  }
+
+  const value: ModelStatus = { lanes, lastAnswered, instance };
   cache = { at: Date.now(), value };
   return value;
 }

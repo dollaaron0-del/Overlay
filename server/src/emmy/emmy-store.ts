@@ -249,6 +249,21 @@ export async function listMessages(chatId: string): Promise<EmmyMessage[]> {
   return store.messages.filter((m) => m.chatId === chatId);
 }
 
+/**
+ * The model that produced the most recent Emmy reply that self-reported one
+ * (see EmmyMessage.model) — across all chats, newest first. Feeds the sidebar
+ * "Modelle" widget's "which AI answered last" line. Returns null until at
+ * least one reply has carried a model (older messages never did).
+ */
+export async function getLastAnsweredModel(): Promise<{ model: string; at: string } | null> {
+  const store = await ensureLoaded();
+  for (let i = store.messages.length - 1; i >= 0; i--) {
+    const m = store.messages[i];
+    if (m.role === "emmy" && m.model) return { model: m.model, at: m.at };
+  }
+  return null;
+}
+
 export async function appendMessage(
   chatId: string,
   role: EmmyMessage["role"],
@@ -256,6 +271,7 @@ export async function appendMessage(
   attachments?: EmmyAttachment[],
   isFinalDocument?: boolean,
   needsClarification?: boolean,
+  model?: string,
 ): Promise<EmmyMessage> {
   const message: EmmyMessage = {
     id: crypto.randomUUID(),
@@ -266,6 +282,7 @@ export async function appendMessage(
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
     ...(isFinalDocument ? { isFinalDocument: true } : {}),
     ...(needsClarification ? { needsClarification: true } : {}),
+    ...(model ? { model } : {}),
   };
   return mutateStore((store) => {
     const chats = store.chats.map((c) => (c.id === chatId ? { ...c, updatedAt: message.at } : c));

@@ -10,6 +10,7 @@ interface ModelLane {
 
 interface ModelStatus {
   lanes: ModelLane[];
+  lastAnswered: { model: string; at: string; ageSeconds: number } | null;
   instance: {
     name: string;
     claudeAccounts: number;
@@ -75,6 +76,16 @@ export function ModelStatusWidget() {
         title={expanded ? "Details ausblenden" : "Modell-Zuordnung einblenden"}
       >
         <span>Modelle</span>
+        {status?.lastAnswered ? (
+          <span
+            className="emmy2-model-head-current"
+            title={`Modell der letzten Emmy-Antwort im Overlay-Chat · ${relAge(
+              status.lastAnswered.ageSeconds,
+            )}`}
+          >
+            {prettyModel(status.lastAnswered.model)}
+          </span>
+        ) : null}
         <span className={`system-stats-caret${expanded ? " open" : ""}`} aria-hidden="true">
           ▾
         </span>
@@ -84,6 +95,15 @@ export function ModelStatusWidget() {
 
       {expanded && status && (
         <>
+          {status.lastAnswered ? (
+            <div className="emmy2-model-row">
+              <span className="emmy2-model-key">Zuletzt geantwortet</span>
+              <span className="emmy2-model-val">
+                {prettyModel(status.lastAnswered.model)}
+                <span className="emmy2-model-muted"> · {relAge(status.lastAnswered.ageSeconds)}</span>
+              </span>
+            </div>
+          ) : null}
           {status.lanes.map((lane) => (
             <div key={lane.key} className="emmy2-model-row">
               <span className="emmy2-model-key">{lane.label}</span>
