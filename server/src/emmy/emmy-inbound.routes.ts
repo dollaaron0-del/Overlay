@@ -2,12 +2,13 @@ import { Router } from "express";
 import { z } from "zod";
 import type { EmmyAttachment } from "@overlay/shared";
 import { EMMY_LONG_REPORT_CHARS } from "@overlay/shared";
-import { getChat, updateChat, appendMessage, listChats } from "./emmy-store.js";
+import { getChat, updateChat, appendMessage, listChats, listMessages } from "./emmy-store.js";
 import { publishEmmyMessage, publishEmmyChats } from "./emmy-bus.js";
 import { markWorking, markIdle } from "./emmy-activity.js";
 import { indexMessageForMemory } from "./emmy-memory.js";
 import { MIN_RESEARCH_FLOOR_MINUTES } from "./emmy-categorize.js";
-import { sessionKeyFor, turnModelFor } from "./emmy-turn-message.js";
+import { config } from "../config.js";
+import { buildEmmyTurnMessage, sessionKeyFor, turnModelFor } from "./emmy-turn-message.js";
 import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
 import { renderMarkdownToPdf, pdfFilenameFor } from "./emmy-pdf.js";
 import { saveGeneratedAttachment } from "./emmy-attachments.js";
@@ -195,15 +196,31 @@ emmyInboundRouter.post("/", async (req, res) => {
     const elapsedMs = Date.now() - new Date(chat.createdAt).getTime();
 
     if (elapsedMs < minRequiredMs) {
-      const nudge = [
-        `[Overlay] Automatische Rückmeldung zur Aufgabe „${chat.title}":`,
-        ``,
+      const nudgeText = [
         `Deine letzte Antwort kam nach nur ${Math.round(elapsedMs / 60_000)} Minuten — für diese Recherche-Aufgabe sind mindestens ${Math.round(minRequiredMs / 60_000)} Minuten vorgesehen (noch ca. ${Math.ceil((minRequiredMs - elapsedMs) / 60_000)} Minuten mehr).`,
         `Deine bisherige Antwort wurde als Zwischenstand gespeichert und ist für Aaron im Chat sichtbar — sie zählt aber noch NICHT als deine Recherche-Zusammenfassung, die Phase bleibt offen.`,
         effectiveSourceBound
-          ? `Recherchier weiter: arbeite die genannte Quelle wirklich vollständig durch, bevor du abschließt. Melde dich zwischendurch gern mit Zwischenstand-Meldungen (activity/sourcesSearched/knowledgeLevel) und schick danach über denselben Endpunkt deine Zusammenfassung.`
-          : `Recherchier weiter: erschließ neue, unabhängige Quellen, vertiefe Punkte, die noch dünn sind. Melde dich zwischendurch gern mit Zwischenstand-Meldungen (activity/sourcesSearched/knowledgeLevel) und schick danach über denselben Endpunkt eine vollständigere Zusammenfassung.`,
+          ? `Recherchier weiter: arbeite die genannte Quelle wirklich vollständig durch, bevor du abschließt. Schick danach deine Zusammenfassung.`
+          : `Recherchier weiter: erschließ neue, unabhängige Quellen, vertiefe Punkte, die noch dünn sind. Schick danach eine vollständigere Zusammenfassung.`,
       ].join("\n");
+
+      // Route through buildEmmyTurnMessage — the isolated turn this spawns is
+      // a fresh session with no history, so it needs the full post-back
+      // protocol (endpoint, token, chatId) and formatting instructions, plus
+      // the recent messages so it can see its own just-posted draft. A bare
+      // nudge string (as this used to send) leaves the turn with no way to
+      // reply at all.
+      const recent = (await listMessages(chatId)).slice(-config.EMMY_MEMORY_RECENT_MESSAGES);
+      const nudgePrompt = buildEmmyTurnMessage(
+        chat.title,
+        chat.kind,
+        chatId,
+        nudgeText,
+        recent,
+        effectiveCategory,
+        chat.researchPhase,
+        { dueAt: chat.dueAt, sourceBound: effectiveSourceBound, isFirstMessage: true },
+      );
 
       try {
         // See NUDGE_DISPATCH_DELAY_MS above — give the still-finishing turn
@@ -213,7 +230,7 @@ emmyInboundRouter.post("/", async (req, res) => {
         await sendEmmyHookTurn(
           sessionKeyFor(chatId),
           `Overlay-Aufgabe: ${chat.title}`,
-          nudge,
+          nudgePrompt,
           turnModelFor(effectiveCategory, chat.researchPhase),
         );
         markWorking(
