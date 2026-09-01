@@ -86,25 +86,48 @@ export async function sendEmmyHookTurn(sessionKey: string, name: string, message
  * "answered" — a turn that dies mid-run without calling /api/emmy/inbound back
  * is caught by the stalled-research watchdog, not here. Returns which model the
  * accepted turn went out on (or undefined if it ran on the gateway default),
- * so the caller can log/track it.
+ * plus how many fallback tiers were exhausted, so the caller can log/track it.
+ *
+ * `fallbackModels` is tried in order (2026-08-31: research went from a single
+ * fallback to a chain — Abo 2 (claude-cli2) first, so a Claude orchestrator is
+ * still driving/watching the research as long as ANY Claude account has quota
+ * left; only once both are exhausted does it drop to a bare Gemini worker
+ * turn with no Claude supervision). Empty/undefined entries and entries equal
+ * to a model already tried are skipped, not counted as a wasted attempt.
  */
 export async function sendEmmyHookTurnWithFallback(
   sessionKey: string,
   name: string,
   message: string,
   primaryModel: string | undefined,
-  fallbackModel: string | undefined,
-): Promise<{ usedFallback: boolean; model: string | undefined }> {
+  fallbackModels: (string | undefined) | (string | undefined)[],
+): Promise<{ usedFallback: boolean; model: string | undefined; fallbackTier: number }> {
+  const chain = (Array.isArray(fallbackModels) ? fallbackModels : [fallbackModels]).filter(
+    (m): m is string => !!m,
+  );
+  const tried = new Set<string | undefined>([primaryModel || undefined]);
+  let lastErr: unknown;
   try {
     await sendEmmyHookTurn(sessionKey, name, message, primaryModel || undefined);
-    return { usedFallback: false, model: primaryModel || undefined };
-  } catch (primaryErr) {
-    if (!fallbackModel || fallbackModel === primaryModel) throw primaryErr;
-    console.error(
-      `[openclaw] hook turn for ${sessionKey} failed on primary model ${primaryModel ?? "(default)"}, ` +
-        `retrying with fallback ${fallbackModel}: ${(primaryErr as Error).message}`,
-    );
-    await sendEmmyHookTurn(sessionKey, name, message, fallbackModel);
-    return { usedFallback: true, model: fallbackModel };
+    return { usedFallback: false, model: primaryModel || undefined, fallbackTier: 0 };
+  } catch (err) {
+    lastErr = err;
   }
+  for (let i = 0; i < chain.length; i++) {
+    const model = chain[i];
+    if (tried.has(model)) continue;
+    tried.add(model);
+    console.error(
+      `[openclaw] hook turn for ${sessionKey} failed on ${
+        i === 0 ? `primary model ${primaryModel ?? "(default)"}` : `fallback tier ${i} (${chain[i - 1]})`
+      }, retrying with fallback tier ${i + 1} (${model}): ${(lastErr as Error).message}`,
+    );
+    try {
+      await sendEmmyHookTurn(sessionKey, name, message, model);
+      return { usedFallback: true, model, fallbackTier: i + 1 };
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr;
 }

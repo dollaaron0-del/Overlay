@@ -2,15 +2,32 @@ import { Router } from "express";
 import { z } from "zod";
 import type { EmmyAttachment } from "@overlay/shared";
 import { EMMY_LONG_REPORT_CHARS } from "@overlay/shared";
-import { getChat, updateChat, appendMessage, listChats } from "./emmy-store.js";
+import { getChat, updateChat, appendMessage, listChats, listMessages } from "./emmy-store.js";
 import { publishEmmyMessage, publishEmmyChats } from "./emmy-bus.js";
 import { markWorking, markIdle } from "./emmy-activity.js";
 import { indexMessageForMemory } from "./emmy-memory.js";
-import { minResearchDurationMs, DEFAULT_RESEARCH_WINDOW_HOURS } from "./emmy-categorize.js";
-import { sessionKeyFor, turnModelFor } from "./emmy-turn-message.js";
+import { MIN_RESEARCH_FLOOR_MINUTES } from "./emmy-categorize.js";
+import { config } from "../config.js";
+import { buildEmmyTurnMessage, sessionKeyFor, turnModelFor } from "./emmy-turn-message.js";
 import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
 import { renderMarkdownToPdf, pdfFilenameFor } from "./emmy-pdf.js";
 import { saveGeneratedAttachment } from "./emmy-attachments.js";
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * A short pause before dispatching the "too early" nudge (see the caller).
+ *
+ * This handler runs synchronously off the inbound POST of the very turn that
+ * is being nudged — its own OpenClaw session on this sessionKey is still
+ * tearing down when we get here. Gateway hook dispatches respond with
+ * {ok:true, runId} as soon as the request is accepted, BEFORE the actual
+ * isolated turn (and any session-lifecycle claim conflict) plays out in the
+ * background — so a failed dispatch never surfaces back to this HTTP call to
+ * retry on. A short delay before dispatching is what actually reduces the
+ * collision, not a retry after the fact.
+ */
+const NUDGE_DISPATCH_DELAY_MS = 2000;
 
 /**
  * Called by the Emmy agent turn when it replies to a chat message (see
@@ -41,12 +58,25 @@ const inboundSchema = z
     category: z.enum(["instant", "research", "recurring"]).optional(),
     dueAt: z.string().datetime().optional(),
     intervalHours: z.number().positive().max(24 * 365).optional(),
+    /** Research-only: her own read on whether this task is bound to one named source (URL/channel/document) rather than an open topic — see EmmyChat.sourceBound. */
+    sourceBound: z.boolean().optional(),
     /** Running count of sources looked at so far this task. */
     sourcesSearched: z.number().int().nonnegative().max(10_000).optional(),
     /** Her own 0-100 estimate of how well she now knows the topic. */
     knowledgeLevel: z.number().min(0).max(100).optional(),
     /** Set alongside "text" when this reply is a clarifying question, not the research summary — see buildEmmyTurnMessage's research branch. */
     needsClarification: z.boolean().optional(),
+    /**
+     * Set alongside "text" for a substantial interim post (e.g. the research
+     * plan checkpoint, or a progress dump before a supervising model can take
+     * over — see the "Plan-Zwischenstand" and orchestrator/worker split in
+     * buildEmmyTurnMessage's research branch) that should persist as a real
+     * chat message — unlike a plain "activity" ping — without ending the
+     * research-gathering phase. Same phase-holding effect as
+     * needsClarification, but this isn't a question, so it renders as a
+     * normal message, not a clarification bubble.
+     */
+    interim: z.boolean().optional(),
   })
   .refine(
     (body) =>
@@ -64,8 +94,25 @@ emmyInboundRouter.post("/", async (req, res) => {
     res.status(400).json({ error: "invalid_request", details: parsed.error.issues });
     return;
   }
-  const { chatId, text, activity, category, dueAt, intervalHours, sourcesSearched, knowledgeLevel, needsClarification } =
-    parsed.data;
+  const {
+    chatId,
+    text,
+    activity,
+    category,
+    dueAt,
+    intervalHours,
+    sourcesSearched,
+    knowledgeLevel,
+    needsClarification,
+    interim,
+    sourceBound,
+  } = parsed.data;
+  // Both needsClarification and interim mean "this text reply doesn't
+  // conclude the research-gathering phase" — a question and a substantial
+  // progress post are different in kind but the same in that regard. Kept as
+  // two fields (not merged into one) so the UI/needsClarification's own
+  // "is this a question" meaning stays unambiguous for appendMessage below.
+  const nonFinal = needsClarification === true || interim === true;
 
   const chat = await getChat(chatId);
   if (!chat) {
@@ -78,6 +125,15 @@ emmyInboundRouter.post("/", async (req, res) => {
   if (category && chat.kind === "task" && chat.categorySource !== "manual") {
     await updateChat(chatId, { category, categorySource: "auto", dueAt, intervalHours });
     effectiveCategory = category;
+  }
+
+  // Her source-bound read isn't gated by the manual-category lock: it's a
+  // separate axis (completion shape, not category) she can update on any
+  // turn — e.g. she only realizes a task is source-bound once she's a few
+  // sources in.
+  const effectiveSourceBound = sourceBound ?? chat.sourceBound;
+  if (sourceBound !== undefined) {
+    await updateChat(chatId, { sourceBound });
   }
 
   // Persisted on the chat itself (not just the ephemeral activity) so the
@@ -94,17 +150,19 @@ emmyInboundRouter.post("/", async (req, res) => {
     return;
   }
 
-  // A clarifying question is never the final document, even if Aaron had one
-  // pending — the pending request stays queued for whenever she actually
-  // delivers the summary (see pendingFinalDocument handling below).
-  const isFinalDocument = chat.pendingFinalDocument === true && needsClarification !== true;
+  // A clarifying question or interim post is never the final document, even
+  // if Aaron had one pending — the pending request stays queued for whenever
+  // she actually delivers the summary (see pendingFinalDocument handling
+  // below).
+  const isFinalDocument = chat.pendingFinalDocument === true && !nonFinal;
   // Same "long report" threshold the web UI uses to clip the inline preview
   // (see EMMY_LONG_REPORT_CHARS) — whenever that preview would kick in, a
   // real PDF is generated alongside it so the full text is never trapped
   // behind the clipped bubble, only a click away as an actual document.
-  // Clarifying questions are conversation, not reports — never a PDF.
+  // Clarifying questions and interim posts are conversation, not reports —
+  // never a PDF.
   let attachments: EmmyAttachment[] | undefined;
-  if (needsClarification !== true && (isFinalDocument || text.length > EMMY_LONG_REPORT_CHARS)) {
+  if (!nonFinal && (isFinalDocument || text.length > EMMY_LONG_REPORT_CHARS)) {
     try {
       const pdf = await renderMarkdownToPdf(text, chat.title);
       const filename = pdfFilenameFor(chat.title, new Date().toISOString());
@@ -122,40 +180,57 @@ emmyInboundRouter.post("/", async (req, res) => {
   markIdle(chatId);
 
   // Her first full answer in a research chat would normally end the deep-
-  // research phase — but the "take your time" instruction in the prompt is
-  // only advisory, so enforce a floor here: if it lands far too early inside
-  // the task's own stated time window (see minResearchDurationMs), keep it as
-  // an interim message and send her straight back in rather than accepting it
-  // as the researched summary. Final-document replies are exempt — those are
-  // an explicit wrap-up Aaron asked for, not the initial dig-in. Clarifying
-  // questions are exempt too: she hasn't started digging in yet, so the floor
-  // (and the phase flip below) doesn't apply until she actually answers.
+  // research phase. The task's own dueAt is a deadline ("done by then"), not
+  // a target to fill — genuine completion (further sources/time wouldn't add
+  // value) is valid at any point before it, source-bound or not (see
+  // EmmyChat.sourceBound and the prompt's research block). So this floor is
+  // deliberately just a sanity check against a five-second non-answer, not a
+  // padding requirement derived from the time window.
   const isFirstResearchSummary =
     effectiveCategory === "research" &&
     chat.researchPhase !== "discussion" &&
     chat.pendingFinalDocument !== true &&
-    needsClarification !== true;
+    !nonFinal;
   if (isFirstResearchSummary) {
-    const windowMs = chat.dueAt
-      ? new Date(chat.dueAt).getTime() - new Date(chat.createdAt).getTime()
-      : DEFAULT_RESEARCH_WINDOW_HOURS * 3_600_000;
-    const minRequiredMs = minResearchDurationMs(windowMs);
+    const minRequiredMs = MIN_RESEARCH_FLOOR_MINUTES * 60_000;
     const elapsedMs = Date.now() - new Date(chat.createdAt).getTime();
 
     if (elapsedMs < minRequiredMs) {
-      const nudge = [
-        `[Overlay] Automatische Rückmeldung zur Aufgabe „${chat.title}":`,
-        ``,
+      const nudgeText = [
         `Deine letzte Antwort kam nach nur ${Math.round(elapsedMs / 60_000)} Minuten — für diese Recherche-Aufgabe sind mindestens ${Math.round(minRequiredMs / 60_000)} Minuten vorgesehen (noch ca. ${Math.ceil((minRequiredMs - elapsedMs) / 60_000)} Minuten mehr).`,
         `Deine bisherige Antwort wurde als Zwischenstand gespeichert und ist für Aaron im Chat sichtbar — sie zählt aber noch NICHT als deine Recherche-Zusammenfassung, die Phase bleibt offen.`,
-        `Recherchier weiter: erschließ neue, unabhängige Quellen, vertiefe Punkte, die noch dünn sind. Melde dich zwischendurch gern mit Zwischenstand-Meldungen (activity/sourcesSearched/knowledgeLevel) und schick danach über denselben Endpunkt eine vollständigere Zusammenfassung.`,
+        effectiveSourceBound
+          ? `Recherchier weiter: arbeite die genannte Quelle wirklich vollständig durch, bevor du abschließt. Schick danach deine Zusammenfassung.`
+          : `Recherchier weiter: erschließ neue, unabhängige Quellen, vertiefe Punkte, die noch dünn sind. Schick danach eine vollständigere Zusammenfassung.`,
       ].join("\n");
 
+      // Route through buildEmmyTurnMessage — the isolated turn this spawns is
+      // a fresh session with no history, so it needs the full post-back
+      // protocol (endpoint, token, chatId) and formatting instructions, plus
+      // the recent messages so it can see its own just-posted draft. A bare
+      // nudge string (as this used to send) leaves the turn with no way to
+      // reply at all.
+      const recent = (await listMessages(chatId)).slice(-config.EMMY_MEMORY_RECENT_MESSAGES);
+      const nudgePrompt = buildEmmyTurnMessage(
+        chat.title,
+        chat.kind,
+        chatId,
+        nudgeText,
+        recent,
+        effectiveCategory,
+        chat.researchPhase,
+        { dueAt: chat.dueAt, sourceBound: effectiveSourceBound, isFirstMessage: true },
+      );
+
       try {
+        // See NUDGE_DISPATCH_DELAY_MS above — give the still-finishing turn
+        // a moment to release its session-lifecycle claim before contending
+        // for the same sessionKey.
+        await sleep(NUDGE_DISPATCH_DELAY_MS);
         await sendEmmyHookTurn(
           sessionKeyFor(chatId),
           `Overlay-Aufgabe: ${chat.title}`,
-          nudge,
+          nudgePrompt,
           turnModelFor(effectiveCategory, chat.researchPhase),
         );
         markWorking(
@@ -181,9 +256,9 @@ emmyInboundRouter.post("/", async (req, res) => {
   // A clarifying question is neither: she's still pre-research, so the phase
   // stays put and a pending final-document request stays queued.
   const researchSummaryLanded =
-    effectiveCategory === "research" && chat.researchPhase !== "discussion" && needsClarification !== true;
+    effectiveCategory === "research" && chat.researchPhase !== "discussion" && !nonFinal;
   await updateChat(chatId, {
-    pendingFinalDocument: needsClarification === true ? chat.pendingFinalDocument : false,
+    pendingFinalDocument: nonFinal ? chat.pendingFinalDocument : false,
     ...(researchSummaryLanded ? { researchPhase: "discussion" as const } : {}),
     // The gathering phase is over — drop the persisted "running" flag the
     // dispatch set (emmy.routes.ts) so the sidebar stops listing it as active

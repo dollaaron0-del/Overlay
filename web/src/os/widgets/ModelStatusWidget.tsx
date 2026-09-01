@@ -44,9 +44,15 @@ function relAge(seconds: number): string {
  * (Standard-Chat / wiederkehrende Checks / tiefe Recherche) plus eine
  * knappe, secret-freie Konten-Übersicht der Emmy-Instanz. Datenquelle:
  * GET /api/system/models (server/src/system-models.ts).
+ *
+ * Anders als SystemStatsWidget (dort ist ein Teil immer sichtbar) ist das
+ * hier im Alltag selten wichtig genug, um dauerhaft Platz in der Sidebar zu
+ * beanspruchen — komplett eingeklappt per Default, nur die Überschrift ist
+ * sichtbar, Inhalt erst nach Klick.
  */
 export function ModelStatusWidget() {
   const [status, setStatus] = useState<ModelStatus | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     const fetchStatus = () =>
@@ -56,34 +62,52 @@ export function ModelStatusWidget() {
     return () => clearInterval(interval);
   }, []);
 
-  if (!status) {
-    return <div className="emmy2-model-widget emmy2-model-muted">lädt…</div>;
-  }
-
   return (
-    <div className="emmy2-model-widget">
-      {status.lanes.map((lane) => (
-        <div key={lane.key} className="emmy2-model-row">
-          <span className="emmy2-model-key">{lane.label}</span>
-          <span className="emmy2-model-val">
-            {prettyModel(lane.model)}
-            {lane.fallback ? (
-              <span className="emmy2-model-muted"> · Fallback {prettyModel(lane.fallback)}</span>
-            ) : null}
-          </span>
-        </div>
-      ))}
-      {status.instance ? (
-        <div className="emmy2-model-foot">
-          {status.instance.claudeAccounts} Claude-Konto{status.instance.claudeAccounts === 1 ? "" : "s"} ·{" "}
-          {status.instance.geminiKeys} Gemini-Key{status.instance.geminiKeys === 1 ? "" : "s"}
-          {status.instance.stale ? (
-            <span className="emmy2-model-stale"> · Stand veraltet</span>
-          ) : (
-            <span className="emmy2-model-muted"> · {relAge(status.instance.ageSeconds)}</span>
-          )}
-        </div>
-      ) : null}
+    // Reuses .system-stats-widget's collapsible-header CSS (accent bar,
+    // uppercase label, caret) — same interaction pattern as SystemStatsWidget,
+    // just fully collapsed instead of partially.
+    <div className="os-widget system-stats-widget emmy2-model-widget">
+      <button
+        type="button"
+        className="system-stats-head"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+        title={expanded ? "Details ausblenden" : "Modell-Zuordnung einblenden"}
+      >
+        <span>Modelle</span>
+        <span className={`system-stats-caret${expanded ? " open" : ""}`} aria-hidden="true">
+          ▾
+        </span>
+      </button>
+
+      {expanded && !status && <p className="empty-hint">lädt…</p>}
+
+      {expanded && status && (
+        <>
+          {status.lanes.map((lane) => (
+            <div key={lane.key} className="emmy2-model-row">
+              <span className="emmy2-model-key">{lane.label}</span>
+              <span className="emmy2-model-val">
+                {prettyModel(lane.model)}
+                {lane.fallback ? (
+                  <span className="emmy2-model-muted"> · Fallback {prettyModel(lane.fallback)}</span>
+                ) : null}
+              </span>
+            </div>
+          ))}
+          {status.instance ? (
+            <div className="emmy2-model-foot">
+              {status.instance.claudeAccounts} Claude-Konto{status.instance.claudeAccounts === 1 ? "" : "s"} ·{" "}
+              {status.instance.geminiKeys} Gemini-Key{status.instance.geminiKeys === 1 ? "" : "s"}
+              {status.instance.stale ? (
+                <span className="emmy2-model-stale"> · Stand veraltet</span>
+              ) : (
+                <span className="emmy2-model-muted"> · {relAge(status.instance.ageSeconds)}</span>
+              )}
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

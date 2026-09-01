@@ -77,6 +77,15 @@ export interface EmmyChat {
   categorySource?: EmmyCategorySource;
   /** End of the time window for "research" tasks. */
   dueAt?: string;
+  /**
+   * Research-only: true when the task is bound to one specific, named source
+   * (a URL/channel/document/repo) rather than an open topic — self-reported
+   * by Emmy via /api/emmy/inbound, alongside category. Changes what "done"
+   * means: the source running dry, not the time window (dueAt) being used up.
+   * Absent/false = the default open-topic behaviour (multiple independent
+   * sources, exploit the time window).
+   */
+  sourceBound?: boolean;
   /** Check cadence for "recurring" tasks. */
   intervalHours?: number;
   /** ISO timestamp of the last automatic recurring check. Only meaningful for category "recurring"; absent means it has never run. */

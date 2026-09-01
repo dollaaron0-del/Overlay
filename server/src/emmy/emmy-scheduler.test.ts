@@ -125,12 +125,66 @@ before(async () => {
     }),
     // Due, but the mock gateway rejects this one's sessionKey with 500.
     chat({ id: RESEARCH_FAILING_CHAT_ID, category: "research", intervalHours: undefined, dueAt: iso(-1 * HOUR_MS) }),
+
+    // --- stalled-research watchdog fixtures ---
+    // in_progress, no messages at all, createdAt past the stall window -> stuck since createdAt.
+    chat({
+      id: "stall-no-messages",
+      category: "research",
+      intervalHours: undefined,
+      status: "in_progress",
+      createdAt: iso(-5 * HOUR_MS),
+      updatedAt: iso(-5 * HOUR_MS),
+    }),
+    // in_progress, well within the stall window -> left alone.
+    chat({
+      id: "stall-not-yet",
+      category: "research",
+      intervalHours: undefined,
+      status: "in_progress",
+      createdAt: iso(-1 * HOUR_MS),
+      updatedAt: iso(-1 * HOUR_MS),
+    }),
+    // Aaron sent a "did this start?" nudge 30min ago, but Emmy never answered
+    // -> still stuck since createdAt; the recent "me" message must not mask it.
+    chat({
+      id: "stall-masked-by-aaron-nudge",
+      category: "research",
+      intervalHours: undefined,
+      status: "in_progress",
+      createdAt: iso(-8 * HOUR_MS),
+      updatedAt: iso(-0.5 * HOUR_MS),
+    }),
+    // A genuine recent progress ping FROM EMMY -> real sign of life, not stuck.
+    chat({
+      id: "stall-recent-emmy-ping",
+      category: "research",
+      intervalHours: undefined,
+      status: "in_progress",
+      createdAt: iso(-8 * HOUR_MS),
+      updatedAt: iso(-0.5 * HOUR_MS),
+    }),
+    // Already retried up to the limit -> gives up instead of redispatching again.
+    chat({
+      id: "stall-gives-up",
+      category: "research",
+      intervalHours: undefined,
+      status: "in_progress",
+      createdAt: iso(-20 * HOUR_MS),
+      researchStallRetries: 2,
+      researchStallNudgedAt: iso(-5 * HOUR_MS),
+    }),
+  ];
+
+  const messages = [
+    { id: "m1", chatId: "stall-masked-by-aaron-nudge", role: "me" as const, text: "Läuft das schon?", at: iso(-0.5 * HOUR_MS) },
+    { id: "m2", chatId: "stall-recent-emmy-ping", role: "emmy" as const, text: "Noch dabei, brauche 2h mehr.", at: iso(-0.5 * HOUR_MS) },
   ];
 
   await fs.mkdir(path.join(tmpCwd, "data"), { recursive: true });
   await fs.writeFile(
     path.join(tmpCwd, "data", "emmy-chats.json"),
-    JSON.stringify({ chats, messages: [], archive: [] }, null, 2),
+    JSON.stringify({ chats, messages, archive: [] }, null, 2),
     "utf8",
   );
 
@@ -270,4 +324,46 @@ test("summarizes the research due-check tick in one audit log entry", async () =
   // (used above only to assert the *recurring* tick ignores it) — it's also a
   // past-dueAt, pre-discussion research chat, so this tick picks it up too.
   assert.match(entry?.detail ?? "", /triggered=2 failed=1/);
+});
+
+// ---- stalled-research watchdog -----------------------------------------------
+
+let watchdogResult: { redispatched: string[]; gaveUp: string[] };
+test("run the stalled-research watchdog tick every scenario below asserts against", async () => {
+  watchdogResult = await scheduler.runStalledResearchWatchdogTick();
+});
+
+test("redispatches a research task stuck since createdAt with no messages at all", async () => {
+  assert.ok(watchdogResult.redispatched.includes("stall-no-messages"));
+});
+
+test("does not touch a research task still well within the stall window", async () => {
+  assert.ok(!watchdogResult.redispatched.includes("stall-not-yet"));
+});
+
+test("Aaron's own 'did this start?' nudge does not reset the stall clock", async () => {
+  assert.ok(
+    watchdogResult.redispatched.includes("stall-masked-by-aaron-nudge"),
+    "a message from Aaron must not mask a turn that never produced an Emmy answer",
+  );
+});
+
+test("a genuine recent progress ping from Emmy does reset the stall clock", async () => {
+  assert.ok(!watchdogResult.redispatched.includes("stall-recent-emmy-ping"));
+});
+
+test("gives up after RESEARCH_STALL_MAX_RETRIES instead of redispatching again, and posts a visible message", async () => {
+  assert.ok(watchdogResult.gaveUp.includes("stall-gives-up"));
+  assert.ok(!watchdogResult.redispatched.includes("stall-gives-up"));
+  const messages = await store.listMessages("stall-gives-up");
+  const note = messages.find((m) => m.role === "emmy");
+  assert.ok(note, "expected a give-up message posted to the chat");
+  assert.match(note!.text, /komme.*nicht durch/i);
+});
+
+test("summarizes the watchdog tick in one audit log entry", async () => {
+  const entries = await auditLog.listAuditEntries();
+  const entry = entries.find((e) => e.type === "research_watchdog_ran");
+  assert.ok(entry, "expected a research_watchdog_ran audit entry");
+  assert.equal(entry?.actor, "emmy-scheduler");
 });

@@ -137,6 +137,8 @@ export interface EmmyCategoryPatch {
   categorySource?: EmmyCategorySource;
   dueAt?: string | null;
   intervalHours?: number | null;
+  /** Research-only completion mode; see EmmyChat.sourceBound. `null` clears it back to the open-topic default. */
+  sourceBound?: boolean | null;
 }
 
 export async function createChat(
