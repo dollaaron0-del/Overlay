@@ -12,6 +12,22 @@ import { sendEmmyHookTurn } from "../openclaw/openclaw-webhook.js";
 import { renderMarkdownToPdf, pdfFilenameFor } from "./emmy-pdf.js";
 import { saveGeneratedAttachment } from "./emmy-attachments.js";
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * A short pause before dispatching the "too early" nudge (see the caller).
+ *
+ * This handler runs synchronously off the inbound POST of the very turn that
+ * is being nudged — its own OpenClaw session on this sessionKey is still
+ * tearing down when we get here. Gateway hook dispatches respond with
+ * {ok:true, runId} as soon as the request is accepted, BEFORE the actual
+ * isolated turn (and any session-lifecycle claim conflict) plays out in the
+ * background — so a failed dispatch never surfaces back to this HTTP call to
+ * retry on. A short delay before dispatching is what actually reduces the
+ * collision, not a retry after the fact.
+ */
+const NUDGE_DISPATCH_DELAY_MS = 2000;
+
 /**
  * Called by the Emmy agent turn when it replies to a chat message (see
  * buildPrompt in emmy.routes.ts — the turn is told this URL, token and the
@@ -190,6 +206,10 @@ emmyInboundRouter.post("/", async (req, res) => {
       ].join("\n");
 
       try {
+        // See NUDGE_DISPATCH_DELAY_MS above — give the still-finishing turn
+        // a moment to release its session-lifecycle claim before contending
+        // for the same sessionKey.
+        await sleep(NUDGE_DISPATCH_DELAY_MS);
         await sendEmmyHookTurn(
           sessionKeyFor(chatId),
           `Overlay-Aufgabe: ${chat.title}`,

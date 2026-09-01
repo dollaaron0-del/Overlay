@@ -29,8 +29,19 @@ export const DEFAULT_RESEARCH_WINDOW_HOURS = 24 * 7;
  * floor here anymore (there used to be one; Aaron pointed out it forced
  * padding on tasks that were legitimately done early, e.g. a single named
  * source running dry — see memory/overlay-research-source-bound.md).
+ *
+ * 2026-09-01: was 10 — but a real, well-sourced, multi-thousand-character
+ * report from a fast orchestrator (Haiku) legitimately lands in 2-3 minutes,
+ * which a 10-minute floor rejected as "too early". Each rejection fires a
+ * nudge turn on the SAME session while the finishing turn's session hasn't
+ * fully released yet (CronSessionLifecycleClaimError), and each nudge turn
+ * — built from just the bare nudge string, no history — tends to just
+ * re-answer near-instantly with something close to the same report, so the
+ * cycle repeats: duplicate report posts piling up in the chat instead of one
+ * clean answer. 1 minute is still a real backstop against a literal
+ * five-second non-answer, without punishing a genuinely fast good answer.
  */
-export const MIN_RESEARCH_FLOOR_MINUTES = 10;
+export const MIN_RESEARCH_FLOOR_MINUTES = 1;
 
 export interface EmmyClassification {
   category: EmmyCategory;
